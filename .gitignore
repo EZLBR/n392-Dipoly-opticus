@@ -41,6 +41,8 @@ coverage/
 **/*.env.*
 !.env.example
 !**/.env.example
+!.env.*.example
+!**/.env.*.example
 
 # Bancos locais e arquivos auxiliares do SQLite
 *.sqlite
