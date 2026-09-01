@@ -6,10 +6,8 @@
 --   Uso:
 --     psql -U SEU_USER -d SEU_BANCO -f schema.sql
 --
---   ⚠️  Este arquivo é executado UMA VEZ em banco novo.
---       O servidor (db.ts) já cria as tabelas automaticamente
---       via initializeDatabase() ao iniciar — este arquivo é
---       para referência e restauração manual.
+--   ⚠️  Este arquivo deve ser executado manualmente em banco novo.
+--       O servidor não executa DDL durante o boot.
 -- ============================================================
 
 -- ──────────────────────────────────────────────────────────

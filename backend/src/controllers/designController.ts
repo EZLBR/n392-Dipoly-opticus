@@ -4,20 +4,21 @@
 // ============================================================
 
 import pool from "../config/db.js";
+import type { Request, Response } from "express";
 
 // ─────────────────────────────────────────────────────────
 //   SALVAR DESIGN (cria ou atualiza)
 //   POST /api/designs
 // ─────────────────────────────────────────────────────────
-export async function saveDesign(req, res) {
+export async function saveDesign(req: Request, res: Response) {
   const {
     id, name, model, color,
     is_sunglasses, anti_reflective, temple_style,
     top_bar, bridge_style, frame_profile, temple_open, published
   } = req.body;
 
-  const customerEmail = req.user.email;
-  const usuarioId     = req.user.id;
+  const customerEmail = req.user!.email;
+  const usuarioId     = req.user!.id;
 
   if (!name || !model || !color) {
     return res.status(400).json({ success: false, error: "Nome, modelo e cor são obrigatórios." });
@@ -84,8 +85,8 @@ export async function saveDesign(req, res) {
 //   LISTAR DESIGNS DO USUÁRIO
 //   GET /api/designs
 // ─────────────────────────────────────────────────────────
-export async function getDesigns(req, res) {
-  const customerEmail = req.user.email;
+export async function getDesigns(req: Request, res: Response) {
+  const customerEmail = req.user!.email;
 
   try {
     const { rows } = await pool.query(
@@ -122,9 +123,9 @@ export async function getDesigns(req, res) {
 //   DELETAR DESIGN
 //   DELETE /api/designs/:id
 // ─────────────────────────────────────────────────────────
-export async function deleteDesign(req, res) {
+export async function deleteDesign(req: Request, res: Response) {
   const { id }       = req.params;
-  const customerEmail = req.user.email;
+  const customerEmail = req.user!.email;
 
   try {
     const { rowCount } = await pool.query(

@@ -11,9 +11,9 @@ O projeto usa a mesma separação adotada no Vortex Marketplace: frontend e back
 ├── frontend/        # React, Vite, Three.js e MediaPipe
 │   ├── public/
 │   └── src/
-├── backend/         # Express e PostgreSQL
-│   ├── migrations/
-│   └── src/
+├── backend/         # Express 5, Prisma e PostgreSQL
+│   ├── prisma/      # Configuração inicial; modelos entram nas próximas issues
+│   └── src/         # app, servidor e camadas da aplicação
 ├── docs/            # Arquitetura, API e segurança
 ├── .github/workflows/
 ├── .gitignore
@@ -31,7 +31,7 @@ A esteira do GitHub Actions executa typecheck, testes e build em pushes e pull r
 
 ## Requisitos
 
-- Node.js 22
+- Node.js 22.12 ou superior
 - npm
 - PostgreSQL
 
@@ -61,23 +61,35 @@ VITE_API_URL=http://localhost:5000/api
 
 ## Backend
 
+O backend novo usa Express 5 com TypeScript estrito. O Prisma Client é gerado
+durante `npm install`, mas esta fundação ainda não contém modelos de domínio nem
+executa migrations. O servidor não cria ou altera tabelas durante o boot.
+
 ```bash
 cd backend
 npm install
 copy .env.example .env
+# Edite .env e configure DATABASE_URL, JWT_SECRET e FRONTEND_URL.
+npm run prisma:generate
 npm run dev
 ```
+
+No Linux ou macOS, use `cp .env.example .env` no lugar de `copy`.
 
 Comandos disponíveis:
 
 ```bash
+npm run dev
 npm run typecheck
 npm run build
-npm run migrate
+npm run prisma:generate
 npm start
 ```
 
-Consulte [backend/.env.example](backend/.env.example) para configurar PostgreSQL, JWT, CORS e integrações.
+O comando legado `npm run migrate` não faz parte do fluxo do backend novo e não
+é necessário para iniciar a API. Consulte
+[backend/.env.example](backend/.env.example) para configurar PostgreSQL, JWT,
+CORS e integrações.
 
 ## Segurança
 

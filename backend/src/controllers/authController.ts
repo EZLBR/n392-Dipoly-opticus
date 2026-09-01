@@ -5,6 +5,7 @@
 // ============================================================
 
 import bcrypt from "bcryptjs";
+import type { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import pool from "../config/db.js";
 
@@ -15,15 +16,15 @@ if (!JWT_SECRET) {
 }
 
 // ─── Helper: gera JWT ─────────────────────────────────────
-function generateToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+function generateToken(payload: jwt.JwtPayload) {
+  return jwt.sign(payload, JWT_SECRET as string, { expiresIn: "7d" });
 }
 
 // ─────────────────────────────────────────────────────────
 //   REGISTRO
 //   POST /api/auth/register
 // ─────────────────────────────────────────────────────────
-export async function register(req, res) {
+export async function register(req: Request, res: Response) {
   const { name, email, password } = req.body;
 
   // Validação básica
@@ -118,7 +119,7 @@ export async function register(req, res) {
 //   LOGIN
 //   POST /api/auth/login
 // ─────────────────────────────────────────────────────────
-export async function login(req, res) {
+export async function login(req: Request, res: Response) {
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -180,7 +181,7 @@ export async function login(req, res) {
 //   PERFIL DO USUÁRIO AUTENTICADO
 //   GET /api/auth/me
 // ─────────────────────────────────────────────────────────
-export async function getMe(req, res) {
+export async function getMe(req: Request, res: Response) {
   try {
     const { rows } = await pool.query(
       `SELECT
@@ -192,7 +193,7 @@ export async function getMe(req, res) {
         criado_em    AS "createdAt"
        FROM usuarios
        WHERE id = $1`,
-      [req.user.id]
+      [req.user!.id]
     );
 
     if (rows.length === 0) {
@@ -217,9 +218,9 @@ export async function getMe(req, res) {
 //   LISTAR TODOS OS USUÁRIOS (apenas staff)
 //   GET /api/auth/users
 // ─────────────────────────────────────────────────────────
-export async function getUsers(req, res) {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 20;
+export async function getUsers(req: Request, res: Response) {
+  const page = parseInt(String(req.query.page || "")) || 1;
+  const limit = parseInt(String(req.query.limit || "")) || 20;
   const offset = (page - 1) * limit;
 
   try {
@@ -264,7 +265,7 @@ export async function getUsers(req, res) {
 //   ATUALIZAR USUÁRIO
 //   PUT /api/auth/users/:id
 // ─────────────────────────────────────────────────────────
-export async function updateUser(req, res) {
+export async function updateUser(req: Request, res: Response) {
   const { id } = req.params;
   const { name, factoryName } = req.body;
 
@@ -294,7 +295,7 @@ export async function updateUser(req, res) {
 //   DELETAR USUÁRIO
 //   DELETE /api/auth/users/:id
 // ─────────────────────────────────────────────────────────
-export async function deleteUser(req, res) {
+export async function deleteUser(req: Request, res: Response) {
   const { id } = req.params;
 
   try {

@@ -1,7 +1,16 @@
 import nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
+
+interface OrderEmailData {
+  id: string | number;
+  customer_name: string;
+  customer_email: string;
+  product_name: string;
+  factory_name: string;
+}
 
 // Generate a test account on the fly and create a reusable transporter
-let transporter = null;
+let transporter: Transporter | null = null;
 
 async function initTransporter() {
   if (transporter) return transporter;
@@ -29,7 +38,10 @@ async function initTransporter() {
   }
 }
 
-export async function sendOrderStatusEmail(order, newStatus) {
+export async function sendOrderStatusEmail(
+  order: OrderEmailData,
+  newStatus: string,
+) {
   const mailTransporter = await initTransporter();
 
   if (!mailTransporter) {

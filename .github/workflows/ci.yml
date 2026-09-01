@@ -38,6 +38,9 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
+    env:
+      # Prisma generate valida o formato da URL, mas não abre conexão com o banco.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/opticus_ci
     defaults:
       run:
         working-directory: backend
