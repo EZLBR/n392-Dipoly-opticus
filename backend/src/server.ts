@@ -4,22 +4,21 @@
 //
 //   A montagem da aplicação vive em src/app.ts. Aqui ficam
 //   apenas inicialização, listener e encerramento.
+//
+//   O schema do banco é gerenciado por Prisma Migrate,
+//   executado como passo próprio do deploy (não no boot).
 // ============================================================
 
 import dotenv from "dotenv";
 import logger from "./utils/logger.js";
 import { createApp } from "./app.js";
-import pool, { initializeDatabase } from "./config/db.js";
+import pool from "./config/db.js";
 
 dotenv.config();
 
 const PORT = process.env.PORT || 5000;
 
 async function startServer() {
-  // TODO(DB-02): remover — o schema passa a ser responsabilidade
-  // das migrations, executadas como passo próprio do deploy.
-  await initializeDatabase();
-
   const app = createApp();
 
   const server = app.listen(PORT, () => {
@@ -45,7 +44,6 @@ async function startServer() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
-// Trata rejections e exceptions para o servidor não cair silenciosamente
 process.on("unhandledRejection", (reason, promise) => {
   logger.fatal({ reason, promise }, "Unhandled Rejection");
 });
