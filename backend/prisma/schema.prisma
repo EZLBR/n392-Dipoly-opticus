@@ -9,7 +9,7 @@ generator client {
 
 model Categoria {
   id        Int       @id @default(autoincrement())
-  nome      String    @db.VarChar(100)
+  nome      String    @unique @db.VarChar(100)
   descricao String?   @db.Text
   criadoEm  DateTime? @default(now()) @map("criado_em")
 

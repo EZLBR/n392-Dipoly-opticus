@@ -1,4 +1,4 @@
-# DB-01 · Bloco 1: Prisma como fonte de verdade do schema
+# DB-02 · Bloco 2: Prisma Migrations como único mecanismo de evolução do schema
 
 > **Como usar este arquivo:** é o texto da descrição do PR, mantido versionado no
 > branch. Cole na descrição do PR no GitHub. Qualquer alteração futura deve
@@ -6,234 +6,197 @@
 
 ## Resumo
 
-Este PR introduz o Prisma como fonte de verdade do schema do banco (Bloco 1).
-O arquivo `backend/prisma/schema.prisma` espelha o schema PostgreSQL legado
-(`backend/src/config/schema.sql` e o DDL de boot de `backend/src/config/db.ts`),
-com as extensões definidas nos critérios de aceite:
+Este PR faz o corte definitivo: **as migrations do Prisma passam a ser o único
+mecanismo de evolução do schema**, e o DDL de boot (`initializeDatabase` em
+`db.ts`) deixa de existir. Um banco novo agora é reconstituído com
+`prisma migrate deploy` + `prisma db seed`, nunca com DDL em runtime.
 
-- **publicId** em todo recurso exposto via API
-  (`Usuario`, `Produto`, `Pedido`, `SavedDesign`), com `@unique`.
-- **Concurrency tokens** (`version`) em `Pedido` e `Estoque`.
-- Tipagem rica via **enums** (`Role`, `PedidoStatus`, `MetodoPagamento`,
-  `StatusPagamento`) no lugar de `VARCHAR` + CHECK.
+## 1. Dívida técnica do Bloco 1 resolvida
 
-Fica fora deste PR (Bloco 2): `db.ts`, `schema.sql` e `migrate.ts` permanecem
-intocados. A integração do Prisma no sistema (trocas de queries, migrations,
-remoção do DDL legado) virá no Bloco 2.
+O `afterAll` de `tests/integration/prisma-read.test.ts` chamava
+`initializeDatabase()` para restaurar o schema legado, porque outros testes
+(smoke) dependiam das tabelas criadas no boot.
 
-## O que mudou
+**Como foi resolvido:**
 
-| Arquivo | Mudança |
-|---|---|
-| `backend/prisma/schema.prisma` | Novo — schema Prisma completo, fonte de verdade |
-| `backend/prisma/PR_DESCRIPTION.md` | Este arquivo (descrição do PR versionada) |
-| `backend/tests/integration/prisma-read.test.ts` | Novo — testes de leitura via Prisma contra o banco real |
-| `backend/prisma.config.ts` | Novo — configuração do Prisma CLI |
-| `backend/package.json` / `backend/.env.example` | Adiciona `prisma` e `@prisma/client`; `DATABASE_URL` preenchida |
-| `backend/.env.test.example` | Documenta a obrigatoriedade de banco `_test` |
+- `tests/setup/global-setup.ts` agora aplica o schema via `prisma migrate deploy`
+  (antes chamava `initializeDatabase()`). Esse era o único ponto que criava o
+  schema para a suíte de integração.
+- `tests/integration/prisma-read.test.ts` **não usa mais** `prisma db push
+  --accept-data-loss` (o `global-setup` cuida disso) nem restaura o schema
+  legado no `afterAll` — o `afterAll` agora só desconecta o `PrismaClient`.
+- Nenhum teste (smoke, unit ou integration) depende mais de
+  `initializeDatabase()`.
 
-## 1. Recursos Expostos e `publicId`
+## 2. Migration inicial
 
-Todo modelo exposto como recurso da API tem `publicId String @unique
-@default(uuid())`:
+**Local:** `prisma/migrations/20260901133803_init/migration.sql`
 
-- `Usuario` → `publicId`
-- `Produto` → `publicId`
-- `Pedido` → `publicId`
-- `SavedDesign` → `publicId`
+Contém:
 
-### Como `Usuario` representa clientes **e** fábricas (substitui a frase solta anterior)
+- **4 enums** (`Role`, `PedidoStatus`, `MetodoPagamento`, `StatusPagamento`),
+  espelhando os valores literais das colunas `VARCHAR` + CHECK legadas
+  (inclusive os `@map` de espaço: `'Pending Payment'`, `'In production'`).
+- **8 tabelas** (`categorias`, `usuarios`, `produtos`, `pedidos`, `pedido_itens`,
+  `estoque`, `pagamentos`, `saved_designs`) com as colunas e tipos do
+  `schema.prisma` do Bloco 1.
+- **Índices e UNIQUE** replicados 1:1 do legado (os 10 `idx_*` + `usuarios.email`
+  + `estoque.produto_id`), mais os aditivos `publicId @unique` do Bloco 1 e o
+  `categorias_nome_key` (novo índice de unicidade, ver §Seed).
+- **8 FKs** com o `onDelete`/`onUpdate` decidido no Bloco 1: `Cascade` em
+  `onUpdate` nas FKs herdadas (padrão Prisma) e `onDelete` herdado do original
+  (`SetNull` em `produtos_categoria`/`pedidos_fabrica`, `Restrict` em
+  `pedido_itens_produto`, `Cascade` nas demais). Verificado no banco via
+  `pg_get_constraintdef`.
 
-`Usuario` é a tabela única que representa os dois papéis de negócio, distinguidos
-pelo enum `Role` (`client`, `factory`, `staff`). Isso herda o desenho do banco
-original: `usuarios.role` é um `VARCHAR(50)` com CHECK
-`('client','factory','staff')`, e tanto compradores quanto fábricas vivem nessa
-mesma tabela (fábrica também tem `factory_name`).
+**Ajuste pontual:** as colunas `publicId` ganharam `DEFAULT gen_random_uuid()`
+no `migration.sql`. Isso é necessário porque os controllers atuais usam SQL cru
+(camada `pg`) via `INSERT INTO usuarios (...)`, que não setava `publicId` — sem o
+default no banco, a coluna `NOT NULL` quebrava o registro. O `@default(uuid())`
+do Prisma só vale para o client Prisma, não para o SQL cru.
 
-`Pedido` é o único modelo com **duas relações para a mesma tabela** `Usuario`:
+## 3. `initializeDatabase` e DDL de boot removidos
 
-- **Comprador** → `Pedido.usuarioId` (relação `"UsuarioPedidos"`), **obrigatória**:
-  todo pedido tem um comprador, e a FK vem de `pedidos.usuario_id`.
-- **Fábrica responsável** → `Pedido.factoryId` (relação `"FactoryPedidos"`),
-  **opcional**: `pedidos.factory_id` pode ser `NULL` em pedidos ainda não
-  atribuídos a uma fábrica (o `orderController` cai para a primeira fábrica com
-  `role = 'factory'` quando recebe um `factoryId` inválido).
+- `initializeDatabase()` foi removido de `backend/src/config/db.ts`
+  (antes linhas 54–248). O arquivo agora contém **apenas o pool de conexão**.
+- `server.ts` não chama mais `initializeDatabase()` no boot (antes linha 21).
+- O `createIndexIfNotExists()` (ajudante do DDL antigo) foi removido junto.
+- Confirmado via `grep -r "initializeDatabase" backend/src` — sem referências.
 
+O boot da aplicação agora **não executa nenhum DDL**; o schema é responsabilidade
+das migrations, rodadas como passo próprio do deploy/CI.
+
+## 4. Validação de ambiente limpo
+
+Simulei um ambiente novo do zero com um Postgres 16 vazio (container efêmero):
+
+```bash
+docker run --rm -d -e POSTGRES_PASSWORD=postgres -p 5433:5432 postgres:16
+DATABASE_URL="postgresql://postgres:postgres@localhost:5433/postgres" npx prisma migrate deploy
 ```
-Usuario ──1:N──> Pedido (comprador)   @relation("UsuarioPedidos")
-Usuario ──1:N──> Pedido (fábrica)     @relation("FactoryPedidos")
-```
 
-As duas relações têm **nomes de relação distintos e explícitos** no `schema.prisma`
-(`"UsuarioPedidos"` e `"FactoryPedidos"`), o que elimina qualquer ambiguidade para
-o Prisma e para o banco ao gerar as FKs. No lado `Pedido`:
+Resultado: `Applying migration 20260901133803_init` → `All migrations have been
+successfully applied`. As 8 tabelas + `_prisma_migrations` foram criadas; a
+aplicação subiu (boot completo) apontando para esse banco sem nenhum erro de
+tabela/coluna faltante.
 
-- `usuario  Usuario  @relation("UsuarioPedidos", fields: [usuarioId], references: [id], onDelete: Cascade)`
-- `fabrica  Usuario? @relation("FactoryPedidos", fields: [factoryId], references: [id], onDelete: SetNull)`
+## 5. Seed
 
-A mesma tabela única também sustenta `SavedDesign.usuarioId`, que aponta para o
-comprador cliente que salvou o design.
+**Estratégia produção vs. desenvolvimento — dois arquivos:**
 
-### Divergência de `SavedDesign` (documentada)
-
-O `schema.sql` define `saved_designs.id` como `SERIAL PRIMARY KEY`, mas o
-`db.ts` (DDL de boot, que é o que o servidor realmente executa e fica em uso)
-define `id VARCHAR(255) PRIMARY KEY`. Seguimos o **`db.ts`**, que é a fonte do
-comportamento real do sistema: `SavedDesign.id` é `String @id @db.VarChar(255)`.
-O `schema.sql` está desatualizado nesse ponto; o `migrate.ts` não mexe nessa
-tabela via migração SQL (não há arquivos em `migrations/`). A divergência fica
-registrada para o Bloco 2 reconciliar o `schema.sql` com a realidade.
-
-## Exceção ao critério: `Produto` é catálogo global (sem dono)
-
-> **Decisão:** `Produto` NÃO ganhou FK de proprietário. O critério exige
-> `publicId` + relação explícita com usuário/fábrica dona; aqui só o `publicId`
-> faz sentido, e a ausência de dono é uma **exceção consciente e justificada**,
-> não uma lacuna do schema.
-
-**Onde procurei e não achei vínculo produto→fábrica:**
-
-- `src/controllers/productController.ts` — CRUD completo de produtos. O
-  `INSERT` grava apenas `nome, descricao, preco, categoria_id, imagem_url`.
-  Não há coluna de dono, nem join, nem filtro por fábrica/usuário.
-- `src/controllers/stockController.ts` e `src/controllers/categoryController.ts`
-  — todos os `JOIN`s envolvem `produtos`, `categorias` e `estoque`; nenhum toca
-  `usuarios`.
-- `src/controllers/orderController.ts` — o único `factory_id` do sistema vive
-  em **pedidos** (`fk_pedido_fabrica`), não em produtos.
-- DDL de boot (`src/config/db.ts:84-97`) e `src/config/schema.sql:41-56` —
-  a tabela `produtos` não tem `factory_id` nem FK para `usuarios/categorias`
-  (`fk_produto_categoria` vai só para `categorias`).
-- Busca por tabela pivot (`produto_fabrica`, `product_factory`) — não existe
-  nenhuma.
-
-**Conclusão:** no domínio atual, o catálogo de produtos é global: qualquer
-fábrica `staff/factory` pode criar um produto e ele fica visível para todos
-(listagem sem filtro de dono em `GET /api/products`). A relação de "posse" hoje
-acontece no momento do pedido (`pedido.factory_id`), não na definição do produto.
-Adicionar uma FK em `Produto` inventaria um dono que o sistema não usa e criaria
-uma coluna órfã. **Documentada como exceção ao critério de aceite; nenhuma
-mudança de código.**
-
-## 2. Índices e unicidade
-
-Conferi campo a campo `db.ts:54-188` e `schema.sql` contra o `schema.prisma`.
-**Nenhum índice ou UNIQUE do SQL original ficou sem equivalente.** Lista explícita:
-
-**Índices replicados (10/10):**
-
-| Índice SQL original | Equivalente no Prisma |
-|---|---|
-| `idx_produtos_categoria` ON `produtos(categoria_id)` | `@@index([categoriaId], map: "idx_produtos_categoria")` em `Produto` |
-| `idx_pedidos_usuario` ON `pedidos(usuario_id)` | `@@index([usuarioId], map: "idx_pedidos_usuario")` em `Pedido` |
-| `idx_pedidos_factory` ON `pedidos(factory_id)` | `@@index([factoryId], map: "idx_pedidos_factory")` em `Pedido` |
-| `idx_pedidos_status` ON `pedidos(status)` | `@@index([status], map: "idx_pedidos_status")` em `Pedido` |
-| `idx_pedidos_billing` ON `pedidos(abacate_billing_id)` | `@@index([abacateBillingId], map: "idx_pedidos_billing")` em `Pedido` |
-| `idx_itens_pedido` ON `pedido_itens(pedido_id)` | `@@index([pedidoId], map: "idx_itens_pedido")` em `PedidoItem` |
-| `idx_itens_produto` ON `pedido_itens(produto_id)` | `@@index([produtoId], map: "idx_itens_produto")` em `PedidoItem` |
-| `idx_pagamentos_pedido` ON `pagamentos(pedido_id)` | `@@index([pedidoId], map: "idx_pagamentos_pedido")` em `Pagamento` |
-| `idx_designs_usuario` ON `saved_designs(usuario_id)` | `@@index([usuarioId], map: "idx_designs_usuario")` em `SavedDesign` |
-| `idx_designs_email` ON `saved_designs(customer_email)` | `@@index([customerEmail], map: "idx_designs_email")` em `SavedDesign` |
-
-**UNIQUE / UNIQUE INDEX replicados:**
-
-| Constraint SQL original | Equivalente no Prisma |
-|---|---|
-| `usuarios.email UNIQUE` | `email String @unique` em `Usuario` |
-| `estoque.produto_id UNIQUE` | `produtoId Int @unique` em `Estoque` |
-
-**Nota sobre `PedidoItem`:** o SQL original **não** tem índice composto
-`(pedido_id, produto_id)` — apenas os dois índices simples acima, que foram
-replicados. Não há `@@unique([pedidoId, produtoId])` a migrar porque ele não
-existe no banco legado.
-
-**Índices/unicidade novos aditivos (do Bloco 1, não existiam no SQL):**
-`publicId @unique` em `Usuario`, `Produto`, `Pedido` e `SavedDesign`; nenhum
-UNIQUE/índice existente foi removido.
-
-## 3. `onDelete` / `onUpdate` das foreign keys
-
-Releitura campo a campo do SQL original. Todas as 12 FKs do sistema foram
-cobertas (8 relações declaradas no Prisma; as 4 colunas de `publicId`/`version`
-não são FK). Para cada FK: se o SQL original definia comportamento, replicamos
-exatamente; onde não definia (padrão Postgres = NO ACTION), declaramos decisão.
-
-| Relação | `onDelete` | `onUpdate` | Origem da decisão |
+| Arquivo | Comando | Conteúdo | Seguro p/ produção? |
 |---|---|---|---|
-| `Produto.categoria` → `Categoria` | `SetNull` | `Cascade` | Herdado do SQL (`ON DELETE SET NULL ON UPDATE CASCADE` — única FK com `ON UPDATE` explícito) |
-| `Pedido.usuario` → `Usuario` | `Cascade` | `Cascade` (padrão Prisma) | `ON DELETE CASCADE` no SQL; `ON UPDATE` não definido → padrão Prisma `Cascade` aceito (PKs SERIAL não mudam) |
-| `Pedido.fabrica` → `Usuario` | `SetNull` | `Cascade` (padrão Prisma) | `ON DELETE SET NULL` no SQL; `ON UPDATE` não definido → padrão Prisma |
-| `PedidoItem.pedido` → `Pedido` | `Cascade` | `Cascade` (padrão Prisma) | `ON DELETE CASCADE` no SQL (itens acompanham o pedido pai); `ON UPDATE` não definido → padrão Prisma |
-| `PedidoItem.produto` → `Produto` | `Restrict` | `Cascade` (padrão Prisma) | `ON DELETE RESTRICT` no SQL; `ON UPDATE` não definido → padrão Prisma |
-| `Estoque.produto` → `Produto` | `Cascade` | `Cascade` (padrão Prisma) | `ON DELETE CASCADE` no SQL (estoque é 1:1 do produto); `ON UPDATE` não definido → padrão Prisma |
-| `Pagamento.pedido` → `Pedido` | `Cascade` | `Cascade` (padrão Prisma) | `ON DELETE CASCADE` no SQL; `ON UPDATE` não definido → padrão Prisma |
-| `SavedDesign.usuario` → `Usuario` | `Cascade` | `Cascade` (padrão Prisma) | `ON DELETE CASCADE` no SQL; `ON UPDATE` não definido → padrão Prisma |
+| `prisma/seed.ts` | `npx prisma db seed` | Dados de referência (categorias) + usuário staff **opcional** via env | ✅ Sim |
+| `prisma/seed.dev.ts` | `npm run seed:dev` | Dados fake (usuários, produtos, pedidos de exemplo) | ❌ Não |
 
-**Decisão deliberada sobre `onUpdate`:** o SQL original só define `ON UPDATE`
-numa FK (`Produto.categoria`). Nas demais, o Postgres padronizaria NO ACTION.
-Optamos por manter o **padrão do Prisma (`Cascade`) para `onUpdate`** em todas
-as relações como escolha consistente — na prática é inócuo, pois todas as FKs
-apontam para PKs `SERIAL` (imutáveis em operação normal), e evita que uma
-renomeação de id quebre a cadeia. Nenhum caso usou `NoAction`/`Restrict` de
-`onUpdate` porque o legado não dependia desse comportamento.
+**Segurança em produção (regra crítica):**
+- O `seed.ts` **não cria nenhuma senha ou conta administrativa padrão**. Não há
+  senha hardcoded, nem mesmo placeholder.
+- O usuário staff é criado **somente** se `SEED_ADMIN_EMAIL` e
+  `SEED_ADMIN_PASSWORD_HASH` estiverem definidas no ambiente. Sem essas variáveis
+  o seed **pula** a criação (logado como "Pulando criação de usuário staff
+  admin"). Não há valor default tipo `admin`/`admin123`.
 
-## 4. Enums e `@map`
+**Idempotência:** todos os registros usam `upsert` (nunca `create`). Os endpoints
+de unicidade usados: `Categoria.nome` e `Usuario.email`. Testado rodando
+`npx prisma db seed` **duas vezes seguidas** no mesmo banco: a segunda execução
+não gera erro nem duplica dados (4 categorias e 1 usuário após 2 runs).
 
-Conferidos os quatro enums contra os valores literais armazenados hoje
-(colunas `VARCHAR` + CHECK):
+> **Nota:** foi adicionado `@unique` em `Categoria.nome` no `schema.prisma`.
+> O schema original não tinha chave natural única em `Categorias`, então o
+> `upsert` idempotente não teria onde ancorar. Esse índice é aditivo e
+> consistente com os dados (os 4 nomes já eram distintos).
 
-- **`PedidoStatus`** (coluna `pedidos.status`; CHECK guarda `'Pending Payment'`,
-  `'Queued'`, `'In production'`, `'Delivered'`, `'Cancelled'`): as duas variantes
-  com espaço usam `@map` para a string exata — `Pending_Payment @map("Pending
-  Payment")` e `In_production @map("In production")`. `Queued`, `Delivered` e
-  `Cancelled` coincidem 1:1 com o valor armazenado, então **não precisam** de
-  `@map`. Sem esses `@map`, o Prisma gravaria `Pending_Payment` (underscore)
-  como literal, quebrando leitura/escrita de dados existentes.
-- **`Role`** (coluna `usuarios.role`; CHECK guarda `'client'`, `'factory'`,
-  `'staff'`): as três variantes coincidem exatamente com os valores armazenados —
-  **sem `@map` necessário**.
-- **`MetodoPagamento`** (coluna `pagamentos.metodo`; CHECK guarda `'pix'`,
-  `'cartao_credito'`, `'boleto'`): coincidem 1:1 — **sem `@map`**.
-- **`StatusPagamento`** (coluna `pagamentos.status`; CHECK guarda `'pendente'`,
-  `'aprovado'`, `'recusado'`, `'estornado'`): coincidem 1:1 — **sem `@map`**.
+**Registro no `package.json`:**
 
-Regra geral aplicada: `@map` só onde o identificador do enum (nome da variante)
-difere do literal armazenado; onde coincidem, o `@map` é desnecessário (e
-evitado para não duplicar informação).
+```json
+"prisma": { "seed": "node --import tsx prisma/seed.ts" }
+```
 
-## 5. Isolamento do banco de teste
+(o projeto é ESM e usa `tsx`, não `ts-node` — que não é dependência.)
 
-**De onde vem a `DATABASE_URL` do teste:** de `backend/.env.test`
-(template versionado: `backend/.env.test.example`), carregada pelo script
-`npm run test:integration`/`npm test` via `dotenv -e .env.test`. O
-`tests/integration/prisma-read.test.ts` **não usa mais URL hardcoded** — deriva a
-URL de `process.env.DATABASE_URL`, a mesma que o `pool` do legado usa, garantindo
-que o Prisma e o `pg` apontem para o mesmo banco.
+## 6. `schema.sql` e `migrate.ts` — decisão
 
-**Guarda de segurança (falha rápido):** `assertBancoDeTeste()`
-(`tests/setup/db.ts`) se recusa a rodar se o nome do banco **não terminar em
-`_test`**. Essa guarda já protegia o `pool` legado; agora está **também
-duplicada explicitamente no `beforeAll` (antes do `prisma db push
---accept-data-loss`) e no `afterAll` (antes do `DROP SCHEMA public CASCADE`)
-do teste Prisma**. Não existe cenário em que a suíte rode `db push` ou
-`DROP SCHEMA` contra um banco sem o marcador `_test`. Complementando: a
-`DATABASE_URL` de dev é `opticus_db` (sem `_test`) e roda num `.env` ignorado
-pelo git — nunca é carregada pela suíte.
+Decidimos **marcar como legados** (não remover), movendo para `legacy/`:
 
-**Correção adicional de robustez:** o `afterAll` voltou a restaurar o schema
-legado após o `DROP SCHEMA` (chama `initializeDatabase()`), para que os demais
-arquivos de integração do mesmo run (que dependem das tabelas do legado) não
-quebrem e a próxima execução comece limpa.
+- `backend/src/config/schema.sql` → `legacy/src/config/schema.sql`
+- `backend/src/scripts/migrate.ts` → `legacy/src/scripts/migrate.ts`
+
+**Por quê:** ambos têm valor histórico/rollback (documentam o schema original e
+o antigo runner de migração SQL) e não há custo de runtime, já que nenhum código
+de produção ou teste os referencia mais. Cada arquivo recebeu um cabeçalho
+explícito: "LEGADO — não é mais a fonte de verdade do schema desde 2026-09-01.
+Ver `prisma/schema.prisma` e `prisma/migrations/`."
+
+Confirmado com `grep -r "schema.sql"` / `grep -r "migrate.ts"` que nenhum código
+de runtime ou teste os executa. A pasta `backend/migrations/` (usa do antigo
+`migrate.ts`) também foi removida; o diretório de migrations agora é
+`prisma/migrations/`.
+
+## 7. README e `.env.example`
+
+**README** reescrito na seção de setup/desenvolvimento do backend: PostgreSQL
+14+ obrigatório, como configurar `DATABASE_URL`, como rodar migrations
+(`npx prisma migrate deploy` em prod/CI, `npx prisma migrate dev` em dev), como
+rodar o seed e a diferença entre seed de produção e de desenvolvimento.
+
+**`.env.example`** agora inclui:
+- `DATABASE_URL` com valor **claramente fake**:
+  `postgresql://user:password@localhost:5432/opticus_db?schema=public`
+- `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD_HASH` **comentadas e vazias** (nunca
+  com valor real), documentando que servem para o seed criar o usuário staff.
+
+## 8. Restauração do zero — validação final (executada e documentada)
+
+Simulei um banco **completamente novo e vazio** (Postgres 16 em container
+efêmero, `docker run --rm -d -e POSTGRES_PASSWORD=postgres -p 5433:5432 postgres:16`)
+e rodei o fluxo exato de um ambiente novo:
+
+```bash
+# 1. Banco novo, vazio (sem tabelas) — acima
+
+# 2. Aplicar migrations
+DATABASE_URL="postgresql://postgres:postgres@localhost:5433/postgres" npx prisma migrate deploy
+# → Applying migration 20260901133803_init ... All migrations applied.
+# → 8 tabelas criadas (categorias, usuarios, produtos, pedidos, pedido_itens,
+#     estoque, pagamentos, saved_designs) + _prisma_migrations
+
+# 3. Seed
+DATABASE_URL="postgresql://postgres:postgres@localhost:5433/postgres" npx prisma db seed
+# → categorias garantidas; usuário staff pulado (env ausente) — comportamento esperado
+
+# 4. Subir a aplicação apontando para esse banco
+DATABASE_URL="postgresql://postgres:postgres@localhost:5433/postgres" PORT=5099 node --import tsx src/server.ts
+# → "🚀 OPTICUS Backend rodando na porta 5099" — boot limpo, sem erro de schema
+
+# 5. Fluxo real de leitura/escrita via API
+curl http://localhost:5099/health                          # → { success: true }
+curl http://localhost:5099/api/categories                  # → 4 categorias semeadas lidas
+curl -X POST .../api/auth/register {clean@exemplo.com}     # → 201, token emitido (escrita)
+curl .../api/auth/me -H "Authorization: Bearer <token>"    # → perfil do usuário (leitura)
+```
+
+**Leitura/escrita reais confirmadas:** registro de usuário (escrita no banco
+novo) gerou `publicId` via default do banco — provando que o banco reconstituído
+do zero é funcionalmente equivalente ao legado, inclusive para o SQL cru dos
+controllers.
 
 ## Verificação
 
-- `npx prisma format`, `npx prisma validate`, `npx prisma generate` — OK.
-- `npm run typecheck` — OK.
-- `npm test` (16 testes: unit + integration, incluindo `prisma-read.test.ts`) — OK.
-- `.github/workflows/ci.yml` segue o mesmo para backend (typecheck + build + testes unitários).
+- `npm run typecheck` — OK (tsconfig + tsconfig.test).
+- `npm test` — 16 testes (8 unit + 8 integration) — OK. O `globalSetup` aplica
+  `prisma migrate deploy` no banco de teste antes da suíte.
+- `prisma migrate deploy` em banco vazio (dev e teste) — OK.
+- `prisma db seed` duas vezes no mesmo banco — idempotente, sem duplicar.
+- Restauração do zero executada e documentada (seção 8).
 
-## Fora de escopo (Bloco 2)
+## Checklist final
 
-`db.ts`, `schema.sql`, `migrate.ts`: não tocados neste PR. A troca do legado por
-migrations/Prisma e a remodelagem dos controllers para o client Prisma virão no
-Bloco 2.
+- [x] Migration inicial do Prisma para PostgreSQL gerada e versionada
+- [x] `initializeDatabase` e qualquer DDL executado no boot removidos
+- [x] Ambiente limpo sobe com `prisma migrate deploy`
+- [x] Seed em `prisma/seed.ts`, seguro e idempotente
+- [x] Seed de produção não cria senha ou conta administrativa padrão
+- [x] `schema.sql` e `migrate.ts` explicitamente marcados como legados
+- [x] README e `.env.example` documentam PostgreSQL, `DATABASE_URL`, migration e seed
+- [x] Restauração do banco do zero validada e documentada

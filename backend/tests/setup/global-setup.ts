@@ -1,28 +1,21 @@
 // ============================================================
 //   Preparação do banco de teste — roda uma vez, antes de tudo
 //
-//   ESTE É O ÚNICO PONTO QUE MUDA QUANDO O PRISMA CHEGAR.
-//
-//   Hoje: cria o schema pelo initializeDatabase() do legado.
-//   No DB-02: trocar por `prisma migrate deploy` contra o banco
-//   de teste. Nenhum outro arquivo da suíte precisa mudar.
+//   Aplica as migrations do Prisma contra o banco de teste,
+//   garantindo que o schema esteja atualizado antes dos testes
+//   de integração.
 // ============================================================
 
+import { execSync } from "child_process";
 import { assertBancoDeTeste } from "./db.js";
-import pool, { initializeDatabase } from "../../src/config/db.js";
+import pool from "../../src/config/db.js";
 
 export async function setup(): Promise<void> {
   assertBancoDeTeste();
 
-  // Checagem de conectividade antes de qualquer DDL: o
-  // initializeDatabase() do legado chama process.exit(1) em caso de
-  // falha, o que produz uma saída confusa. Falhar aqui dá uma
-  // mensagem que diz o que fazer.
   try {
     await pool.query("SELECT 1");
   } catch (err) {
-    // Erros de conexão do pg costumam trazer `code` (ECONNREFUSED, 3D000…)
-    // e mensagem vazia — sem isso o motivo sai em branco.
     const e = err as { message?: string; code?: string };
     const motivo = [e.message, e.code].filter(Boolean).join(" ") || String(err);
     throw new Error(
@@ -33,8 +26,10 @@ export async function setup(): Promise<void> {
     );
   }
 
-  // TODO(DB-02): substituir por `prisma migrate deploy`.
-  await initializeDatabase();
+  execSync("npx prisma migrate deploy", {
+    env: { ...process.env },
+    stdio: "inherit",
+  });
 }
 
 export async function teardown(): Promise<void> {
