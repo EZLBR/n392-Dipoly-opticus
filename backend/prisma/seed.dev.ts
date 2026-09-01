@@ -55,17 +55,26 @@ async function main() {
   });
 
   // Produtos de demonstração
-  const prodAurora = await prisma.produto.upsert({
+  let prodAurora = await prisma.produto.findFirst({
     where: { nome: "Model Aurora" },
-    update: { categoriaId: catSol.id, ativo: true },
-    create: {
-      nome: "Model Aurora",
-      descricao: "Óculos de sol premium com lente polarizada UV400",
-      preco: 450,
-      categoriaId: catSol.id,
-      ativo: true,
-    },
   });
+
+  if (!prodAurora) {
+    prodAurora = await prisma.produto.create({
+      data: {
+        nome: "Model Aurora",
+        descricao: "Óculos de sol premium com lente polarizada UV400",
+        preco: 450,
+        categoriaId: catSol.id,
+        ativo: true,
+      },
+    });
+  } else {
+    prodAurora = await prisma.produto.update({
+      where: { id: prodAurora.id },
+      data: { categoriaId: catSol.id, ativo: true },
+    });
+  }
 
   let estoqueAurora = await prisma.estoque.findUnique({
     where: { produtoId: prodAurora.id },
