@@ -13,7 +13,7 @@ O projeto usa a mesma separação adotada no Vortex Marketplace: frontend e back
 │   └── src/
 ├── backend/         # Express + PostgreSQL (schema via Prisma Migrate)
 │   ├── prisma/      # schema.prisma, migrations/ e seed
-│   └── src/
+│   └── src/         # app, config, controllers, middlewares, services e repositories
 ├── docs/            # Arquitetura, API e segurança
 ├── .github/workflows/
 ├── .gitignore
@@ -63,6 +63,9 @@ VITE_API_URL=http://localhost:5000/api
 
 Requisitos: Node.js 22, npm e **PostgreSQL 14+**.
 
+O backend usa Express 5 com TypeScript em modo estrito. A aplicação Express
+fica em `src/app.ts`, separada do listener e ciclo de vida em `src/server.ts`.
+
 ### 1. Configurar o banco
 
 Copie `backend/.env.example` para `backend/.env` e ajuste a `DATABASE_URL`:
@@ -71,9 +74,8 @@ Copie `backend/.env.example` para `backend/.env` e ajuste a `DATABASE_URL`:
 DATABASE_URL="postgresql://user:password@localhost:5432/opticus_db?schema=public"
 ```
 
-> O `DATABASE_URL` é a fonte usada pelo Prisma para migrações e pelo pool
-> de conexões em tempo de execução. As variáveis `DB_*` são usadas apenas
-> se `DATABASE_URL` não estiver definida.
+> O `DATABASE_URL` é obrigatório e é a única fonte usada pelo Prisma para
+> migrações e pelo pool de conexões em tempo de execução.
 
 ### 2. Aplicar o schema (migrations)
 
@@ -83,6 +85,7 @@ Depois de instalar dependências, aplique as migrations:
 ```bash
 cd backend
 npm install
+npm run prisma:generate
 npx prisma migrate deploy   # produção / CI (aplica migrations pendentes)
 # ou, durante o desenvolvimento:
 npx prisma migrate dev      # cria/applica migrations e regenera o client
@@ -121,6 +124,7 @@ npm run typecheck
 npm run test
 npm run test:integration
 npm run build
+npm run prisma:generate
 npm start
 npx prisma migrate deploy
 npx prisma db seed

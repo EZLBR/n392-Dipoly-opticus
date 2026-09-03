@@ -8,10 +8,11 @@ import type { UserResponseDTO } from "../dtos/auth/user-response.dto.js";
 import type { AuthResponseDTO } from "../dtos/auth/auth-response.dto.js";
 import type { PaginatedUsersDTO } from "../dtos/auth/paginated-users.dto.js";
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
+const configuredJwtSecret = process.env.JWT_SECRET;
+if (!configuredJwtSecret) {
   throw new Error("FATAL: JWT_SECRET não definido nas variáveis de ambiente.");
 }
+const JWT_SECRET: string = configuredJwtSecret;
 
 function toUserResponse(user: {
   id: number;

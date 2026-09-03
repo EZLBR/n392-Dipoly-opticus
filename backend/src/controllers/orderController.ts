@@ -5,13 +5,14 @@
 
 import pool from "../config/db.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
-import { OrderService, ServiceError } from "../service/orderService.js";
+import type { Request, Response } from "express";
+import { OrderService, ServiceError } from "../services/orderService.js";
 
 // ─────────────────────────────────────────────────────────
 //   CRIAR PEDIDO
 //   POST /api/orders
 // ─────────────────────────────────────────────────────────
-export async function createOrder(req, res) {
+export async function createOrder(req: Request, res: Response) {
   // 🔐 Security Fix: 'status' is completely ignored from req.body to prevent payment bypass.
   const { productName, factoryId, factoryName, total, customSpecs } = req.body;
 
@@ -22,9 +23,9 @@ export async function createOrder(req, res) {
     });
   }
 
-  const customerName  = req.user.name;
-  const customerEmail = req.user.email;
-  const usuarioId     = req.user.id;
+  const customerName  = req.user!.name;
+  const customerEmail = req.user!.email;
+  const usuarioId     = req.user!.id;
 
   try {
     let finalFactoryId = Number(factoryId);
@@ -85,8 +86,8 @@ export async function createOrder(req, res) {
 //   LISTAR PEDIDOS (baseado no role do usuário)
 //   GET /api/orders
 // ─────────────────────────────────────────────────────────
-export async function getOrders(req, res) {
-  const { role, email, id } = req.user;
+export async function getOrders(req: Request, res: Response) {
+  const { role, email, id } = req.user!;
 
   const selectFields = `
     id,
@@ -104,8 +105,8 @@ export async function getOrders(req, res) {
     DATE(atualizado_em) AS "updatedAt"
   `;
 
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 20;
+  const page = parseInt(String(req.query.page || "")) || 1;
+  const limit = parseInt(String(req.query.limit || "")) || 20;
   const offset = (page - 1) * limit;
 
   try {
@@ -164,11 +165,12 @@ export async function getOrders(req, res) {
 
 // ─────────────────────────────────────────────────────────
 //   ATUALIZAR STATUS DO PEDIDO
-//   PUT /api/orders/:id/status
+//   PUT /api/orders/:publicId/status
 // ─────────────────────────────────────────────────────────
-export async function updateOrderStatus(req, res) {
-  const { publicId } = req.params;
-  const { status }   = req.body;
+export async function updateOrderStatus(req: Request, res: Response) {
+  // Express 5 tipa params como string | string[]; a rota declara um só.
+  const publicId   = String(req.params.publicId ?? "");
+  const { status } = req.body;
 
   if (!status) {
     return res.status(400).json({ success: false, error: "Informe o novo status." });
@@ -180,7 +182,7 @@ export async function updateOrderStatus(req, res) {
     const pedido = await OrderService.updateStatus({
       publicId,
       status,
-      ator: { id: req.user.id, role: req.user.role },
+      ator: { id: Number(req.user!.id), role: String(req.user!.role) },
     });
 
     sendOrderStatusEmail(
@@ -214,7 +216,7 @@ export async function updateOrderStatus(req, res) {
 //   CHECKOUT DO CARRINHO
 //   POST /api/orders/checkout-cart
 // ─────────────────────────────────────────────────────────
-export async function checkoutCart(req, res) {
+export async function checkoutCart(req: Request, res: Response) {
   const { cartItems } = req.body;
 
   if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
@@ -224,9 +226,9 @@ export async function checkoutCart(req, res) {
     });
   }
 
-  const customerName  = req.user.name;
-  const customerEmail = req.user.email;
-  const usuarioId     = req.user.id;
+  const customerName  = req.user!.name;
+  const customerEmail = req.user!.email;
+  const usuarioId     = req.user!.id;
   const consolidatedBillingId = `bill-sim-${Math.floor(100000 + Math.random() * 900000)}`;
 
   const client = await pool.connect();
@@ -284,7 +286,10 @@ export async function checkoutCart(req, res) {
   } catch (err) {
     await client.query("ROLLBACK");
     client.release();
-    return res.status(400).json({ success: false, error: err.message });
+    return res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : "Falha ao criar pedidos.",
+    });
   }
   client.release();
 
@@ -343,7 +348,10 @@ export async function checkoutCart(req, res) {
           });
         }
       } catch (err) {
-        console.error("[AbacatePay] Erro, usando simulador:", err.message);
+        console.error(
+          "[AbacatePay] Erro, usando simulador:",
+          err instanceof Error ? err.message : err,
+        );
       }
     }
 
