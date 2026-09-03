@@ -4,13 +4,14 @@
 // ============================================================
 
 import pool from "../config/db.js";
+import type { Request, Response } from "express";
 
 // ─────────────────────────────────────────────────────────
 //   CRIAR PRODUTO
 //   POST /api/products
 //   Somente: staff ou factory
 // ─────────────────────────────────────────────────────────
-export async function createProduct(req, res) {
+export async function createProduct(req: Request, res: Response) {
   const { nome, descricao, preco, categoria_id, imagem_url } = req.body;
 
   if (!nome || !preco) {
@@ -70,11 +71,11 @@ export async function createProduct(req, res) {
 //   LISTAR PRODUTOS (com paginação e filtros)
 //   GET /api/products?categoria_id=1&page=1&limit=10&search=aurora
 // ─────────────────────────────────────────────────────────
-export async function getProducts(req, res) {
+export async function getProducts(req: Request, res: Response) {
   const { categoria_id, search, page = 1, limit = 20 } = req.query;
   // Garante que limit e offset são inteiros válidos
-  const lim    = Math.max(1, Math.min(100, parseInt(limit,  10) || 20));
-  const off    = Math.max(0, (parseInt(page, 10) - 1 || 0) * lim);
+  const lim    = Math.max(1, Math.min(100, parseInt(String(limit),  10) || 20));
+  const off    = Math.max(0, (parseInt(String(page), 10) - 1 || 0) * lim);
 
   try {
     // Monta a query dinamicamente baseado nos filtros
@@ -127,7 +128,7 @@ export async function getProducts(req, res) {
       success: true,
       produtos:   rows,
       total:      countRows[0].total,
-      page:       parseInt(page, 10) || 1,
+      page:       parseInt(String(page), 10) || 1,
       totalPages: Math.ceil(countRows[0].total / lim)
     });
 
@@ -141,7 +142,7 @@ export async function getProducts(req, res) {
 //   BUSCAR PRODUTO POR ID
 //   GET /api/products/:id
 // ─────────────────────────────────────────────────────────
-export async function getProductById(req, res) {
+export async function getProductById(req: Request, res: Response) {
   const { id } = req.params;
 
   try {
@@ -174,7 +175,7 @@ export async function getProductById(req, res) {
 //   ATUALIZAR PRODUTO
 //   PUT /api/products/:id
 // ─────────────────────────────────────────────────────────
-export async function updateProduct(req, res) {
+export async function updateProduct(req: Request, res: Response) {
   const { id } = req.params;
   const { nome, descricao, preco, categoria_id, imagem_url, ativo } = req.body;
 
@@ -221,7 +222,7 @@ export async function updateProduct(req, res) {
 //   DELETE /api/products/:id
 //   Usa soft delete para preservar histórico em pedidos
 // ─────────────────────────────────────────────────────────
-export async function deleteProduct(req, res) {
+export async function deleteProduct(req: Request, res: Response) {
   const { id } = req.params;
 
   try {

@@ -9,6 +9,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "prisma:generate": "prisma generate",
     "migrate": "prisma migrate deploy",
     "seed:dev": "node --import tsx prisma/seed.dev.ts",
     "test": "dotenv -e .env.test -- vitest run",
@@ -16,7 +17,7 @@
     "test:coverage": "dotenv -e .env.test -- vitest run --coverage",
     "test:unit": "vitest run --project unit",
     "test:integration": "dotenv -e .env.test -- vitest run --project integration",
-    "postinstall": "prisma skills sync || exit 0"
+    "postinstall": "prisma generate"
   },
   "prisma": {
     "seed": "node --import tsx prisma/seed.ts"

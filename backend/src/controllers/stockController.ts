@@ -4,14 +4,15 @@
 // ============================================================
 
 import pool from "../config/db.js";
+import type { Request, Response } from "express";
 
 // ─────────────────────────────────────────────────────────
 //   LISTAR TODO O ESTOQUE
 //   GET /api/stock
 // ─────────────────────────────────────────────────────────
-export async function getAllStock(req, res) {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 20;
+export async function getAllStock(req: Request, res: Response) {
+  const page = parseInt(String(req.query.page || "")) || 1;
+  const limit = parseInt(String(req.query.limit || "")) || 20;
   const offset = (page - 1) * limit;
 
   try {
@@ -65,7 +66,7 @@ export async function getAllStock(req, res) {
 //   BUSCAR ESTOQUE DE UM PRODUTO
 //   GET /api/stock/product/:produtoId
 // ─────────────────────────────────────────────────────────
-export async function getStockByProduct(req, res) {
+export async function getStockByProduct(req: Request, res: Response) {
   const { produtoId } = req.params;
 
   try {
@@ -101,7 +102,7 @@ export async function getStockByProduct(req, res) {
 //   Body: { quantidade, estoque_minimo, operacao }
 //   operacao: 'set' (define valor) | 'add' (adiciona) | 'subtract' (subtrai)
 // ─────────────────────────────────────────────────────────
-export async function updateStock(req, res) {
+export async function updateStock(req: Request, res: Response) {
   const { produtoId } = req.params;
   const { quantidade, estoque_minimo, operacao = "set" } = req.body;
 
@@ -194,7 +195,7 @@ export async function updateStock(req, res) {
 //   ALERTAS DE ESTOQUE BAIXO
 //   GET /api/stock/alerts
 // ─────────────────────────────────────────────────────────
-export async function getStockAlerts(req, res) {
+export async function getStockAlerts(req: Request, res: Response) {
   try {
     const { rows } = await pool.query(
       `SELECT

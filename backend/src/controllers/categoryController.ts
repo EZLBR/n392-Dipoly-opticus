@@ -4,12 +4,13 @@
 // ============================================================
 
 import pool from "../config/db.js";
+import type { Request, Response } from "express";
 
 // ─────────────────────────────────────────────────────────
 //   CRIAR CATEGORIA
 //   POST /api/categories
 // ─────────────────────────────────────────────────────────
-export async function createCategory(req, res) {
+export async function createCategory(req: Request, res: Response) {
   const { nome, descricao } = req.body;
 
   if (!nome) {
@@ -49,7 +50,7 @@ export async function createCategory(req, res) {
 //   LISTAR CATEGORIAS (com contagem de produtos)
 //   GET /api/categories
 // ─────────────────────────────────────────────────────────
-export async function getCategories(req, res) {
+export async function getCategories(req: Request, res: Response) {
   try {
     // LEFT JOIN + COUNT para mostrar quantos produtos há em cada categoria
     const { rows } = await pool.query(
@@ -77,7 +78,7 @@ export async function getCategories(req, res) {
 //   BUSCAR CATEGORIA POR ID (com seus produtos)
 //   GET /api/categories/:id
 // ─────────────────────────────────────────────────────────
-export async function getCategoryById(req, res) {
+export async function getCategoryById(req: Request, res: Response) {
   const { id } = req.params;
 
   try {
@@ -112,7 +113,7 @@ export async function getCategoryById(req, res) {
 //   ATUALIZAR CATEGORIA
 //   PUT /api/categories/:id
 // ─────────────────────────────────────────────────────────
-export async function updateCategory(req, res) {
+export async function updateCategory(req: Request, res: Response) {
   const { id } = req.params;
   const { nome, descricao } = req.body;
 
@@ -144,7 +145,7 @@ export async function updateCategory(req, res) {
 //   DELETAR CATEGORIA
 //   DELETE /api/categories/:id
 // ─────────────────────────────────────────────────────────
-export async function deleteCategory(req, res) {
+export async function deleteCategory(req: Request, res: Response) {
   const { id } = req.params;
 
   try {

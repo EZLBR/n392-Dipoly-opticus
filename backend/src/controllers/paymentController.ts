@@ -5,10 +5,12 @@
 // ============================================================
 
 import pool from "../config/db.js";
+import { env } from "../config/env.js";
 import crypto from "crypto";
+import type { Request, Response } from "express";
 
 // Security Helper
-const escapeHTML = (str) => {
+const escapeHTML = (str: unknown) => {
   return String(str)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -18,13 +20,13 @@ const escapeHTML = (str) => {
 };
 
 const ABACATE_TOKEN = process.env.ABACATE_TOKEN;
-const PORT          = process.env.PORT || 5000;
+const PORT          = env.PORT;
 
 // ─────────────────────────────────────────────────────────
 //   CRIAR COBRANÇA (AbacatePay ou simulador)
 //   POST /api/payments/create-billing
 // ─────────────────────────────────────────────────────────
-export async function createBilling(req, res) {
+export async function createBilling(req: Request, res: Response) {
   const { orderId } = req.body;
 
   if (!orderId) {
@@ -41,7 +43,7 @@ export async function createBilling(req, res) {
     const order = rows[0];
 
     // Security Fix: Verificar ownership
-    if (order.usuario_id !== req.user.id && req.user.role !== "staff") {
+    if (order.usuario_id !== req.user!.id && req.user!.role !== "staff") {
       return res.status(403).json({ success: false, error: "Acesso negado: Este pedido pertence a outro usuário." });
     }
     const amountInCents   = Math.round(Number(order.total) * 100);
@@ -98,7 +100,10 @@ export async function createBilling(req, res) {
     return res.json({ success: true, checkoutUrl: realCheckoutUrl, isSimulated: false });
 
   } catch (err) {
-    console.error("Erro no AbacatePay:", err.message);
+    console.error(
+      "Erro no AbacatePay:",
+      err instanceof Error ? err.message : err,
+    );
 
     const fallbackId  = `bill-fallback-${Math.floor(100000 + Math.random() * 900000)}`;
 
@@ -119,14 +124,23 @@ export async function createBilling(req, res) {
 // ─────────────────────────────────────────────────────────
 //   HELPER INTERNO: Registra pagamento na tabela pagamentos
 // ─────────────────────────────────────────────────────────
-async function _registrarPagamento(pedidoId, metodo, status, valor, referenciaExterna) {
+async function _registrarPagamento(
+  pedidoId: string | number,
+  metodo: string,
+  status: string,
+  valor: number,
+  referenciaExterna: string,
+) {
   try {
     await pool.query(
       "INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa) VALUES ($1, $2, $3, $4, $5)",
       [pedidoId, metodo, status, valor, referenciaExterna]
     );
   } catch (err) {
-    console.error("Erro ao registrar pagamento:", err.message);
+    console.error(
+      "Erro ao registrar pagamento:",
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 
@@ -134,9 +148,9 @@ async function _registrarPagamento(pedidoId, metodo, status, valor, referenciaEx
 //   LISTAR PAGAMENTOS
 //   GET /api/payments  (apenas staff)
 // ─────────────────────────────────────────────────────────
-export async function getPayments(req, res) {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 20;
+export async function getPayments(req: Request, res: Response) {
+  const page = parseInt(String(req.query.page || "")) || 1;
+  const limit = parseInt(String(req.query.limit || "")) || 20;
   const offset = (page - 1) * limit;
 
   try {
@@ -182,7 +196,7 @@ export async function getPayments(req, res) {
 //   CONFIRMAR PAGAMENTO (webhook do AbacatePay)
 //   POST /api/payments/webhook
 // ─────────────────────────────────────────────────────────
-export async function handleWebhook(req, res) {
+export async function handleWebhook(req: Request, res: Response) {
   const payload = req.body;
   console.log("[Webhook] Payload recebido:", JSON.stringify(payload));
 
@@ -228,7 +242,10 @@ export async function handleWebhook(req, res) {
 
   } catch (err) {
     console.error("Erro no webhook:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : "Falha ao processar webhook.",
+    });
   }
 }
 
@@ -236,7 +253,7 @@ export async function handleWebhook(req, res) {
 //   PÁGINA DE CHECKOUT SIMULADO (visual Pix)
 //   GET /api/payments/simulated-checkout
 // ─────────────────────────────────────────────────────────
-export async function getSimulatedCheckoutPage(req, res) {
+export async function getSimulatedCheckoutPage(req: Request, res: Response) {
   const { billingId, orderId, returnTo } = req.query;
 
   if (!billingId) {
@@ -320,7 +337,7 @@ export async function getSimulatedCheckoutPage(req, res) {
 //   CONFIRMAR PAGAMENTO SIMULADO
 //   POST /api/payments/confirm-simulated-payment
 // ─────────────────────────────────────────────────────────
-export async function confirmSimulatedPayment(req, res) {
+export async function confirmSimulatedPayment(req: Request, res: Response) {
   const { billingId, returnTo } = req.body;
 
   if (!billingId) {
@@ -342,8 +359,7 @@ export async function confirmSimulatedPayment(req, res) {
     if (returnTo) {
       try {
         const url = new URL(returnTo);
-        const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
-        const allowedHosts = ["localhost", new URL(FRONTEND_URL).hostname];
+        const allowedHosts = ["localhost", new URL(env.FRONTEND_URL).hostname];
 
         if (allowedHosts.includes(url.hostname) || url.hostname.endsWith('.vercel.app')) {
           redirectUrl = `${returnTo.replace(/\/$/, '')}/?payment=success`;

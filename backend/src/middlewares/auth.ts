@@ -1,7 +1,6 @@
 import jwt from "jsonwebtoken";
-import dotenv from "dotenv";
-
-dotenv.config();
+import type { NextFunction, Request, Response } from "express";
+import "../config/env.js";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -9,7 +8,7 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
-export function protect(req, res, next) {
+export function protect(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -19,7 +18,13 @@ export function protect(req, res, next) {
   const token = authHeader.split(" ")[1];
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET as string);
+    if (typeof decoded === "string") {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid or expired token.",
+      });
+    }
     req.user = decoded; // Attach payload (id, email, name, role)
     next();
   } catch (err) {
@@ -28,9 +33,9 @@ export function protect(req, res, next) {
 }
 
 // Optional middleware to restrict route access by role
-export function authorize(...roles) {
-  return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+export function authorize(...roles: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user || !roles.includes(req.user.role || "")) {
       return res.status(403).json({ success: false, error: "Access forbidden. Insufficient permissions." });
     }
     next();

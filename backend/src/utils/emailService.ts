@@ -1,18 +1,3 @@
-// ============================================================
-//   OPTICUS — Notificação de status de pedido por e-mail
-//
-//   Em NODE_ENV=test nada sai pela rede: a mensagem vai para uma
-//   caixa de saída em memória, que os testes podem inspecionar.
-//   Sem isso, `nodemailer.createTestAccount()` faz requisição ao
-//   ethereal.email a cada atualização de status — e como o
-//   disparo é fire-and-forget, a promessa fica pendurada depois
-//   que o teste termina e o pool já fechou.
-//
-//   TODO(FEAT-05): configurar SMTP real por variável de ambiente.
-//   Hoje, fora de teste, ainda usa conta descartável do Ethereal
-//   e os e-mails não chegam ao cliente de verdade.
-// ============================================================
-
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 import logger from "./logger.js";
@@ -27,16 +12,6 @@ export interface EmailDeStatus {
   status: string;
 }
 
-/**
- * Caixa de saída em memória, preenchida apenas quando NODE_ENV=test.
- *
- * Permite afirmar sobre o comportamento de notificação sem rede:
- *
- *   expect(caixaDeSaidaDeTeste).toHaveLength(1);
- *   expect(caixaDeSaidaDeTeste[0].status).toBe("Delivered");
- *
- * Limpe com `limparCaixaDeSaida()` entre testes.
- */
 export const caixaDeSaidaDeTeste: EmailDeStatus[] = [];
 
 export function limparCaixaDeSaida(): void {
@@ -51,7 +26,6 @@ async function initTransporter(): Promise<Transporter | null> {
   if (transporter) return transporter;
 
   try {
-    // TODO(FEAT-05): trocar por credenciais de SMTP real vindas do ambiente.
     const testAccount = await nodemailer.createTestAccount();
 
     transporter = nodemailer.createTransport({
@@ -72,10 +46,14 @@ async function initTransporter(): Promise<Transporter | null> {
   }
 }
 
-/** Monta assunto e corpo. Retorna null para status que não geram notificação. */
 function montarMensagem(
-  order: { id: number | string; customer_name?: string; product_name?: string; factory_name?: string },
-  newStatus: string
+  order: {
+    id: number | string;
+    customer_name?: string;
+    product_name?: string;
+    factory_name?: string;
+  },
+  newStatus: string,
 ): { assunto: string; html: string } | null {
   if (newStatus === "In production") {
     return {
@@ -106,7 +84,6 @@ function montarMensagem(
     };
   }
 
-  // Queued, Pending Payment e Cancelled não notificam.
   return null;
 }
 
@@ -118,17 +95,19 @@ export async function sendOrderStatusEmail(
     product_name?: string;
     factory_name?: string;
   },
-  newStatus: string
+  newStatus: string,
 ): Promise<void> {
   const mensagem = montarMensagem(order, newStatus);
   if (!mensagem) return;
 
   if (!order.customer_email) {
-    logger.warn({ pedidoId: order.id }, "[email] pedido sem e-mail de cliente; nada enviado");
+    logger.warn(
+      { pedidoId: order.id },
+      "[email] pedido sem e-mail de cliente; nada enviado",
+    );
     return;
   }
 
-  // ── Modo de teste: registra e retorna, sem tocar na rede ──
   if (emModoDeTeste()) {
     caixaDeSaidaDeTeste.push({
       para: order.customer_email,
@@ -142,7 +121,10 @@ export async function sendOrderStatusEmail(
 
   const mailTransporter = await initTransporter();
   if (!mailTransporter) {
-    logger.warn({ pedidoId: order.id }, "[email] transporte indisponível; envio ignorado");
+    logger.warn(
+      { pedidoId: order.id },
+      "[email] transporte indisponível; envio ignorado",
+    );
     return;
   }
 
@@ -155,12 +137,16 @@ export async function sendOrderStatusEmail(
     });
 
     logger.info(
-      { pedidoId: order.id, previewUrl: nodemailer.getTestMessageUrl(info) || undefined },
-      "[email] mensagem enviada"
+      {
+        pedidoId: order.id,
+        previewUrl: nodemailer.getTestMessageUrl(info) || undefined,
+      },
+      "[email] mensagem enviada",
     );
   } catch (err) {
-    // Falha de e-mail não pode derrubar a atualização de status do pedido,
-    // mas nunca é silenciada: vai para o log estruturado.
-    logger.error({ err, pedidoId: order.id, status: newStatus }, "[email] falha ao enviar");
+    logger.error(
+      { err, pedidoId: order.id, status: newStatus },
+      "[email] falha ao enviar",
+    );
   }
 }
