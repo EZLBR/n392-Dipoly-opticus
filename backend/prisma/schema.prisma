@@ -1,10 +1,185 @@
-generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
-}
-
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-// Os modelos de domínio serão adicionados nas próximas issues da Sprint 1.
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Categoria {
+  id        Int       @id @default(autoincrement())
+  nome      String    @unique @db.VarChar(100)
+  descricao String?   @db.Text
+  criadoEm  DateTime? @default(now()) @map("criado_em")
+
+  produtos Produto[]
+
+  @@map("categorias")
+}
+
+enum Role {
+  client
+  factory
+  staff
+}
+
+model Usuario {
+  id          Int       @id @default(autoincrement())
+  nome        String    @db.VarChar(255)
+  email       String    @unique @db.VarChar(255)
+  senhaHash   String    @map("senha_hash") @db.VarChar(255)
+  role        Role?     @default(client)
+  factoryName String?   @map("factory_name") @db.VarChar(255)
+  criadoEm    DateTime? @default(now()) @map("criado_em")
+
+  publicId String @unique @default(uuid())
+
+  pedidos        Pedido[]      @relation("UsuarioPedidos")
+  pedidosFabrica Pedido[]      @relation("FactoryPedidos")
+  savedDesigns   SavedDesign[]
+
+  @@map("usuarios")
+}
+
+model Produto {
+  id          Int       @id @default(autoincrement())
+  nome        String    @db.VarChar(255)
+  descricao   String?   @db.Text
+  preco       Decimal   @db.Decimal(10, 2)
+  categoriaId Int?      @map("categoria_id")
+  imagemUrl   String?   @map("imagem_url") @db.VarChar(500)
+  ativo       Boolean?  @default(true)
+  criadoEm    DateTime? @default(now()) @map("criado_em")
+
+  publicId String @unique @default(uuid())
+
+  categoria Categoria?   @relation(fields: [categoriaId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  itens     PedidoItem[]
+  estoque   Estoque?
+
+  @@index([categoriaId], map: "idx_produtos_categoria")
+  @@map("produtos")
+}
+
+enum PedidoStatus {
+  Pending_Payment @map("Pending Payment")
+  Queued
+  In_production   @map("In production")
+  Delivered
+  Cancelled
+}
+
+model Pedido {
+  id               Int           @id @default(autoincrement())
+  usuarioId        Int           @map("usuario_id")
+  customerName     String        @map("customer_name") @db.VarChar(255)
+  customerEmail    String        @map("customer_email") @db.VarChar(255)
+  productName      String        @map("product_name") @db.VarChar(255)
+  factoryId        Int?          @map("factory_id")
+  factoryName      String?       @map("factory_name") @db.VarChar(255)
+  status           PedidoStatus? @default(Pending_Payment)
+  total            Decimal       @db.Decimal(10, 2)
+  customSpecs      String?       @map("custom_specs") @db.Text
+  abacateBillingId String?       @map("abacate_billing_id") @db.VarChar(255)
+  criadoEm         DateTime?     @default(now()) @map("criado_em")
+  atualizadoEm     DateTime?     @default(now()) @map("atualizado_em")
+
+  version  Int    @default(0)
+  publicId String @unique @default(uuid())
+
+  usuario    Usuario      @relation("UsuarioPedidos", fields: [usuarioId], references: [id], onDelete: Cascade)
+  fabrica    Usuario?     @relation("FactoryPedidos", fields: [factoryId], references: [id], onDelete: SetNull)
+  itens      PedidoItem[]
+  pagamentos Pagamento[]
+
+  @@index([usuarioId], map: "idx_pedidos_usuario")
+  @@index([factoryId], map: "idx_pedidos_factory")
+  @@index([status], map: "idx_pedidos_status")
+  @@index([abacateBillingId], map: "idx_pedidos_billing")
+  @@map("pedidos")
+}
+
+model PedidoItem {
+  id            Int     @id @default(autoincrement())
+  pedidoId      Int     @map("pedido_id")
+  produtoId     Int     @map("produto_id")
+  quantidade    Int     @default(1)
+  precoUnitario Decimal @map("preco_unitario") @db.Decimal(10, 2)
+
+  pedido  Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@index([pedidoId], map: "idx_itens_pedido")
+  @@index([produtoId], map: "idx_itens_produto")
+  @@map("pedido_itens")
+}
+
+model Estoque {
+  id            Int       @id @default(autoincrement())
+  produtoId     Int       @unique @map("produto_id")
+  quantidade    Int       @default(0)
+  estoqueMinimo Int?      @default(5) @map("estoque_minimo")
+  atualizadoEm  DateTime? @default(now()) @map("atualizado_em")
+
+  version Int @default(0)
+
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@map("estoque")
+}
+
+enum MetodoPagamento {
+  pix
+  cartao_credito
+  boleto
+}
+
+enum StatusPagamento {
+  pendente
+  aprovado
+  recusado
+  estornado
+}
+
+model Pagamento {
+  id                Int              @id @default(autoincrement())
+  pedidoId          Int              @map("pedido_id")
+  metodo            MetodoPagamento? @default(pix)
+  status            StatusPagamento? @default(pendente)
+  valor             Decimal          @db.Decimal(10, 2)
+  referenciaExterna String?          @map("referencia_externa") @db.VarChar(255)
+  criadoEm          DateTime?        @default(now()) @map("criado_em")
+
+  pedido Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  @@index([pedidoId], map: "idx_pagamentos_pedido")
+  @@map("pagamentos")
+}
+
+model SavedDesign {
+  id             String    @id @db.VarChar(255)
+  usuarioId      Int       @map("usuario_id")
+  customerEmail  String    @map("customer_email") @db.VarChar(255)
+  name           String    @db.VarChar(255)
+  model          String    @db.VarChar(255)
+  color          String    @db.VarChar(50)
+  isSunglasses   Boolean?  @default(false) @map("is_sunglasses")
+  antiReflective Boolean?  @default(false) @map("anti_reflective")
+  templeStyle    String?   @default("standard") @map("temple_style") @db.VarChar(50)
+  topBar         Boolean?  @default(false) @map("top_bar")
+  bridgeStyle    String?   @default("keyhole") @map("bridge_style") @db.VarChar(50)
+  frameProfile   String?   @default("medium") @map("frame_profile") @db.VarChar(50)
+  templeOpen     Decimal?  @default(0.00) @map("temple_open") @db.Decimal(4, 2)
+  published      Boolean?  @default(false)
+  createdAt      DateTime? @default(now()) @map("created_at")
+  updatedAt      DateTime? @default(now()) @map("updated_at")
+
+  publicId String @unique @default(uuid())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId], map: "idx_designs_usuario")
+  @@index([customerEmail], map: "idx_designs_email")
+  @@map("saved_designs")
+}

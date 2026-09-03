@@ -10,17 +10,20 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "prisma:generate": "prisma generate",
-    "postinstall": "prisma generate",
-    "migrate": "tsx src/scripts/migrate.ts",
+    "migrate": "prisma migrate deploy",
+    "seed:dev": "node --import tsx prisma/seed.dev.ts",
     "test": "dotenv -e .env.test -- vitest run",
     "test:watch": "dotenv -e .env.test -- vitest",
     "test:coverage": "dotenv -e .env.test -- vitest run --coverage",
     "test:unit": "vitest run --project unit",
-    "test:integration": "dotenv -e .env.test -- vitest run --project integration"
+    "test:integration": "dotenv -e .env.test -- vitest run --project integration",
+    "postinstall": "prisma generate"
+  },
+  "prisma": {
+    "seed": "node --import tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.10.0",
-    "@prisma/client": "^7.10.0",
+    "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -34,7 +37,7 @@
     "pino-pretty": "^13.1.3"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
@@ -46,7 +49,7 @@
     "@types/supertest": "^7.2.1",
     "@vitest/coverage-v8": "^4.1.11",
     "dotenv-cli": "^11.0.0",
-    "prisma": "^7.10.0",
+    "prisma": "^5.22.0",
     "supertest": "^7.2.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",

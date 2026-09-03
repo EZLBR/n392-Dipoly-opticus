@@ -1,14 +1,11 @@
--- ============================================================
---   OPTICUS DATABASE SCHEMA
---   PostgreSQL 14+
---   Ordem de criação: sem dependência → com dependência
+-- ════════════════════════════════════════════════════════════
+--   LEGADO — NÃO é mais a fonte de verdade do schema.
+--   Desde 2026-09-01 (PR de Bloco 2: Prisma Migrations cutover).
+--   Ver `prisma/schema.prisma` e `prisma/migrations/`.
 --
---   Uso:
---     psql -U SEU_USER -d SEU_BANCO -f schema.sql
---
---   ⚠️  Este arquivo deve ser executado manualmente em banco novo.
---       O servidor não executa DDL durante o boot.
--- ============================================================
+--   Mantido apenas para referência histórica / rollback.
+--   Não use para restaurar ou evoluir o banco.
+-- ════════════════════════════════════════════════════════════
 
 -- ──────────────────────────────────────────────────────────
 -- 1. CATEGORIAS

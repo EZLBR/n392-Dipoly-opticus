@@ -1,3 +1,11 @@
+// ════════════════════════════════════════════════════════════
+//   LEGADO — NÃO é mais a fonte de verdade do schema.
+//   Desde 2026-09-01 (PR de Bloco 2: Prisma Migrations cutover).
+//   Ver `prisma/schema.prisma` e `prisma/migrations/`.
+//
+//   Mantido apenas para referência histórica / rollback.
+//   Não use. O mecanismo de migração agora é `prisma migrate deploy`.
+// ════════════════════════════════════════════════════════════
 import pool from '../config/db.js';
 import logger from '../utils/logger.js';
 import fs from 'fs';
