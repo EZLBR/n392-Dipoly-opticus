@@ -9,6 +9,6 @@ router.use(protect); // Secure all order routes
 router.post("/", createOrder);
 router.post("/checkout-cart", checkoutCart);
 router.get("/", getOrders);
-router.put("/:id/status", updateOrderStatus);
+router.put("/:publicId/status", updateOrderStatus);
 
 export default router;

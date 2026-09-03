@@ -5,6 +5,7 @@
 
 import pool from "../config/db.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
+import { OrderService, ServiceError } from "../service/orderService.js";
 
 // ─────────────────────────────────────────────────────────
 //   CRIAR PEDIDO
@@ -89,6 +90,7 @@ export async function getOrders(req, res) {
 
   const selectFields = `
     id,
+    "publicId",
     customer_name   AS "customerName",
     customer_email  AS "customerEmail",
     product_name    AS "productName",
@@ -165,64 +167,44 @@ export async function getOrders(req, res) {
 //   PUT /api/orders/:id/status
 // ─────────────────────────────────────────────────────────
 export async function updateOrderStatus(req, res) {
-  const { id }     = req.params;
-  const { status } = req.body;
+  const { publicId } = req.params;
+  const { status }   = req.body;
 
   if (!status) {
     return res.status(400).json({ success: false, error: "Informe o novo status." });
   }
 
-  const validStatuses = ["Queued", "In production", "Delivered", "Pending Payment", "Cancelled"];
-  if (!validStatuses.includes(status)) {
-    return res.status(400).json({ success: false, error: "Status inválido." });
-  }
-
   try {
-    if (req.user.role !== "factory" && req.user.role !== "staff") {
-      return res.status(403).json({
-        success: false,
-        error: "Apenas fábricas e staff podem atualizar o status."
-      });
-    }
+    // A identidade vem exclusivamente do token validado pelo middleware.
+    // A autorização de objeto acontece dentro da mutação, no service.
+    const pedido = await OrderService.updateStatus({
+      publicId,
+      status,
+      ator: { id: req.user.id, role: req.user.role },
+    });
 
-    if (req.user.role === "factory") {
-      const { rows } = await pool.query(
-        "SELECT factory_id FROM pedidos WHERE id = $1",
-        [id]
-      );
-
-      if (rows.length === 0) {
-        return res.status(404).json({ success: false, error: "Pedido não encontrado." });
-      }
-
-      if (rows[0].factory_id !== req.user.id) {
-        return res.status(403).json({
-          success: false,
-          error: "Pedido pertence a outra fábrica."
-        });
-      }
-    }
-
-    const { rowCount } = await pool.query(
-      "UPDATE pedidos SET status = $1, atualizado_em = CURRENT_TIMESTAMP WHERE id = $2",
-      [status, id]
+    sendOrderStatusEmail(
+      {
+        id:             pedido.publicId,
+        customer_name:  pedido.customerName,
+        customer_email: pedido.customerEmail,
+        product_name:   pedido.productName,
+        factory_name:   pedido.factoryName ?? undefined,
+      },
+      status
     );
-
-    if (rowCount === 0) {
-      return res.status(404).json({ success: false, error: "Pedido não encontrado." });
-    }
-
-    const { rows: updated } = await pool.query("SELECT * FROM pedidos WHERE id = $1", [id]);
-    if (updated.length > 0) {
-      sendOrderStatusEmail(updated[0], status);
-    }
 
     return res.json({
       success: true,
-      message: `Status do pedido atualizado para "${status}" com sucesso.`
+      message: `Status do pedido atualizado para "${status}" com sucesso.`,
+      order: pedido,
     });
 
   } catch (err) {
+    if (err instanceof ServiceError) {
+      return res.status(err.status).json({ success: false, error: err.message });
+    }
+    // TODO(API-02/API-05): trocar pelo middleware RFC 9457, devolvendo traceId.
     console.error("Erro ao atualizar status:", err);
     return res.status(500).json({ success: false, error: "Falha ao atualizar status." });
   }

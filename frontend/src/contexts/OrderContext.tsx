@@ -60,7 +60,7 @@ export function OrderProvider({ children }) {
 
     // Fallback simulation
     const nextOrders = orders.map((o) => {
-      if (o.id === orderId) {
+      if (o.publicId === orderId) {
         return { ...o, status: newStatus };
       }
       return o;
