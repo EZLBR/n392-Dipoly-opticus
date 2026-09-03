@@ -80,7 +80,7 @@ const OrderContextMenu = ({ menu, onClose, onUpdateStatus, onViewDetails }) => {
         </button>
         <div style={{ padding: "8px 12px", fontSize: "11px", color: "var(--color-hint)", textTransform: "uppercase", marginTop: "4px" }}>Alterar Status</div>
         {statuses.map(s => (
-          <button key={s} className="menu-btn hoverable-row" onClick={() => { onUpdateStatus(menu.order.id, s); onClose(); }} style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "8px 12px", background: "none", border: "none", color: s === menu.order.status ? "var(--primary-accent)" : "var(--text-color)", cursor: "pointer", borderRadius: "6px", textAlign: "left" }}>
+          <button key={s} className="menu-btn hoverable-row" onClick={() => { onUpdateStatus(menu.order.publicId, s); onClose(); }} style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "8px 12px", background: "none", border: "none", color: s === menu.order.status ? "var(--primary-accent)" : "var(--text-color)", cursor: "pointer", borderRadius: "6px", textAlign: "left" }}>
             {s === menu.order.status ? <CheckCircle size={14} /> : <ChevronRight size={14} />} {s}
           </button>
         ))}
