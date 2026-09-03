@@ -38,9 +38,26 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: opticus_ci_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opticus_ci_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
-      # Prisma generate valida o formato da URL, mas não abre conexão com o banco.
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/opticus_ci
+      NODE_ENV: test
+      PORT: 5000
+      FRONTEND_URL: http://localhost:5173
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/opticus_ci_test
+      JWT_SECRET: segredo-apenas-para-ci-nao-use-em-producao
     defaults:
       run:
         working-directory: backend
@@ -55,7 +72,13 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - name: Instalar dependências
         run: npm ci
+      - name: Gerar Prisma Client
+        run: npm run prisma:generate
+      - name: Aplicar migrations no banco de teste
+        run: npm run migrate
       - name: Verificar tipos
         run: npm run typecheck
+      - name: Executar testes
+        run: npm test
       - name: Gerar build
         run: npm run build
