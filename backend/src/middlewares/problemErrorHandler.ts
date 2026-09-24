@@ -29,11 +29,18 @@ import {
 } from "../errors/problem.js";
 import logger from "../utils/logger.js";
 
-/** Corpo de erro devolvido ao cliente: RFC 9457 + `timestamp` + alias `error`. */
+/**
+ * Corpo de erro devolvido ao cliente: RFC 9457 + `timestamp` + alias `error`.
+ *
+ * `traceId` é o identificador de correlação opaco (UUID) que o cliente pode
+ * reportar num chamado; é o mesmo valor do `instance` (RFC 9457), do header
+ * `X-Request-Id` e da chave usada nos logs do servidor.
+ */
 export interface ProblemResponseBody extends ProblemDetails {
   detail: string;
   instance: string;
   timestamp: string;
+  traceId: string;
   error: string;
 }
 
@@ -187,14 +194,15 @@ export function paraProblema(err: unknown): HttpProblem | null {
 //   Serialização
 // ─────────────────────────────────────────────────────────
 
-function montarCorpo(problem: HttpProblem, requestId: string): ProblemResponseBody {
+function montarCorpo(problem: HttpProblem, traceId: string): ProblemResponseBody {
   const base = problem.toJSON();
   const detail = problem.detail ?? problem.message;
   const corpo: ProblemResponseBody = {
     ...base,
     detail,
-    instance: problem.instance ?? requestId,
+    instance: problem.instance ?? traceId,
     timestamp: new Date().toISOString(),
+    traceId,
     error: detail,
   };
   if (base.errors !== undefined) {
@@ -203,11 +211,11 @@ function montarCorpo(problem: HttpProblem, requestId: string): ProblemResponseBo
   return corpo;
 }
 
-function enviar(res: Response, problem: HttpProblem, requestId: string): void {
+function enviar(res: Response, problem: HttpProblem, traceId: string): void {
   res
     .status(problem.status)
     .set("Content-Type", "application/problem+json")
-    .json(montarCorpo(problem, requestId));
+    .json(montarCorpo(problem, traceId));
 }
 
 // ─────────────────────────────────────────────────────────
@@ -219,19 +227,19 @@ export const problemErrorHandler: ErrorRequestHandler = (err, req, res, next) =>
     return next(err);
   }
 
-  const requestId = req.requestId ?? crypto.randomUUID();
+  const traceId = req.requestId ?? crypto.randomUUID();
   const problem = paraProblema(err);
 
   if (problem === null) {
-    logger.error({ err, requestId }, "Erro não mapeado pelo middleware de Problem Details");
-    return enviar(res, new InternalServerErrorProblem("Ocorreu um erro interno no servidor."), requestId);
+    logger.error({ err, traceId, requestId: req.requestId }, "Erro não mapeado pelo middleware de Problem Details");
+    return enviar(res, new InternalServerErrorProblem("Ocorreu um erro interno no servidor."), traceId);
   }
 
   if (problem.status >= 500) {
-    logger.error({ err, requestId }, "Erro interno no servidor");
+    logger.error({ err, traceId, requestId: req.requestId }, "Erro interno no servidor");
   }
 
-  return enviar(res, problem, requestId);
+  return enviar(res, problem, traceId);
 };
 
 export default problemErrorHandler;
