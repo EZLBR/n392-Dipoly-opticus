@@ -12,7 +12,7 @@ import {
   updateUser,
   deleteUser
 } from "../controllers/authController.js";
-import { protect, authorize } from "../middlewares/auth.js";
+import { routerGuard } from "../middlewares/routerGuard.js";
 
 const router = express.Router();
 
@@ -21,9 +21,10 @@ router.post("/register", register);
 router.post("/login",    login);
 
 // Rotas protegidas
-router.get("/me",            protect,                       getMe);
-router.get("/users",         protect, authorize("staff"),   getUsers);
-router.put("/users/:id",     protect, authorize("staff"),   updateUser);
-router.delete("/users/:id",  protect, authorize("staff"),   deleteUser);
+router.get("/me",            routerGuard(),        getMe);
+router.get("/users",         routerGuard("staff"), getUsers);
+router.put("/users/:id",     routerGuard("staff"), updateUser);
+router.delete("/users/:id",  routerGuard("staff"), deleteUser);
+
 
 export default router;
