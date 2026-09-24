@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../config/prisma.js";
+import { BadRequestProblem, ConflictProblem, NotFoundProblem } from "../errors/problem.js";
 import type { RegisterDTO } from "../dtos/auth/register.dto.js";
 import type { LoginDTO } from "../dtos/auth/login.dto.js";
 import type { UpdateUserDTO } from "../dtos/auth/update-user.dto.js";
@@ -41,20 +42,20 @@ export class AuthService {
     const { name, email, password } = dto;
 
     if (!name?.trim() || !email?.trim() || !password) {
-      throw { status: 400, message: "Por favor, informe nome, email e senha." };
+      throw new BadRequestProblem("Por favor, informe nome, email e senha.");
     }
 
     const normEmail = email.trim().toLowerCase();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(normEmail)) {
-      throw { status: 400, message: "Formato de email inválido." };
+      throw new BadRequestProblem("Formato de email inválido.");
     }
 
     if (password.length < 8) {
-      throw { status: 400, message: "A senha deve ter pelo menos 8 caracteres." };
+      throw new BadRequestProblem("A senha deve ter pelo menos 8 caracteres.");
     }
     if (!/\d/.test(password) || !/[a-zA-Z]/.test(password)) {
-      throw { status: 400, message: "A senha deve conter letras e números." };
+      throw new BadRequestProblem("A senha deve conter letras e números.");
     }
 
     const existing = await prisma.usuario.findUnique({
@@ -62,7 +63,7 @@ export class AuthService {
     });
 
     if (existing) {
-      throw { status: 400, message: "Já existe uma conta com esse email." };
+      throw new ConflictProblem("Já existe uma conta com esse email.");
     }
 
     const senhaHash = await bcrypt.hash(password, 10);
@@ -86,7 +87,7 @@ export class AuthService {
     const { email, password } = dto;
 
     if (!email || !password) {
-      throw { status: 400, message: "Por favor, informe email e senha." };
+      throw new BadRequestProblem("Por favor, informe email e senha.");
     }
 
     const normEmail = String(email).trim().toLowerCase();
@@ -96,12 +97,12 @@ export class AuthService {
     });
 
     if (!user) {
-      throw { status: 400, message: "Email ou senha incorretos." };
+      throw new BadRequestProblem("Email ou senha incorretos.");
     }
 
     const senhaCorreta = await bcrypt.compare(password, user.senhaHash);
     if (!senhaCorreta) {
-      throw { status: 400, message: "Email ou senha incorretos." };
+      throw new BadRequestProblem("Email ou senha incorretos.");
     }
 
     const userResponse = toUserResponse(user);
@@ -116,7 +117,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw { status: 404, message: "Usuário não encontrado." };
+      throw new NotFoundProblem("Usuário não encontrado.");
     }
 
     return toUserResponse(user);
@@ -149,7 +150,7 @@ export class AuthService {
     const { name, factoryName } = dto;
 
     if (!name?.trim()) {
-      throw { status: 400, message: "Nome é obrigatório." };
+      throw new BadRequestProblem("Nome é obrigatório.");
     }
 
     const existing = await prisma.usuario.findUnique({
@@ -157,7 +158,7 @@ export class AuthService {
     });
 
     if (!existing) {
-      throw { status: 404, message: "Usuário não encontrado." };
+      throw new NotFoundProblem("Usuário não encontrado.");
     }
 
     await prisma.usuario.update({
@@ -175,7 +176,7 @@ export class AuthService {
     });
 
     if (!existing) {
-      throw { status: 404, message: "Usuário não encontrado." };
+      throw new NotFoundProblem("Usuário não encontrado.");
     }
 
     await prisma.usuario.delete({
