@@ -6,7 +6,8 @@
 import pool from "../config/db.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
 import type { Request, Response } from "express";
-import { OrderService, ServiceError } from "../services/orderService.js";
+import { BadRequestProblem, ForbiddenProblem } from "../errors/problem.js";
+import { OrderService } from "../services/orderService.js";
 
 // ─────────────────────────────────────────────────────────
 //   CRIAR PEDIDO
@@ -17,69 +18,60 @@ export async function createOrder(req: Request, res: Response) {
   const { productName, factoryId, factoryName, total, customSpecs } = req.body;
 
   if (!productName || !factoryId || !factoryName || !total || !customSpecs) {
-    return res.status(400).json({
-      success: false,
-      error: "Forneça todos os parâmetros obrigatórios do pedido."
-    });
+    throw new BadRequestProblem("Forneça todos os parâmetros obrigatórios do pedido.");
   }
 
   const customerName  = req.user!.name;
   const customerEmail = req.user!.email;
   const usuarioId     = req.user!.id;
 
-  try {
-    let finalFactoryId = Number(factoryId);
-    if (isNaN(finalFactoryId)) {
-      const { rows: fRows } = await pool.query("SELECT id FROM usuarios WHERE role = 'factory' LIMIT 1");
-      finalFactoryId = fRows.length > 0 ? fRows[0].id : null;
-    }
-
-    const { rows: result } = await pool.query(
-      `INSERT INTO pedidos
-       (usuario_id, customer_name, customer_email, product_name,
-        factory_id, factory_name, total, custom_specs, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-      [
-        usuarioId,
-        customerName,
-        customerEmail,
-        productName,
-        finalFactoryId,
-        factoryName,
-        Number(total),
-        JSON.stringify(customSpecs),
-        "Pending Payment" // 🔒 Trava de Segurança
-      ]
-    );
-
-    const pedidoId = result[0].id;
-
-    const { rows } = await pool.query(
-      `SELECT
-        id,
-        customer_name   AS "customerName",
-        customer_email  AS "customerEmail",
-        product_name    AS "productName",
-        factory_id      AS "factoryId",
-        factory_name    AS "factoryName",
-        status,
-        total,
-        custom_specs    AS "customSpecs",
-        abacate_billing_id AS "abacateBillingId",
-        DATE(criado_em) AS "createdAt"
-       FROM pedidos WHERE id = $1`,
-      [pedidoId]
-    );
-
-    const pedido = rows[0];
-    pedido.customSpecs = JSON.parse(pedido.customSpecs || "{}");
-
-    return res.status(201).json({ success: true, order: pedido });
-
-  } catch (err) {
-    console.error("Erro ao criar pedido:", err);
-    return res.status(500).json({ success: false, error: "Falha ao registrar pedido." });
+  let finalFactoryId = Number(factoryId);
+  if (isNaN(finalFactoryId)) {
+    const { rows: fRows } = await pool.query("SELECT id FROM usuarios WHERE role = 'factory' LIMIT 1");
+    finalFactoryId = fRows.length > 0 ? fRows[0].id : null;
   }
+
+  const { rows: result } = await pool.query(
+    `INSERT INTO pedidos
+     (usuario_id, customer_name, customer_email, product_name,
+      factory_id, factory_name, total, custom_specs, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    [
+      usuarioId,
+      customerName,
+      customerEmail,
+      productName,
+      finalFactoryId,
+      factoryName,
+      Number(total),
+      JSON.stringify(customSpecs),
+      "Pending Payment" // 🔒 Trava de Segurança
+    ]
+  );
+
+  const pedidoId = result[0].id;
+
+  const { rows } = await pool.query(
+    `SELECT
+      id,
+      customer_name   AS "customerName",
+      customer_email  AS "customerEmail",
+      product_name    AS "productName",
+      factory_id      AS "factoryId",
+      factory_name    AS "factoryName",
+      status,
+      total,
+      custom_specs    AS "customSpecs",
+      abacate_billing_id AS "abacateBillingId",
+      DATE(criado_em) AS "createdAt"
+     FROM pedidos WHERE id = $1`,
+    [pedidoId]
+  );
+
+  const pedido = rows[0];
+  pedido.customSpecs = JSON.parse(pedido.customSpecs || "{}");
+
+  return res.status(201).json({ success: true, order: pedido });
 }
 
 // ─────────────────────────────────────────────────────────
@@ -109,58 +101,52 @@ export async function getOrders(req: Request, res: Response) {
   const limit = parseInt(String(req.query.limit || "")) || 20;
   const offset = (page - 1) * limit;
 
-  try {
-    let rows;
-    let totalCount = 0;
+  let rows;
+  let totalCount = 0;
 
-    if (role === "client") {
-      const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos WHERE customer_email = $1`, [email]);
-      totalCount = parseInt(countRes.rows[0].count);
-      const result = await pool.query(
-        `SELECT ${selectFields} FROM pedidos WHERE customer_email = $1 ORDER BY criado_em DESC LIMIT $2 OFFSET $3`,
-        [email, limit, offset]
-      );
-      rows = result.rows;
-    } else if (role === "factory") {
-      const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos WHERE factory_id = $1`, [id]);
-      totalCount = parseInt(countRes.rows[0].count);
-      const result = await pool.query(
-        `SELECT ${selectFields} FROM pedidos WHERE factory_id = $1 ORDER BY criado_em DESC LIMIT $2 OFFSET $3`,
-        [id, limit, offset]
-      );
-      rows = result.rows;
-    } else if (role === "staff") {
-      const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos`);
-      totalCount = parseInt(countRes.rows[0].count);
-      const result = await pool.query(
-        `SELECT ${selectFields} FROM pedidos ORDER BY criado_em DESC LIMIT $1 OFFSET $2`,
-        [limit, offset]
-      );
-      rows = result.rows;
-    } else {
-      return res.status(403).json({ success: false, error: "Acesso não autorizado." });
-    }
-
-    const parsedRows = rows.map(r => ({
-      ...r,
-      customSpecs: r.customSpecs ? JSON.parse(r.customSpecs) : {}
-    }));
-
-    return res.json({
-      success: true,
-      orders: parsedRows,
-      pagination: {
-        page,
-        limit,
-        totalItems: totalCount,
-        totalPages: Math.ceil(totalCount / limit)
-      }
-    });
-
-  } catch (err) {
-    console.error("Erro ao buscar pedidos:", err);
-    return res.status(500).json({ success: false, error: "Falha ao carregar pedidos." });
+  if (role === "client") {
+    const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos WHERE customer_email = $1`, [email]);
+    totalCount = parseInt(countRes.rows[0].count);
+    const result = await pool.query(
+      `SELECT ${selectFields} FROM pedidos WHERE customer_email = $1 ORDER BY criado_em DESC LIMIT $2 OFFSET $3`,
+      [email, limit, offset]
+    );
+    rows = result.rows;
+  } else if (role === "factory") {
+    const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos WHERE factory_id = $1`, [id]);
+    totalCount = parseInt(countRes.rows[0].count);
+    const result = await pool.query(
+      `SELECT ${selectFields} FROM pedidos WHERE factory_id = $1 ORDER BY criado_em DESC LIMIT $2 OFFSET $3`,
+      [id, limit, offset]
+    );
+    rows = result.rows;
+  } else if (role === "staff") {
+    const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos`);
+    totalCount = parseInt(countRes.rows[0].count);
+    const result = await pool.query(
+      `SELECT ${selectFields} FROM pedidos ORDER BY criado_em DESC LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    rows = result.rows;
+  } else {
+    throw new ForbiddenProblem("Acesso não autorizado.");
   }
+
+  const parsedRows = rows.map(r => ({
+    ...r,
+    customSpecs: r.customSpecs ? JSON.parse(r.customSpecs) : {}
+  }));
+
+  return res.json({
+    success: true,
+    orders: parsedRows,
+    pagination: {
+      page,
+      limit,
+      totalItems: totalCount,
+      totalPages: Math.ceil(totalCount / limit)
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────
@@ -173,43 +159,33 @@ export async function updateOrderStatus(req: Request, res: Response) {
   const { status } = req.body;
 
   if (!status) {
-    return res.status(400).json({ success: false, error: "Informe o novo status." });
+    throw new BadRequestProblem("Informe o novo status.");
   }
 
-  try {
-    // A identidade vem exclusivamente do token validado pelo middleware.
-    // A autorização de objeto acontece dentro da mutação, no service.
-    const pedido = await OrderService.updateStatus({
-      publicId,
-      status,
-      ator: { id: Number(req.user!.id), role: String(req.user!.role) },
-    });
+  // A identidade vem exclusivamente do token validado pelo middleware.
+  // A autorização de objeto acontece dentro da mutação, no service.
+  const pedido = await OrderService.updateStatus({
+    publicId,
+    status,
+    ator: { id: Number(req.user!.id), role: String(req.user!.role) },
+  });
 
-    sendOrderStatusEmail(
-      {
-        id:             pedido.publicId,
-        customer_name:  pedido.customerName,
-        customer_email: pedido.customerEmail,
-        product_name:   pedido.productName,
-        factory_name:   pedido.factoryName ?? undefined,
-      },
-      status
-    );
+  sendOrderStatusEmail(
+    {
+      id:             pedido.publicId,
+      customer_name:  pedido.customerName,
+      customer_email: pedido.customerEmail,
+      product_name:   pedido.productName,
+      factory_name:   pedido.factoryName ?? undefined,
+    },
+    status
+  );
 
-    return res.json({
-      success: true,
-      message: `Status do pedido atualizado para "${status}" com sucesso.`,
-      order: pedido,
-    });
-
-  } catch (err) {
-    if (err instanceof ServiceError) {
-      return res.status(err.status).json({ success: false, error: err.message });
-    }
-    // TODO(API-02/API-05): trocar pelo middleware RFC 9457, devolvendo traceId.
-    console.error("Erro ao atualizar status:", err);
-    return res.status(500).json({ success: false, error: "Falha ao atualizar status." });
-  }
+  return res.json({
+    success: true,
+    message: `Status do pedido atualizado para "${status}" com sucesso.`,
+    order: pedido,
+  });
 }
 
 // ─────────────────────────────────────────────────────────
@@ -220,10 +196,7 @@ export async function checkoutCart(req: Request, res: Response) {
   const { cartItems } = req.body;
 
   if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
-    return res.status(400).json({
-      success: false,
-      error: "Forneça um array cartItems não vazio."
-    });
+    throw new BadRequestProblem("Forneça um array cartItems não vazio.");
   }
 
   const customerName  = req.user!.name;
@@ -241,7 +214,9 @@ export async function checkoutCart(req: Request, res: Response) {
       const { productName, factoryId, factoryName, total, customSpecs, quantity } = item;
 
       if (!productName || !factoryId || !factoryName || !total || !customSpecs) {
-        throw new Error("Parâmetros faltando em um dos itens do carrinho.");
+        throw new BadRequestProblem(
+          "Todos os itens do carrinho precisam de productName, factoryId, factoryName, total e customSpecs."
+        );
       }
 
       const specsWithQty    = { ...customSpecs, quantity: quantity || 1 };
@@ -286,10 +261,7 @@ export async function checkoutCart(req: Request, res: Response) {
   } catch (err) {
     await client.query("ROLLBACK");
     client.release();
-    return res.status(400).json({
-      success: false,
-      error: err instanceof Error ? err.message : "Falha ao criar pedidos.",
-    });
+    throw err;
   }
   client.release();
 
