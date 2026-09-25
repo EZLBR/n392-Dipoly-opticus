@@ -8,6 +8,7 @@ import { sendOrderStatusEmail } from "../utils/emailService.js";
 import type { Request, Response } from "express";
 import { BadRequestProblem, ForbiddenProblem } from "../errors/problem.js";
 import { OrderService } from "../services/orderService.js";
+import logger from "../utils/logger.js";
 
 // ─────────────────────────────────────────────────────────
 //   CRIAR PEDIDO
@@ -320,9 +321,9 @@ export async function checkoutCart(req: Request, res: Response) {
           });
         }
       } catch (err) {
-        console.error(
-          "[AbacatePay] Erro, usando simulador:",
-          err instanceof Error ? err.message : err,
+        logger.error(
+          { err, traceId: req.requestId, requestId: req.requestId },
+          "[AbacatePay] Falha ao criar cobrança; caindo para o simulador",
         );
       }
     }

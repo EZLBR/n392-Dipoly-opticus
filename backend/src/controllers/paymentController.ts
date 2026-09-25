@@ -14,6 +14,7 @@ import {
   NotFoundProblem,
   UnauthorizedProblem,
 } from "../errors/problem.js";
+import logger from "../utils/logger.js";
 
 // Security Helper
 const escapeHTML = (str: unknown) => {
@@ -101,14 +102,14 @@ export async function createBilling(req: Request, res: Response, next: NextFunct
       [realBillingId, orderId]
     );
 
-    await _registrarPagamento(orderId, "pix", "pendente", Number(order.total), realBillingId);
+    await _registrarPagamento(orderId, "pix", "pendente", Number(order.total), realBillingId, req.requestId);
 
     return res.json({ success: true, checkoutUrl: realCheckoutUrl, isSimulated: false });
 
   } catch (err) {
-    console.error(
-      "Erro no AbacatePay:",
-      err instanceof Error ? err.message : err,
+    logger.error(
+      { err, traceId: req.requestId, requestId: req.requestId },
+      "[AbacatePay] Falha na cobrança; caindo para o simulador",
     );
 
     const fallbackId  = `bill-fallback-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -136,6 +137,7 @@ async function _registrarPagamento(
   status: string,
   valor: number,
   referenciaExterna: string,
+  traceId?: string,
 ) {
   try {
     await pool.query(
@@ -143,9 +145,9 @@ async function _registrarPagamento(
       [pedidoId, metodo, status, valor, referenciaExterna]
     );
   } catch (err) {
-    console.error(
-      "Erro ao registrar pagamento:",
-      err instanceof Error ? err.message : err,
+    logger.error(
+      { err, traceId, requestId: traceId },
+      "Erro ao registrar pagamento",
     );
   }
 }
@@ -319,7 +321,7 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
     return res.send(html);
 
   } catch (err) {
-    console.error("Erro no checkout simulado:", err);
+    logger.error({ err, traceId: req.requestId, requestId: req.requestId }, "Erro no checkout simulado");
     return res.status(500).send("<h3>Falha ao carregar checkout.</h3>");
   }
 }
@@ -365,7 +367,7 @@ export async function confirmSimulatedPayment(req: Request, res: Response) {
     return res.redirect(redirectUrl);
 
   } catch (err) {
-    console.error("Erro ao confirmar pagamento simulado:", err);
+    logger.error({ err, traceId: req.requestId, requestId: req.requestId }, "Erro ao confirmar pagamento simulado");
     return res.status(500).send("<h3>Falha na simulação de pagamento.</h3>");
   }
 }
