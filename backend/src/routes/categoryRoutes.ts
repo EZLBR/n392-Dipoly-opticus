@@ -11,7 +11,7 @@ import {
   updateCategory,
   deleteCategory
 } from "../controllers/categoryController.js";
-import { protect, authorize } from "../middlewares/auth.js";
+import { routerGuard } from "../middlewares/routerGuard.js";
 
 const router = express.Router();
 
@@ -20,8 +20,8 @@ router.get("/",    getCategories);
 router.get("/:id", getCategoryById);
 
 // Somente staff gerencia categorias
-router.post(  "/",    protect, authorize("staff"), createCategory);
-router.put(   "/:id", protect, authorize("staff"), updateCategory);
-router.delete("/:id", protect, authorize("staff"), deleteCategory);
+router.post(  "/",    routerGuard("staff"), createCategory);
+router.put(   "/:id", routerGuard("staff"), updateCategory);
+router.delete("/:id", routerGuard("staff"), deleteCategory);
 
 export default router;

@@ -10,19 +10,19 @@ import {
   updateStock,
   getStockAlerts
 } from "../controllers/stockController.js";
-import { protect, authorize } from "../middlewares/auth.js";
+import { routerGuard } from "../middlewares/routerGuard.js";
 
 const router = express.Router();
 
 // Todas as rotas de estoque são protegidas
-router.use(protect);
+router.use(routerGuard());
 
 // Staff e factory podem ver o estoque
-router.get("/",                          authorize("staff", "factory"), getAllStock);
-router.get("/alerts",                    authorize("staff", "factory"), getStockAlerts);
-router.get("/product/:produtoId",        authorize("staff", "factory"), getStockByProduct);
+router.get("/",                          routerGuard("staff", "factory"), getAllStock);
+router.get("/alerts",                    routerGuard("staff", "factory"), getStockAlerts);
+router.get("/product/:produtoId",        routerGuard("staff", "factory"), getStockByProduct);
 
 // Apenas staff pode modificar o estoque
-router.put("/product/:produtoId",        authorize("staff"),            updateStock);
+router.put("/product/:produtoId",        routerGuard("staff"),            updateStock);
 
 export default router;

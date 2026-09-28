@@ -11,7 +11,7 @@ import {
   handleWebhook,
   getPayments
 } from "../controllers/paymentController.js";
-import { protect, authorize } from "../middlewares/auth.js";
+import { routerGuard } from "../middlewares/routerGuard.js";
 
 const router = express.Router();
 
@@ -23,9 +23,9 @@ router.get( "/simulated-checkout",        getSimulatedCheckoutPage);
 router.post("/confirm-simulated-payment", confirmSimulatedPayment);
 
 // Criar cobrança (usuário autenticado)
-router.post("/create-billing", protect, createBilling);
+router.post("/create-billing", routerGuard(), createBilling);
 
 // Listar todos os pagamentos (apenas staff)
-router.get("/", protect, authorize("staff"), getPayments);
+router.get("/", routerGuard("staff"), getPayments);
 
 export default router;

@@ -11,7 +11,7 @@ import {
   updateProduct,
   deleteProduct
 } from "../controllers/productController.js";
-import { protect, authorize } from "../middlewares/auth.js";
+import { routerGuard } from "../middlewares/routerGuard.js";
 
 const router = express.Router();
 
@@ -20,8 +20,8 @@ router.get("/",    getProducts);
 router.get("/:id", getProductById);
 
 // Rotas protegidas (somente staff pode criar/editar/deletar)
-router.post(  "/",    protect, authorize("staff"), createProduct);
-router.put(   "/:id", protect, authorize("staff"), updateProduct);
-router.delete("/:id", protect, authorize("staff"), deleteProduct);
+router.post(  "/",    routerGuard("staff"), createProduct);
+router.put(   "/:id", routerGuard("staff"), updateProduct);
+router.delete("/:id", routerGuard("staff"), deleteProduct);
 
 export default router;

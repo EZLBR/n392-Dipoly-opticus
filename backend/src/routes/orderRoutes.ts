@@ -1,10 +1,10 @@
 import express from "express";
 import { createOrder, getOrders, updateOrderStatus, checkoutCart } from "../controllers/orderController.js";
-import { protect } from "../middlewares/auth.js";
+import { routerGuard } from "../middlewares/routerGuard.js";
 
 const router = express.Router();
 
-router.use(protect); // Secure all order routes
+router.use(routerGuard()); // Secure all order routes
 
 router.post("/", createOrder);
 router.post("/checkout-cart", checkoutCart);
