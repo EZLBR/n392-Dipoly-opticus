@@ -11,6 +11,8 @@ import {
   getStockAlerts
 } from "../controllers/stockController.js";
 import { routerGuard } from "../middlewares/routerGuard.js";
+import { validateBody } from "../middlewares/validate.js";
+import { updateStockSchema } from "../dtos/stock/stock.dto.js";
 
 const router = express.Router();
 
@@ -23,6 +25,6 @@ router.get("/alerts",                    routerGuard("staff", "factory"), getSto
 router.get("/product/:produtoId",        routerGuard("staff", "factory"), getStockByProduct);
 
 // Apenas staff pode modificar o estoque
-router.put("/product/:produtoId",        routerGuard("staff"),            updateStock);
+router.put("/product/:produtoId",        routerGuard("staff"), validateBody(updateStockSchema), updateStock);
 
 export default router;

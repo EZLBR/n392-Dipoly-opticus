@@ -14,6 +14,7 @@
 
 import crypto from "crypto";
 import type { ErrorRequestHandler, Response } from "express";
+import { ZodError } from "zod";
 import {
   BadRequestProblem,
   ConflictProblem,
@@ -24,6 +25,7 @@ import {
   TooManyRequestsProblem,
   UnauthorizedProblem,
   ValidationProblem,
+  type InvalidParam,
   type ProblemDetails,
   type ValidationFieldError,
 } from "../errors/problem.js";
@@ -170,6 +172,21 @@ export function paraProblema(err: unknown): HttpProblem | null {
     return err;
   }
 
+  // Zod: traduz para 400 Bad Request com array invalidParams (RFC 9457)
+  if (
+    err instanceof ZodError ||
+    (err !== null && typeof err === "object" && (err as { name?: unknown }).name === "ZodError")
+  ) {
+    const zodErr = err as ZodError;
+    const invalidParams: InvalidParam[] = zodErr.issues.map((issue) => ({
+      name: issue.path.map(String).join(".") || "body",
+      reason: issue.message,
+    }));
+    return new BadRequestProblem("Dados da requisição inválidos.", {
+      invalidParams,
+    });
+  }
+
   if (err instanceof Error) {
     return mapearErroBanco(err) ?? mapearErroLegado(err);
   }
@@ -207,6 +224,9 @@ function montarCorpo(problem: HttpProblem, traceId: string): ProblemResponseBody
   };
   if (base.errors !== undefined) {
     corpo.errors = base.errors as ValidationFieldError[];
+  }
+  if (base.invalidParams !== undefined) {
+    corpo.invalidParams = base.invalidParams as InvalidParam[];
   }
   return corpo;
 }

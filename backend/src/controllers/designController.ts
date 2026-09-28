@@ -5,7 +5,8 @@
 
 import pool from "../config/db.js";
 import type { Request, Response } from "express";
-import { BadRequestProblem, NotFoundProblem } from "../errors/problem.js";
+import { NotFoundProblem } from "../errors/problem.js";
+import type { SaveDesignDTO } from "../dtos/design/design.dto.js";
 
 // ─────────────────────────────────────────────────────────
 //   SALVAR DESIGN (cria ou atualiza)
@@ -16,14 +17,10 @@ export async function saveDesign(req: Request, res: Response) {
     id, name, model, color,
     is_sunglasses, anti_reflective, temple_style,
     top_bar, bridge_style, frame_profile, temple_open, published
-  } = req.body;
+  } = req.body as SaveDesignDTO;
 
   const customerEmail = req.user!.email;
   const usuarioId     = req.user!.id;
-
-  if (!name || !model || !color) {
-    throw new BadRequestProblem("Nome, modelo e cor são obrigatórios.");
-  }
 
   // Handle ID. If frontend sends null (because of new fix), generate a design ID
   const finalId = id || `design-${Date.now()}`;

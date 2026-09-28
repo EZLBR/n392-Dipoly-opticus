@@ -41,25 +41,8 @@ export class AuthService {
   static async register(dto: RegisterDTO): Promise<AuthResponseDTO> {
     const { name, email, password } = dto;
 
-    if (!name?.trim() || !email?.trim() || !password) {
-      throw new BadRequestProblem("Por favor, informe nome, email e senha.");
-    }
-
-    const normEmail = email.trim().toLowerCase();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(normEmail)) {
-      throw new BadRequestProblem("Formato de email inválido.");
-    }
-
-    if (password.length < 8) {
-      throw new BadRequestProblem("A senha deve ter pelo menos 8 caracteres.");
-    }
-    if (!/\d/.test(password) || !/[a-zA-Z]/.test(password)) {
-      throw new BadRequestProblem("A senha deve conter letras e números.");
-    }
-
     const existing = await prisma.usuario.findUnique({
-      where: { email: normEmail },
+      where: { email },
     });
 
     if (existing) {
@@ -70,8 +53,8 @@ export class AuthService {
 
     const user = await prisma.usuario.create({
       data: {
-        nome: name.trim(),
-        email: normEmail,
+        nome: name,
+        email,
         senhaHash,
         role: "client",
       },
@@ -86,14 +69,8 @@ export class AuthService {
   static async login(dto: LoginDTO): Promise<AuthResponseDTO> {
     const { email, password } = dto;
 
-    if (!email || !password) {
-      throw new BadRequestProblem("Por favor, informe email e senha.");
-    }
-
-    const normEmail = String(email).trim().toLowerCase();
-
     const user = await prisma.usuario.findUnique({
-      where: { email: normEmail },
+      where: { email },
     });
 
     if (!user) {
@@ -149,10 +126,6 @@ export class AuthService {
   static async updateUser(userId: number, dto: UpdateUserDTO): Promise<void> {
     const { name, factoryName } = dto;
 
-    if (!name?.trim()) {
-      throw new BadRequestProblem("Nome é obrigatório.");
-    }
-
     const existing = await prisma.usuario.findUnique({
       where: { id: userId },
     });
@@ -164,7 +137,7 @@ export class AuthService {
     await prisma.usuario.update({
       where: { id: userId },
       data: {
-        nome: name.trim(),
+        nome: name,
         factoryName: factoryName ?? null,
       },
     });

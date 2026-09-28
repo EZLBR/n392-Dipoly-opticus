@@ -6,9 +6,14 @@
 import pool from "../config/db.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
 import type { Request, Response } from "express";
-import { BadRequestProblem, ForbiddenProblem } from "../errors/problem.js";
+import { ForbiddenProblem } from "../errors/problem.js";
 import { OrderService } from "../services/orderService.js";
 import logger from "../utils/logger.js";
+import type {
+  CreateOrderDTO,
+  UpdateOrderStatusDTO,
+  CheckoutCartDTO,
+} from "../dtos/order/order.dto.js";
 
 // ─────────────────────────────────────────────────────────
 //   CRIAR PEDIDO
@@ -16,11 +21,7 @@ import logger from "../utils/logger.js";
 // ─────────────────────────────────────────────────────────
 export async function createOrder(req: Request, res: Response) {
   // 🔐 Security Fix: 'status' is completely ignored from req.body to prevent payment bypass.
-  const { productName, factoryId, factoryName, total, customSpecs } = req.body;
-
-  if (!productName || !factoryId || !factoryName || !total || !customSpecs) {
-    throw new BadRequestProblem("Forneça todos os parâmetros obrigatórios do pedido.");
-  }
+  const { productName, factoryId, factoryName, total, customSpecs } = req.body as CreateOrderDTO;
 
   const customerName  = req.user!.name;
   const customerEmail = req.user!.email;
@@ -157,11 +158,7 @@ export async function getOrders(req: Request, res: Response) {
 export async function updateOrderStatus(req: Request, res: Response) {
   // Express 5 tipa params como string | string[]; a rota declara um só.
   const publicId   = String(req.params.publicId ?? "");
-  const { status } = req.body;
-
-  if (!status) {
-    throw new BadRequestProblem("Informe o novo status.");
-  }
+  const { status } = req.body as UpdateOrderStatusDTO;
 
   // A identidade vem exclusivamente do token validado pelo middleware.
   // A autorização de objeto acontece dentro da mutação, no service.
@@ -194,11 +191,7 @@ export async function updateOrderStatus(req: Request, res: Response) {
 //   POST /api/orders/checkout-cart
 // ─────────────────────────────────────────────────────────
 export async function checkoutCart(req: Request, res: Response) {
-  const { cartItems } = req.body;
-
-  if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
-    throw new BadRequestProblem("Forneça um array cartItems não vazio.");
-  }
+  const { cartItems } = req.body as CheckoutCartDTO;
 
   const customerName  = req.user!.name;
   const customerEmail = req.user!.email;
@@ -213,12 +206,6 @@ export async function checkoutCart(req: Request, res: Response) {
 
     for (const item of cartItems) {
       const { productName, factoryId, factoryName, total, customSpecs, quantity } = item;
-
-      if (!productName || !factoryId || !factoryName || !total || !customSpecs) {
-        throw new BadRequestProblem(
-          "Todos os itens do carrinho precisam de productName, factoryId, factoryName, total e customSpecs."
-        );
-      }
 
       const specsWithQty    = { ...customSpecs, quantity: quantity || 1 };
       const orderTotal      = Number(total) * (quantity || 1);

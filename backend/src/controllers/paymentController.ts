@@ -29,16 +29,14 @@ const escapeHTML = (str: unknown) => {
 const ABACATE_TOKEN = process.env.ABACATE_TOKEN;
 const PORT          = env.PORT;
 
+import type { CreateBillingDTO } from "../dtos/payment/payment.dto.js";
+
 // ─────────────────────────────────────────────────────────
 //   CRIAR COBRANÇA (AbacatePay ou simulador)
 //   POST /api/payments/create-billing
 // ─────────────────────────────────────────────────────────
 export async function createBilling(req: Request, res: Response, next: NextFunction) {
-  const { orderId } = req.body;
-
-  if (!orderId) {
-    throw new BadRequestProblem("Informe o orderId.");
-  }
+  const { orderId } = req.body as CreateBillingDTO;
 
   try {
     const { rows } = await pool.query("SELECT * FROM pedidos WHERE id = $1", [orderId]);

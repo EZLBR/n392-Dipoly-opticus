@@ -5,7 +5,8 @@
 
 import pool from "../config/db.js";
 import type { Request, Response } from "express";
-import { BadRequestProblem, NotFoundProblem } from "../errors/problem.js";
+import { NotFoundProblem } from "../errors/problem.js";
+import type { CreateProductDTO, UpdateProductDTO } from "../dtos/product/product.dto.js";
 
 // ─────────────────────────────────────────────────────────
 //   CRIAR PRODUTO
@@ -13,15 +14,7 @@ import { BadRequestProblem, NotFoundProblem } from "../errors/problem.js";
 //   Somente: staff ou factory
 // ─────────────────────────────────────────────────────────
 export async function createProduct(req: Request, res: Response) {
-  const { nome, descricao, preco, categoria_id, imagem_url } = req.body;
-
-  if (!nome || !preco) {
-    throw new BadRequestProblem("Nome e preço são obrigatórios.");
-  }
-
-  if (isNaN(preco) || Number(preco) <= 0) {
-    throw new BadRequestProblem("Preço deve ser um número positivo.");
-  }
+  const { nome, descricao, preco, categoria_id, imagem_url } = req.body as CreateProductDTO;
 
   // 1. Insere o produto
   const { rows } = await pool.query(
@@ -154,11 +147,7 @@ export async function getProductById(req: Request, res: Response) {
 // ─────────────────────────────────────────────────────────
 export async function updateProduct(req: Request, res: Response) {
   const { id } = req.params;
-  const { nome, descricao, preco, categoria_id, imagem_url, ativo } = req.body;
-
-  if (!nome || preco === undefined) {
-    throw new BadRequestProblem("Nome e preço são obrigatórios.");
-  }
+  const { nome, descricao, preco, categoria_id, imagem_url, ativo } = req.body as UpdateProductDTO;
 
   const result = await pool.query(
     `UPDATE produtos

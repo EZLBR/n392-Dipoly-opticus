@@ -268,12 +268,19 @@ describe("API real — respostas de erro em Problem Details", () => {
     expectProblem(res, 403, "forbidden");
   });
 
-  it("payload inválido devolve 400 Problem Details", async () => {
+  it("payload inválido devolve 400 Problem Details com invalidParams", async () => {
     const res = await request(app)
       .post("/api/auth/register")
       .send({ name: "A", email: "email-invalido", password: "12" });
 
     expectProblem(res, 400, "bad-request");
+    expect(res.body.invalidParams).toBeDefined();
+    expect(res.body.invalidParams).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "email" }),
+        expect.objectContaining({ name: "password" }),
+      ]),
+    );
   });
 
   it("conflito de negócio (email duplicado) devolve 409 Problem Details", async () => {

@@ -6,6 +6,7 @@
 import pool from "../config/db.js";
 import type { Request, Response } from "express";
 import { BadRequestProblem, NotFoundProblem } from "../errors/problem.js";
+import type { UpdateStockDTO } from "../dtos/stock/stock.dto.js";
 
 // ─────────────────────────────────────────────────────────
 //   LISTAR TODO O ESTOQUE
@@ -93,15 +94,7 @@ export async function getStockByProduct(req: Request, res: Response) {
 // ─────────────────────────────────────────────────────────
 export async function updateStock(req: Request, res: Response) {
   const { produtoId } = req.params;
-  const { quantidade, estoque_minimo, operacao = "set" } = req.body;
-
-  if (quantidade === undefined || quantidade === null) {
-    throw new BadRequestProblem("Quantidade é obrigatória.");
-  }
-
-  if (!["set", "add", "subtract"].includes(operacao)) {
-    throw new BadRequestProblem("Operação inválida. Use: set, add ou subtract.");
-  }
+  const { quantidade, estoque_minimo, operacao = "set" } = req.body as UpdateStockDTO;
 
   // Busca estoque atual
   const { rows: current } = await pool.query(
