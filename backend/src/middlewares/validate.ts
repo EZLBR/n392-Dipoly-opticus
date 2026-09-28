@@ -2,6 +2,19 @@ import type { NextFunction, Request, Response } from "express";
 import { ZodError, type ZodIssue, type ZodTypeAny } from "zod";
 
 /**
+ * Atribui propriedades em req (como query e params) de forma segura em ambientes
+ * ES Modules/Strict Mode onde IncomingMessage pode definir apenas um getter na cadeia.
+ */
+function setReqProperty(req: Request, prop: "query" | "params", value: unknown): void {
+  Object.defineProperty(req, prop, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
+}
+
+/**
  * Valida o corpo (req.body) com o schema Zod fornecido.
  * Em caso de sucesso, substitui req.body pelos dados validados/sanitizados.
  * Em caso de falha, repassa o erro (ZodError) para o next(), que será capturado
@@ -24,7 +37,7 @@ export function validateBody<T extends ZodTypeAny>(schema: T) {
 export function validateQuery<T extends ZodTypeAny>(schema: T) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     try {
-      req.query = schema.parse(req.query) as any;
+      setReqProperty(req, "query", schema.parse(req.query));
       next();
     } catch (err) {
       next(err);
@@ -38,7 +51,7 @@ export function validateQuery<T extends ZodTypeAny>(schema: T) {
 export function validateParams<T extends ZodTypeAny>(schema: T) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     try {
-      req.params = schema.parse(req.params) as any;
+      setReqProperty(req, "params", schema.parse(req.params));
       next();
     } catch (err) {
       next(err);
@@ -67,7 +80,7 @@ export function validateRequest<
       if (!res.success) {
         issues.push(...res.error.issues);
       } else {
-        req.params = res.data as any;
+        setReqProperty(req, "params", res.data);
       }
     }
 
@@ -76,7 +89,7 @@ export function validateRequest<
       if (!res.success) {
         issues.push(...res.error.issues);
       } else {
-        req.query = res.data as any;
+        setReqProperty(req, "query", res.data);
       }
     }
 
