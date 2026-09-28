@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
+import { apiFetch } from "../utils/api";
 
 const CartContext = createContext<any>(undefined);
 
@@ -49,7 +50,7 @@ export function CartProvider({ children }) {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        const res = await fetch(`${API_URL}/orders/checkout-cart`, {
+        const res = await apiFetch(`${API_URL}/orders/checkout-cart`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
