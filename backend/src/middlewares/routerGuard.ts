@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import type { NextFunction, Request, Response } from "express";
+import { ForbiddenProblem, UnauthorizedProblem } from "../errors/problem.js";
 import "../config/env.js";
 
 export type UserRole = "client" | "factory" | "staff" | string;
@@ -66,17 +67,14 @@ export function routerGuard(
   const options = parseGuardOptions(optionsOrRole, ...restRoles);
   const allowedRoles = options.roles;
 
-  const guardMiddleware: RouterGuard = (req: Request, res: Response, next: NextFunction) => {
+  const guardMiddleware: RouterGuard = (req: Request, _res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       if (options.allowAnonymous) {
         return next();
       }
-      return res.status(401).json({
-        success: false,
-        error: "Access denied. No token provided.",
-      });
+      return next(new UnauthorizedProblem("Access denied. No token provided."));
     }
 
     const token = authHeader.split(" ")[1];
@@ -86,10 +84,7 @@ export function routerGuard(
       const decoded = jwt.verify(token, secret);
 
       if (typeof decoded === "string") {
-        return res.status(401).json({
-          success: false,
-          error: "Invalid or expired token.",
-        });
+        return next(new UnauthorizedProblem("Invalid or expired token."));
       }
 
       req.user = decoded; // Attach payload (id, email, name, role)
@@ -97,19 +92,13 @@ export function routerGuard(
       if (allowedRoles && allowedRoles.length > 0) {
         const userRole = req.user.role || "";
         if (!allowedRoles.includes(userRole)) {
-          return res.status(403).json({
-            success: false,
-            error: "Access forbidden. Insufficient permissions.",
-          });
+          return next(new ForbiddenProblem("Access forbidden. Insufficient permissions."));
         }
       }
 
       next();
     } catch (_err) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid or expired token.",
-      });
+      return next(new UnauthorizedProblem("Invalid or expired token."));
     }
   };
 

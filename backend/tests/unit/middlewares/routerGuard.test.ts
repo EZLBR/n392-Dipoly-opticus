@@ -7,6 +7,7 @@ import {
   getJwtSecret,
 } from "../../../src/middlewares/routerGuard.js";
 import { protect, authorize } from "../../../src/middlewares/auth.js";
+import { UnauthorizedProblem, ForbiddenProblem } from "../../../src/errors/problem.js";
 
 const TEST_SECRET = "test-jwt-secret-key-1234567890";
 
@@ -54,49 +55,55 @@ describe("routerGuard Middleware", () => {
   describe("Autenticação básica", () => {
     it("rejeita requisição sem header Authorization com 401", () => {
       const guard = routerGuard();
-      const { req, res, resStatus, resJson, next } = createMockReqRes();
+      const { req, res, resStatus, next } = createMockReqRes();
 
       guard(req, res, next);
 
-      expect(resStatus).toHaveBeenCalledWith(401);
-      expect(resJson).toHaveBeenCalledWith({
-        success: false,
-        error: "Access denied. No token provided.",
-      });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(expect.any(UnauthorizedProblem));
+      expect(next).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 401,
+          detail: "Access denied. No token provided.",
+        })
+      );
+      expect(resStatus).not.toHaveBeenCalled();
     });
 
     it("rejeita Authorization que não começa com 'Bearer ' com 401", () => {
       const guard = routerGuard();
-      const { req, res, resStatus, resJson, next } = createMockReqRes({
+      const { req, res, resStatus, next } = createMockReqRes({
         authorization: "Basic 123456",
       });
 
       guard(req, res, next);
 
-      expect(resStatus).toHaveBeenCalledWith(401);
-      expect(resJson).toHaveBeenCalledWith({
-        success: false,
-        error: "Access denied. No token provided.",
-      });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(expect.any(UnauthorizedProblem));
+      expect(next).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 401,
+          detail: "Access denied. No token provided.",
+        })
+      );
+      expect(resStatus).not.toHaveBeenCalled();
     });
 
     it("rejeita token com assinatura inválida com 401", () => {
       const guard = routerGuard();
       const invalidToken = jwt.sign({ id: "1", role: "client" }, "wrong-secret");
-      const { req, res, resStatus, resJson, next } = createMockReqRes({
+      const { req, res, resStatus, next } = createMockReqRes({
         authorization: `Bearer ${invalidToken}`,
       });
 
       guard(req, res, next);
 
-      expect(resStatus).toHaveBeenCalledWith(401);
-      expect(resJson).toHaveBeenCalledWith({
-        success: false,
-        error: "Invalid or expired token.",
-      });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(expect.any(UnauthorizedProblem));
+      expect(next).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 401,
+          detail: "Invalid or expired token.",
+        })
+      );
+      expect(resStatus).not.toHaveBeenCalled();
     });
 
     it("rejeita token expirado com 401", () => {
@@ -104,18 +111,20 @@ describe("routerGuard Middleware", () => {
       const expiredToken = jwt.sign({ id: "1", role: "client" }, TEST_SECRET, {
         expiresIn: "-1s",
       });
-      const { req, res, resStatus, resJson, next } = createMockReqRes({
+      const { req, res, resStatus, next } = createMockReqRes({
         authorization: `Bearer ${expiredToken}`,
       });
 
       guard(req, res, next);
 
-      expect(resStatus).toHaveBeenCalledWith(401);
-      expect(resJson).toHaveBeenCalledWith({
-        success: false,
-        error: "Invalid or expired token.",
-      });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(expect.any(UnauthorizedProblem));
+      expect(next).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 401,
+          detail: "Invalid or expired token.",
+        })
+      );
+      expect(resStatus).not.toHaveBeenCalled();
     });
 
     it("permite token válido quando nenhuma restrição de papel é informada", () => {
@@ -145,18 +154,20 @@ describe("routerGuard Middleware", () => {
     it("bloqueia com 403 se o usuário autenticado não possui o papel exigido", () => {
       const guard = routerGuard("staff");
       const token = jwt.sign({ id: "1", role: "client" }, TEST_SECRET);
-      const { req, res, resStatus, resJson, next } = createMockReqRes({
+      const { req, res, resStatus, next } = createMockReqRes({
         authorization: `Bearer ${token}`,
       });
 
       guard(req, res, next);
 
-      expect(resStatus).toHaveBeenCalledWith(403);
-      expect(resJson).toHaveBeenCalledWith({
-        success: false,
-        error: "Access forbidden. Insufficient permissions.",
-      });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(expect.any(ForbiddenProblem));
+      expect(next).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 403,
+          detail: "Access forbidden. Insufficient permissions.",
+        })
+      );
+      expect(resStatus).not.toHaveBeenCalled();
     });
 
     it("permite acesso se o usuário possui exatamente o papel exigido", () => {
@@ -206,8 +217,8 @@ describe("routerGuard Middleware", () => {
       });
 
       guard(reqClient, resClient, nextClient);
-      expect(statusClient).toHaveBeenCalledWith(403);
-      expect(nextClient).not.toHaveBeenCalled();
+      expect(nextClient).toHaveBeenCalledWith(expect.any(ForbiddenProblem));
+      expect(statusClient).not.toHaveBeenCalled();
 
       const tokenStaff = jwt.sign({ id: "5", role: "staff" }, TEST_SECRET);
       const { req: reqStaff, res: resStaff, resStatus: statusStaff, next: nextStaff } = createMockReqRes({
@@ -296,15 +307,11 @@ describe("routerGuard Middleware", () => {
 
   describe("Retrocompatibilidade com auth.ts (protect e authorize)", () => {
     it("protect rejeita requisição anônima com 401", () => {
-      const { req, res, resStatus, resJson, next } = createMockReqRes();
+      const { req, res, resStatus, next } = createMockReqRes();
       protect(req, res, next);
 
-      expect(resStatus).toHaveBeenCalledWith(401);
-      expect(resJson).toHaveBeenCalledWith({
-        success: false,
-        error: "Access denied. No token provided.",
-      });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(expect.any(UnauthorizedProblem));
+      expect(resStatus).not.toHaveBeenCalled();
     });
 
     it("protect permite requisição com token válido", () => {
@@ -329,8 +336,8 @@ describe("routerGuard Middleware", () => {
 
       authMiddleware(req, res, next);
 
-      expect(resStatus).toHaveBeenCalledWith(403);
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(expect.any(ForbiddenProblem));
+      expect(resStatus).not.toHaveBeenCalled();
     });
 
     it("authorize permite papel correto", () => {

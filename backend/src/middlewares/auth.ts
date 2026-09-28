@@ -29,9 +29,9 @@ export function protect(req: Request, res: Response, next: NextFunction) {
 
 // Optional middleware to restrict route access by role
 export function authorize(...roles: string[]) {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user || !roles.includes(req.user.role || "")) {
-      return res.status(403).json({ success: false, error: "Access forbidden. Insufficient permissions." });
+      return next(new ForbiddenProblem("Access forbidden. Insufficient permissions."));
     }
     next();
   };
