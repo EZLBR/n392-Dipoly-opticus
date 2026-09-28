@@ -335,4 +335,31 @@ describe("Schemas de entrada por rota e validação de invalidParams", () => {
       { name: "orderId", reason: "Informe o orderId." },
     ]);
   });
+
+  it("createBillingSchema: aceita string não numérica para permitir validação de regressão no banco", async () => {
+    const { createBillingSchema } = await import("../../../src/dtos/payment/payment.dto.js");
+    const app = createTestApp();
+    app.post("/billing", validateBody(createBillingSchema), (req, res) => {
+      res.json({ ok: true, orderId: req.body.orderId });
+    });
+    app.use(problemErrorHandler);
+
+    const res = await request(app).post("/billing").send({ orderId: "nao-numerico" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.orderId).toBe("nao-numerico");
+  });
+
+  it("validateQuery: não lança TypeError no Express 5 (req.query com getter nativo)", async () => {
+    const { getUsersQuerySchema } = await import("../../../src/dtos/auth/paginated-users.dto.js");
+    const app = createTestApp();
+    app.get("/users", validateQuery(getUsersQuerySchema), (req, res) => {
+      res.json({ ok: true, query: req.query });
+    });
+    app.use(problemErrorHandler);
+
+    const res = await request(app).get("/users");
+    expect(res.status).toBe(200);
+    expect(res.body.query).toMatchObject({ page: 1, limit: 20 });
+  });
 });
