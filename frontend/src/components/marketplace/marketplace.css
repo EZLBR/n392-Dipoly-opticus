@@ -1,0 +1,974 @@
+/* Scoped to the homepage; shared routes retain their existing styles. */
+body.opticus-home {
+  background: #fbfaf7;
+}
+body.opticus-home::before,
+body.opticus-home::after {
+  display: none !important;
+}
+.market-home {
+  --mk-paper: #fbfaf7;
+  --mk-ink: #242e27;
+  --mk-muted: #62695f;
+  --mk-line: #d9dcd2;
+  --mk-accent: #334c3c;
+  --mk-soft: #f0f1ea;
+  background: var(--mk-paper);
+  color: var(--mk-ink);
+}
+.market-home h1,
+.market-home h2,
+.market-home h3 {
+  color: inherit;
+}
+.market-home button,
+.market-home input,
+.market-home select {
+  font: inherit;
+  color: inherit;
+}
+.market-home button {
+  cursor: pointer;
+}
+.market-home button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.market-home :is(button, a, input, select, [tabindex]):focus-visible {
+  outline: 3px solid #a66428;
+  outline-offset: 4px;
+}
+.market-home .market-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 1.7px;
+  line-height: 1.6;
+}
+.market-dot {
+  height: 6px;
+  width: 6px;
+  border-radius: 50%;
+  background: #526e45;
+}
+.market-hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  max-width: 1600px;
+  margin: auto;
+  min-height: 650px;
+}
+.market-hero-copy {
+  padding: 72px clamp(26px, 5vw, 86px) 56px;
+  align-self: center;
+}
+.market-hero h1 {
+  font-size: clamp(48px, 5.4vw, 86px);
+  letter-spacing: -3.5px;
+  font-weight: 400;
+  line-height: 1.08;
+  margin: 30px 0 26px;
+}
+.market-home em {
+  font-family: inherit;
+  color: #55704e;
+  font-weight: 400;
+}
+.market-hero-copy > p {
+  max-width: 405px;
+  font-size: 14px;
+  line-height: 1.9;
+  color: var(--mk-muted);
+}
+.market-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 32px 0;
+}
+.market-home .market-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 46px;
+  padding: 13px 18px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 3px;
+  text-decoration: none;
+  line-height: 1.4;
+}
+.market-home .market-button.primary {
+  background: var(--mk-accent);
+  color: #fff;
+  border: 1px solid var(--mk-accent);
+}
+.market-home .market-button.secondary {
+  background: transparent;
+  border: 1px solid var(--mk-line);
+  color: var(--mk-ink);
+}
+.market-home .market-button:hover {
+  filter: brightness(0.93);
+}
+.market-hero-footnote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: var(--mk-muted);
+  font-size: 10px;
+}
+.market-hero-visual {
+  background: #eeeae3;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 32px;
+  color: #303a2d;
+}
+.market-hero-image {
+  position: absolute;
+  width: 125%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  inset: 0 auto 0 -12.5%;
+}
+.market-visual-top,
+.market-visual-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  position: relative;
+  z-index: 1;
+}
+.market-visual-top {
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+.market-visual-bottom h2 {
+  margin-top: 8px;
+  font-size: 38px;
+  font-weight: 400;
+  letter-spacing: -1px;
+}
+.market-material-tag {
+  position: absolute;
+  bottom: 150px;
+  right: 28px;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.market-material-tag > span {
+  width: 32px;
+  height: 1px;
+  background: #777e70;
+}
+.market-round-link {
+  display: grid;
+  place-items: center;
+  background: #334c3c;
+  color: #fff !important;
+  border: 0;
+  border-radius: 50%;
+  width: 54px;
+  height: 54px;
+}
+.market-benefits {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-block: 1px solid var(--mk-line);
+  padding: 30px clamp(24px, 5vw, 86px);
+  gap: 30px;
+  max-width: 1600px;
+  margin: auto;
+}
+.market-benefits > div {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.market-benefits > div + div {
+  border-left: 1px solid var(--mk-line);
+  padding-left: 30px;
+}
+.market-benefits svg {
+  flex-shrink: 0;
+  color: var(--mk-accent);
+}
+.market-benefits h2 {
+  font-family: "Outfit", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  margin: 0 0 6px;
+}
+.market-benefits p {
+  color: var(--mk-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.market-collection {
+  max-width: 1600px;
+  margin: auto;
+  padding: 78px clamp(24px, 5vw, 86px) 64px;
+}
+.market-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+.market-section-heading h2 {
+  font-size: clamp(28px, 3vw, 42px);
+  font-weight: 400;
+  letter-spacing: -1px;
+  margin-top: 14px;
+  scroll-margin-top: 28px;
+}
+.market-text-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: transparent;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--mk-line);
+  font-size: 12px !important;
+  white-space: nowrap;
+}
+.market-source {
+  display: flex;
+  gap: 28px;
+  border-bottom: 1px solid var(--mk-line);
+}
+.market-source button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 14px 0;
+  color: var(--mk-muted);
+  font-size: 12px;
+}
+.market-source button[aria-pressed="true"] {
+  border-bottom-color: var(--mk-accent);
+  color: var(--mk-ink);
+  font-weight: 600;
+}
+.market-source span {
+  font-size: 9px;
+  border: 1px solid var(--mk-line);
+  border-radius: 20px;
+  padding: 1px 6px;
+}
+.market-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 24px 0 16px;
+}
+.market-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--mk-soft);
+  padding: 0 14px;
+  border: 1px solid var(--mk-line);
+  border-radius: 3px;
+  width: min(380px, 100%);
+  min-width: 0;
+}
+.market-search input {
+  min-width: 0;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 14px 0;
+  font-size: 12px;
+}
+.market-search input::placeholder {
+  color: var(--mk-muted);
+}
+.market-sort {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--mk-muted);
+}
+.market-sort select {
+  background: var(--mk-paper);
+  border: 1px solid var(--mk-line);
+  padding: 12px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.market-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+.market-filters fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border: 0;
+}
+.market-filters button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  padding: 7px 11px;
+  min-height: 32px;
+  border: 1px solid var(--mk-line);
+  border-radius: 3px;
+  font-size: 11px;
+}
+.market-filters button[aria-pressed="true"] {
+  background: var(--mk-accent);
+  color: #fff;
+  border-color: var(--mk-accent);
+}
+.market-filter-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--mk-line);
+}
+.market-filters .market-clear {
+  border: 0;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.market-result-count {
+  margin-left: auto;
+  color: var(--mk-muted);
+  font-size: 11px;
+}
+.market-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+}
+.market-card {
+  min-width: 0;
+}
+.market-card-image {
+  position: relative;
+  background: #eeeae3;
+  aspect-ratio: 1 / 1.04;
+  overflow: hidden;
+  border-radius: 3px;
+  color: #303a2d;
+}
+.market-card-image > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.25s;
+}
+.market-card:hover .market-card-image > img {
+  transform: scale(1.04);
+}
+.market-card-number {
+  position: absolute;
+  top: 16px;
+  left: 15px;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+.market-favorite {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  background: #fbfaf7cc;
+  border-radius: 50%;
+}
+.market-favorite[aria-pressed="true"] {
+  color: #334c3c;
+}
+.market-card-open {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  background: #fbfaf7e8;
+  border: 1px solid #d4d7cc;
+  border-radius: 3px;
+  padding: 8px 10px;
+  font-size: 10px !important;
+}
+.market-card-info {
+  padding: 20px 1px 14px;
+}
+.market-card-info > p {
+  font-size: 10px;
+  color: var(--mk-muted);
+  margin-bottom: 9px;
+}
+.market-card-info > p span {
+  margin: 0 5px;
+}
+.market-card-info > div {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+.market-card-info h3 {
+  font-family: "Outfit", sans-serif;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.4px;
+  overflow-wrap: anywhere;
+}
+.market-card-info > div > span {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.market-card-info .market-text-link {
+  width: 100%;
+  margin-top: 12px;
+  font-size: 11px !important;
+}
+.market-price-note,
+.market-store-count {
+  color: var(--mk-muted);
+  font-size: 11px;
+  line-height: 1.7;
+  margin-top: 20px;
+}
+.market-store-count {
+  margin: 0 0 20px;
+}
+.market-state {
+  padding: 60px 24px;
+  border: 1px solid var(--mk-line);
+  text-align: center;
+  border-radius: 3px;
+}
+.market-state h3 {
+  font-size: 25px;
+  font-weight: 400;
+  margin: 16px 0 10px;
+}
+.market-state p {
+  font-size: 13px;
+  color: var(--mk-muted);
+  line-height: 1.7;
+  margin-bottom: 20px;
+}
+.market-catalog-intro {
+  font-size: 12px;
+  color: var(--mk-muted);
+  line-height: 1.7;
+  padding-top: 24px;
+}
+.market-loading > p {
+  color: var(--mk-muted);
+  font-size: 12px;
+  margin-bottom: 16px;
+}
+.market-skeleton {
+  height: 280px;
+  background: var(--mk-soft);
+  border: 1px solid var(--mk-line);
+  border-radius: 3px;
+}
+.market-image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: #62695f;
+  font-size: 12px;
+}
+.market-card-image.store > img {
+  object-fit: contain;
+}
+.market-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 28px;
+  font-size: 12px;
+}
+.market-storage-warning {
+  font-size: 13px;
+  color: var(--mk-ink);
+  background: var(--mk-soft);
+  border: 1px solid var(--mk-line);
+  padding: 18px;
+  margin-top: 16px;
+}
+.market-dialog {
+  margin: auto;
+  width: min(480px, calc(100% - 32px));
+  max-height: 90dvh;
+  overflow-y: auto;
+  background: var(--mk-paper);
+  color: var(--mk-ink);
+  padding: 26px;
+  border: 1px solid var(--mk-line);
+  border-radius: 8px;
+}
+.market-dialog::backdrop {
+  background: #152319aa;
+}
+.market-dialog-close {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  z-index: 1;
+  border: 1px solid var(--mk-line);
+  border-radius: 50%;
+  background: var(--mk-paper);
+}
+.market-dialog .market-card-image {
+  max-height: 250px;
+  margin-bottom: 24px;
+}
+.market-dialog h2 {
+  margin: 12px 0;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.market-dialog p {
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-top: 14px;
+}
+.market-dialog .market-detail-price {
+  font-size: 20px;
+}
+.market-process {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 70px;
+  background: var(--mk-soft);
+  padding: 68px clamp(24px, 7vw, 110px);
+  border-block: 1px solid var(--mk-line);
+}
+.market-process h2 {
+  font-size: clamp(30px, 3.2vw, 46px);
+  font-weight: 400;
+  letter-spacing: -1px;
+  margin: 20px 0 28px;
+  line-height: 1.3;
+}
+.market-process ol {
+  list-style: none;
+}
+.market-process li {
+  display: flex;
+  gap: 24px;
+  padding: 20px 0;
+}
+.market-process li + li {
+  border-top: 1px solid var(--mk-line);
+}
+.market-process li > span {
+  color: var(--mk-muted);
+  font-size: 11px;
+  padding-top: 3px;
+}
+.market-process h3 {
+  font-family: "Outfit", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+  margin-bottom: 10px;
+}
+.market-process p {
+  color: var(--mk-muted);
+  font-size: 12px;
+  line-height: 1.8;
+  max-width: 410px;
+}
+.market-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 30px;
+  padding: 44px clamp(24px, 5vw, 86px);
+}
+.market-wordmark {
+  color: var(--mk-ink);
+  font-family: "Playfair Display", serif;
+  font-size: 26px;
+  letter-spacing: 3px;
+  text-decoration: none;
+}
+.market-wordmark span {
+  font-size: 10px;
+  vertical-align: top;
+  letter-spacing: 0;
+}
+.market-footer p {
+  color: var(--mk-muted);
+  font-size: 11px;
+  margin-top: 8px;
+}
+.market-footer nav {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.market-footer button {
+  border: 0;
+  background: transparent;
+  padding: 10px 0;
+  font-size: 11px;
+}
+.market-footer > span {
+  color: var(--mk-muted);
+  font-size: 10px;
+}
+.market-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.market-skip {
+  position: fixed;
+  top: -100px;
+  left: 20px;
+  z-index: 1000;
+  padding: 12px;
+  background: var(--mk-paper);
+  color: var(--mk-ink);
+}
+.market-skip:focus {
+  top: 12px;
+}
+body.opticus-home .navbar {
+  position: relative;
+  background: #fbfaf7 !important;
+  color: #242e27 !important;
+  border-bottom: 1px solid #d9dcd2;
+  padding: 23px clamp(24px, 5vw, 86px);
+  box-shadow: none !important;
+}
+body.opticus-home
+  .navbar
+  :is(.logo, nav a, button, .session-box span, .navbar-actions, select) {
+  color: #303a2d !important;
+  text-shadow: none !important;
+}
+body.opticus-home .navbar .logo {
+  font-size: 24px;
+  letter-spacing: 3px;
+  text-decoration: none;
+}
+body.opticus-home .navbar :is(.btn, .dark-toggle, .mobile-menu-btn) {
+  background: transparent !important;
+  border-color: #d9dcd2 !important;
+  box-shadow: none;
+}
+body.opticus-home .navbar nav a {
+  letter-spacing: 0.6px;
+  font-size: 11px;
+}
+body.opticus-home .navbar nav a::after {
+  background: #334c3c;
+}
+body.opticus-home .navbar .nav-menu.open {
+  background: #fbfaf7 !important;
+}
+body.opticus-home .navbar :is(button, a, select):focus-visible {
+  outline: 3px solid #a66428;
+  outline-offset: 4px;
+}
+body.dark.opticus-home,
+body.dark.opticus-home .market-home {
+  --mk-paper: #20271f;
+  --mk-ink: #eef0e7;
+  --mk-muted: #b7bfb0;
+  --mk-line: #495143;
+  --mk-accent: #486148;
+  --mk-soft: #293126;
+  background: #20271f;
+}
+body.dark.opticus-home .market-home em {
+  color: #b1c7a6;
+}
+body.dark.opticus-home .market-benefits svg {
+  color: #b1c7a6;
+}
+body.dark.opticus-home .navbar,
+body.dark.opticus-home .navbar .nav-menu.open {
+  background: #20271f !important;
+  border-color: #495143 !important;
+}
+body.dark.opticus-home
+  .navbar
+  :is(.logo, nav a, button, .session-box span, .navbar-actions, select) {
+  color: #eef0e7 !important;
+}
+body.dark.opticus-home .navbar select {
+  background: #20271f;
+}
+body.dark.opticus-home .navbar nav a::after {
+  background: #b1c7a6;
+}
+@media (min-width: 1600px) {
+  .market-process {
+    padding-inline: max(86px, calc((100vw - 1400px) / 2));
+  }
+}
+@media (max-width: 1100px) {
+  .market-hero {
+    min-height: 560px;
+  }
+  .market-hero-copy {
+    padding: 48px 28px;
+  }
+  .market-hero h1 {
+    letter-spacing: -2px;
+  }
+  .market-hero-visual {
+    padding: 24px;
+  }
+  .market-visual-top span:last-child {
+    display: none;
+  }
+  .market-hero-footnote {
+    font-size: 9px;
+  }
+  .market-benefits {
+    gap: 20px;
+    padding: 26px;
+  }
+  .market-benefits > div {
+    gap: 12px;
+  }
+  .market-benefits > div + div {
+    padding-left: 20px;
+  }
+  .market-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .market-process {
+    gap: 40px;
+    padding: 48px 28px;
+  }
+  body.opticus-home .navbar {
+    padding-inline: 24px;
+  }
+  body.opticus-home .navbar nav a {
+    margin-left: 16px;
+  }
+}
+@media (max-width: 760px) {
+  .market-hero {
+    grid-template-columns: 1fr;
+  }
+  .market-hero-copy {
+    padding: 40px 24px 34px;
+  }
+  .market-hero h1 {
+    font-size: clamp(46px, 10vw, 65px);
+    line-height: 1.05;
+    letter-spacing: -2px;
+    margin: 24px 0;
+  }
+  .market-hero-copy > p {
+    font-size: 13px;
+    max-width: 450px;
+  }
+  .market-actions {
+    margin: 24px 0;
+    gap: 10px;
+  }
+  .market-home .market-button {
+    font-size: 11px;
+    padding: 12px 14px;
+    gap: 10px;
+  }
+  .market-hero-visual {
+    min-height: 380px;
+    padding: 22px 24px;
+  }
+  .market-hero-image {
+    object-fit: cover;
+    width: 100%;
+    left: 0;
+  }
+  .market-visual-top span:last-child {
+    display: inline;
+    font-size: 8px;
+  }
+  .market-visual-bottom h2 {
+    font-size: 30px;
+  }
+  .market-material-tag {
+    bottom: 110px;
+  }
+  .market-benefits {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 26px 24px;
+  }
+  .market-benefits > div + div {
+    border: 0;
+    padding: 0;
+  }
+  .market-collection {
+    padding: 44px 20px;
+  }
+  .market-section-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .market-section-heading h2 {
+    font-size: 30px;
+    line-height: 1.3;
+    margin-top: 12px;
+  }
+  .market-section-heading .market-text-link {
+    font-size: 11px !important;
+  }
+  .market-toolbar {
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .market-search {
+    flex: 1 1 200px;
+    width: 100%;
+  }
+  .market-sort {
+    margin-left: auto;
+  }
+  .market-sort select {
+    font-size: 11px;
+    padding: 9px;
+  }
+  .market-filters {
+    gap: 10px 7px;
+  }
+  .market-filter-divider {
+    display: none;
+  }
+  .market-result-count {
+    flex-basis: 100%;
+  }
+  .market-grid {
+    gap: 14px;
+  }
+  .market-card-image {
+    aspect-ratio: 0.86;
+  }
+  .market-card-image > img {
+    object-fit: cover;
+  }
+  .market-card-number {
+    font-size: 7px;
+    top: 12px;
+    left: 9px;
+  }
+  .market-favorite {
+    width: 30px;
+    height: 30px;
+    top: 5px;
+    right: 5px;
+  }
+  .market-card-open {
+    padding: 7px;
+    right: 7px;
+    bottom: 7px;
+    font-size: 9px !important;
+  }
+  .market-card-info {
+    padding-top: 16px;
+  }
+  .market-card-info h3 {
+    font-size: 16px;
+  }
+  .market-card-info > div {
+    align-items: start;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .market-card-info > p {
+    font-size: 9px;
+  }
+  .market-process {
+    grid-template-columns: 1fr;
+    gap: 26px;
+    padding: 40px 24px;
+  }
+  .market-process h2 {
+    font-size: 36px;
+  }
+  .market-process li {
+    gap: 18px;
+  }
+  .market-footer {
+    padding: 32px 24px;
+    align-items: start;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .market-footer nav {
+    gap: 22px;
+  }
+  .market-pagination {
+    gap: 10px;
+    font-size: 10px;
+  }
+  body.opticus-home .navbar {
+    padding: 17px 24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .market-home * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
