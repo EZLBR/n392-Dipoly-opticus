@@ -68,6 +68,11 @@ Aguardando permissão, falha, repetição e volta ao 3D têm estados explícitos
 
 ## Validação
 
+Revalidado em 29/09/2026 após integrar `origin/dev` (`8a541e5`): typecheck, os 25 testes
+do frontend (incluindo os novos testes de 401/403) e build passaram. O conflito de imports
+em `AuthContext` foi resolvido mantendo tanto a persistência do Studio quanto `apiFetch`
+e o tratamento de autenticação da equipe. Permanece o aviso de bundles acima de 500 kB.
+
 Executado localmente em 24/09/2026 (Node 24; CI do projeto utiliza Node 22):
 
 - `npm run typecheck`: passou.
