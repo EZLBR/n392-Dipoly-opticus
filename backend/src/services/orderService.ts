@@ -5,18 +5,12 @@
 
 import { PedidoStatus } from "@prisma/client";
 import prisma from "../config/prisma.js";
+import { BadRequestProblem, ForbiddenProblem, NotFoundProblem } from "../errors/problem.js";
 
 /** Identidade já autenticada, vinda do token. Nunca do corpo da requisição. */
 export interface Ator {
   id: number;
   role: string;
-}
-
-export class ServiceError extends Error {
-  constructor(message: string, readonly status: number) {
-    super(message);
-    this.name = "ServiceError";
-  }
 }
 
 /**
@@ -58,12 +52,12 @@ export class OrderService {
 
     // 403 é falta de papel — nunca falta de posse.
     if (!PAPEIS_PERMITIDOS.includes(ator.role)) {
-      throw new ServiceError("Apenas fábricas e staff podem atualizar o status.", 403);
+      throw new ForbiddenProblem("Apenas fábricas e staff podem atualizar o status.");
     }
 
     const statusPrisma = STATUS_POR_ROTULO[status];
     if (!statusPrisma) {
-      throw new ServiceError("Status inválido.", 400);
+      throw new BadRequestProblem("Status inválido.");
     }
 
     const ehStaff = ator.role === "staff";
@@ -84,7 +78,7 @@ export class OrderService {
 
     // Pedido inexistente e pedido de outra fábrica caem aqui do mesmo jeito.
     if (count === 0) {
-      throw new ServiceError("Pedido não encontrado.", 404);
+      throw new NotFoundProblem("Pedido não encontrado.");
     }
 
     // A leitura também é escopada, para não reabrir pela porta dos fundos.
@@ -107,7 +101,7 @@ export class OrderService {
     });
 
     if (!pedido) {
-      throw new ServiceError("Pedido não encontrado.", 404);
+      throw new NotFoundProblem("Pedido não encontrado.");
     }
 
     return pedido;

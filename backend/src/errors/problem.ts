@@ -1,3 +1,11 @@
+/** Namespace único das URIs de tipo de problema. Centraliza os slugs. */
+export const PROBLEM_TYPE_NAMESPACE = "https://opticus.example/problems";
+
+/** Monta a URI estável de um tipo de problema a partir de um slug. */
+export function problemType(slug: string): string {
+  return `${PROBLEM_TYPE_NAMESPACE}/${slug}`;
+}
+
 export interface ProblemInit {
   detail?: string;
   instance?: string;
@@ -57,7 +65,7 @@ export abstract class HttpProblem extends Error {
 }
 
 export class NotFoundProblem extends HttpProblem {
-  readonly type = "https://opticus.example/problems/not-found";
+  readonly type = problemType("not-found");
   readonly title = "Recurso não encontrado";
   readonly status = 404;
 
@@ -67,7 +75,7 @@ export class NotFoundProblem extends HttpProblem {
 }
 
 export class ConflictProblem extends HttpProblem {
-  readonly type = "https://opticus.example/problems/conflict";
+  readonly type = problemType("conflict");
   readonly title = "Conflito com o estado atual do recurso";
   readonly status = 409;
 
@@ -77,7 +85,7 @@ export class ConflictProblem extends HttpProblem {
 }
 
 export class ForbiddenProblem extends HttpProblem {
-  readonly type = "https://opticus.example/problems/forbidden";
+  readonly type = problemType("forbidden");
   readonly title = "Acesso não autorizado ao recurso";
   readonly status = 403;
 
@@ -86,8 +94,48 @@ export class ForbiddenProblem extends HttpProblem {
   }
 }
 
+export class BadRequestProblem extends HttpProblem {
+  readonly type = problemType("bad-request");
+  readonly title = "Requisição inválida";
+  readonly status = 400;
+
+  constructor(detail?: string, init: ProblemInit = {}) {
+    super(detail, init);
+  }
+}
+
+export class UnauthorizedProblem extends HttpProblem {
+  readonly type = problemType("unauthorized");
+  readonly title = "Autenticação necessária";
+  readonly status = 401;
+
+  constructor(detail?: string, init: ProblemInit = {}) {
+    super(detail, init);
+  }
+}
+
+export class TooManyRequestsProblem extends HttpProblem {
+  readonly type = problemType("rate-limit");
+  readonly title = "Muitas requisições";
+  readonly status = 429;
+
+  constructor(detail?: string, init: ProblemInit = {}) {
+    super(detail, init);
+  }
+}
+
+export class InternalServerErrorProblem extends HttpProblem {
+  readonly type = problemType("internal-error");
+  readonly title = "Erro interno no servidor";
+  readonly status = 500;
+
+  constructor(detail?: string, init: ProblemInit = {}) {
+    super(detail, init);
+  }
+}
+
 export class ValidationProblem extends HttpProblem {
-  readonly type = "https://opticus.example/problems/validation";
+  readonly type = problemType("validation");
   readonly title = "Erro de validação";
   readonly status = 422;
   readonly errors: ValidationFieldError[];

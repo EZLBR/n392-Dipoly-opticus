@@ -72,9 +72,17 @@ describe("PUT /api/orders/:publicId/status — autorização de objeto", () => {
       .set(...comToken(fabricaB.token))
       .send({ status: "Delivered" });
 
-    // Qualquer diferença aqui é oráculo de enumeração.
+    // Qualquer diferença aqui é oráculo de enumeração. Como as respostas são
+    // Problem Details, instance/timestamp (correlação) são sempre distintos
+    // entre requisições — compara-se apenas a parte semântica.
     expect(alheio.status).toBe(inexistente.status);
-    expect(alheio.body).toEqual(inexistente.body);
+    const semCorrelacao = (corpo: { type?: string; title?: string; status?: number; detail?: string }) => ({
+      type: corpo.type,
+      title: corpo.title,
+      status: corpo.status,
+      detail: corpo.detail,
+    });
+    expect(semCorrelacao(alheio.body)).toEqual(semCorrelacao(inexistente.body));
   });
 
   it("usuário anônimo recebe 401", async () => {

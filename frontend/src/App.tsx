@@ -4,9 +4,10 @@ import { useAuth } from "./contexts/AuthContext";
 import { useCart } from "./contexts/CartContext";
 import Navbar from "./components/Navbar";
 import { useTranslation } from "./contexts/LanguageContext";
-import { Check, X } from "lucide-react";
+import { Check, X, AlertTriangle } from "lucide-react";
 import { FactoryDashboard, StaffDashboard } from "./components/Dashboards";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { setNavigateHandler } from "./utils/api";
 
 // Lazy Loading para os componentes pesados
 const Marketplace = lazy(() => import("./components/Marketplace"));
@@ -17,11 +18,16 @@ const Cart = lazy(() => import("./components/Cart"));
 
 function AppContent() {
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
-  const { session } = useAuth();
+  const { session, authWarning, clearAuthWarning } = useAuth();
   const { clearCart } = useCart();
   const { language } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    setNavigateHandler(navigate);
+    return () => setNavigateHandler(null);
+  }, [navigate]);
 
   // Verifica redirecionamento de pagamento
   useEffect(() => {
@@ -78,6 +84,48 @@ function AppContent() {
   return (
     <div className="app-container">
       <Navbar currentView={currentView} setView={setViewLegacy} />
+
+      {authWarning && (
+        <div
+          role="alert"
+          className="auth-warning-banner"
+          style={{
+            background: "rgba(239, 68, 68, 0.15)",
+            border: "1px solid rgba(239, 68, 68, 0.4)",
+            color: "#f87171",
+            padding: "12px 20px",
+            borderRadius: "8px",
+            margin: "12px 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+            backdropFilter: "blur(8px)",
+            position: "relative",
+            zIndex: 100,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <AlertTriangle size={20} />
+            <span style={{ fontWeight: 500 }}>{authWarning}</span>
+          </div>
+          <button
+            onClick={clearAuthWarning}
+            aria-label="Fechar aviso"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#f87171",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              padding: "4px",
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
 
       <main className="main-content">
         <Suspense fallback={

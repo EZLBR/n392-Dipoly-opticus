@@ -7,7 +7,14 @@
 import pool from "../config/db.js";
 import { env } from "../config/env.js";
 import crypto from "crypto";
-import type { Request, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
+import {
+  BadRequestProblem,
+  ForbiddenProblem,
+  NotFoundProblem,
+  UnauthorizedProblem,
+} from "../errors/problem.js";
+import logger from "../utils/logger.js";
 
 // Security Helper
 const escapeHTML = (str: unknown) => {
@@ -26,25 +33,25 @@ const PORT          = env.PORT;
 //   CRIAR COBRANÇA (AbacatePay ou simulador)
 //   POST /api/payments/create-billing
 // ─────────────────────────────────────────────────────────
-export async function createBilling(req: Request, res: Response) {
+export async function createBilling(req: Request, res: Response, next: NextFunction) {
   const { orderId } = req.body;
 
   if (!orderId) {
-    return res.status(400).json({ success: false, error: "Informe o orderId." });
+    throw new BadRequestProblem("Informe o orderId.");
   }
 
   try {
     const { rows } = await pool.query("SELECT * FROM pedidos WHERE id = $1", [orderId]);
 
     if (rows.length === 0) {
-      return res.status(404).json({ success: false, error: "Pedido não encontrado." });
+      return next(new NotFoundProblem("Pedido não encontrado."));
     }
 
     const order = rows[0];
 
     // Security Fix: Verificar ownership
     if (order.usuario_id !== req.user!.id && req.user!.role !== "staff") {
-      return res.status(403).json({ success: false, error: "Acesso negado: Este pedido pertence a outro usuário." });
+      return next(new ForbiddenProblem("Acesso negado: Este pedido pertence a outro usuário."));
     }
     const amountInCents   = Math.round(Number(order.total) * 100);
     const isMockToken     = !ABACATE_TOKEN || ABACATE_TOKEN.includes("your_abacatepay_token_here");
@@ -95,14 +102,14 @@ export async function createBilling(req: Request, res: Response) {
       [realBillingId, orderId]
     );
 
-    await _registrarPagamento(orderId, "pix", "pendente", Number(order.total), realBillingId);
+    await _registrarPagamento(orderId, "pix", "pendente", Number(order.total), realBillingId, req.requestId);
 
     return res.json({ success: true, checkoutUrl: realCheckoutUrl, isSimulated: false });
 
   } catch (err) {
-    console.error(
-      "Erro no AbacatePay:",
-      err instanceof Error ? err.message : err,
+    logger.error(
+      { err, traceId: req.requestId, requestId: req.requestId },
+      "[AbacatePay] Falha na cobrança; caindo para o simulador",
     );
 
     const fallbackId  = `bill-fallback-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -130,6 +137,7 @@ async function _registrarPagamento(
   status: string,
   valor: number,
   referenciaExterna: string,
+  traceId?: string,
 ) {
   try {
     await pool.query(
@@ -137,9 +145,9 @@ async function _registrarPagamento(
       [pedidoId, metodo, status, valor, referenciaExterna]
     );
   } catch (err) {
-    console.error(
-      "Erro ao registrar pagamento:",
-      err instanceof Error ? err.message : err,
+    logger.error(
+      { err, traceId, requestId: traceId },
+      "Erro ao registrar pagamento",
     );
   }
 }
@@ -153,43 +161,37 @@ export async function getPayments(req: Request, res: Response) {
   const limit = parseInt(String(req.query.limit || "")) || 20;
   const offset = (page - 1) * limit;
 
-  try {
-    const countRes = await pool.query(`SELECT COUNT(*) FROM pagamentos`);
-    const totalCount = parseInt(countRes.rows[0].count);
+  const countRes = await pool.query(`SELECT COUNT(*) FROM pagamentos`);
+  const totalCount = parseInt(countRes.rows[0].count);
 
-    const { rows } = await pool.query(
-      `SELECT
-        pg.id,
-        pg.pedido_id,
-        pg.metodo,
-        pg.status,
-        pg.valor,
-        pg.referencia_externa AS "referenciaExterna",
-        pg.criado_em          AS "criadoEm",
-        pd.customer_name      AS "clienteNome",
-        pd.customer_email     AS "clienteEmail"
-       FROM pagamentos pg
-       INNER JOIN pedidos pd ON pd.id = pg.pedido_id
-       ORDER BY pg.criado_em DESC
-       LIMIT $1 OFFSET $2`,
-      [limit, offset]
-    );
+  const { rows } = await pool.query(
+    `SELECT
+      pg.id,
+      pg.pedido_id,
+      pg.metodo,
+      pg.status,
+      pg.valor,
+      pg.referencia_externa AS "referenciaExterna",
+      pg.criado_em          AS "criadoEm",
+      pd.customer_name      AS "clienteNome",
+      pd.customer_email     AS "clienteEmail"
+     FROM pagamentos pg
+     INNER JOIN pedidos pd ON pd.id = pg.pedido_id
+     ORDER BY pg.criado_em DESC
+     LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
 
-    return res.json({
-      success: true,
-      pagamentos: rows,
-      pagination: {
-        page,
-        limit,
-        totalItems: totalCount,
-        totalPages: Math.ceil(totalCount / limit)
-      }
-    });
-
-  } catch (err) {
-    console.error("Erro ao listar pagamentos:", err);
-    return res.status(500).json({ success: false, error: "Falha ao carregar pagamentos." });
-  }
+  return res.json({
+    success: true,
+    pagamentos: rows,
+    pagination: {
+      page,
+      limit,
+      totalItems: totalCount,
+      totalPages: Math.ceil(totalCount / limit)
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────
@@ -205,48 +207,39 @@ export async function handleWebhook(req: Request, res: Response) {
 
   if (ABACATE_TOKEN && !ABACATE_TOKEN.includes("your_abacatepay")) {
     if (!signature) {
-      return res.status(401).json({ success: false, error: "Assinatura ausente" });
+      throw new UnauthorizedProblem("Assinatura ausente");
     }
     const expected = crypto.createHmac("sha256", ABACATE_TOKEN).update(payloadString).digest("hex");
     if (signature !== expected) {
       console.warn("[Webhook] Assinatura inválida");
-      return res.status(401).json({ success: false, error: "Assinatura inválida" });
+      throw new UnauthorizedProblem("Assinatura inválida");
     }
   }
 
-  try {
-    if (payload.event === "billing.paid" && payload.data?.id) {
-      const billingId = payload.data.id;
+  if (payload.event === "billing.paid" && payload.data?.id) {
+    const billingId = payload.data.id;
 
-      const { rows } = await pool.query(
-        "SELECT id FROM pedidos WHERE abacate_billing_id = $1",
+    const { rows } = await pool.query(
+      "SELECT id FROM pedidos WHERE abacate_billing_id = $1",
+      [billingId]
+    );
+
+    if (rows.length > 0) {
+      await pool.query(
+        "UPDATE pedidos SET status = 'Queued' WHERE abacate_billing_id = $1",
         [billingId]
       );
 
-      if (rows.length > 0) {
-        await pool.query(
-          "UPDATE pedidos SET status = 'Queued' WHERE abacate_billing_id = $1",
-          [billingId]
-        );
+      await pool.query(
+        "UPDATE pagamentos SET status = 'aprovado' WHERE referencia_externa = $1",
+        [billingId]
+      );
 
-        await pool.query(
-          "UPDATE pagamentos SET status = 'aprovado' WHERE referencia_externa = $1",
-          [billingId]
-        );
-
-        console.log(`[Webhook] Pagamento confirmado. ${rows.length} pedidos enviados para produção.`);
-      }
+      console.log(`[Webhook] Pagamento confirmado. ${rows.length} pedidos enviados para produção.`);
     }
-
-    return res.status(200).json({ success: true });
-
-  } catch (err) {
-    console.error("Erro no webhook:", err);
-    return res.status(500).json({
-      success: false,
-      error: err instanceof Error ? err.message : "Falha ao processar webhook.",
-    });
   }
+
+  return res.status(200).json({ success: true });
 }
 
 // ─────────────────────────────────────────────────────────
@@ -328,7 +321,7 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
     return res.send(html);
 
   } catch (err) {
-    console.error("Erro no checkout simulado:", err);
+    logger.error({ err, traceId: req.requestId, requestId: req.requestId }, "Erro no checkout simulado");
     return res.status(500).send("<h3>Falha ao carregar checkout.</h3>");
   }
 }
@@ -374,7 +367,7 @@ export async function confirmSimulatedPayment(req: Request, res: Response) {
     return res.redirect(redirectUrl);
 
   } catch (err) {
-    console.error("Erro ao confirmar pagamento simulado:", err);
+    logger.error({ err, traceId: req.requestId, requestId: req.requestId }, "Erro ao confirmar pagamento simulado");
     return res.status(500).send("<h3>Falha na simulação de pagamento.</h3>");
   }
 }

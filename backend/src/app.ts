@@ -1,9 +1,11 @@
 import cors from "cors";
 import express from "express";
-import type { ErrorRequestHandler } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import { env } from "./config/env.js";
+import { NotFoundProblem, TooManyRequestsProblem } from "./errors/problem.js";
+import { problemErrorHandler } from "./middlewares/problemErrorHandler.js";
+import { requestId } from "./middlewares/requestId.js";
 import authRoutes from "./routes/authRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import designRoutes from "./routes/designRoutes.js";
@@ -54,13 +56,21 @@ export function createApp(options: AppOptions = {}) {
     }),
   );
 
+  app.use(requestId());
+
   if (enableRateLimit) {
     app.use(
       "/api/auth/login",
       rateLimit({
         windowMs: 15 * 60 * 1000,
         max: 15,
-        message: "Too many login attempts, please try again later",
+        handler: (_req, _res, next) => {
+          next(
+            new TooManyRequestsProblem(
+              "Muitas tentativas de login. Tente novamente mais tarde.",
+            ),
+          );
+        },
       }),
     );
 
@@ -69,7 +79,13 @@ export function createApp(options: AppOptions = {}) {
       rateLimit({
         windowMs: 15 * 60 * 1000,
         max: 100,
-        message: "Too many requests from this IP, please try again after 15 minutes",
+        handler: (_req, _res, next) => {
+          next(
+            new TooManyRequestsProblem(
+              "Muitas requisições a partir deste IP. Tente novamente em 15 minutos.",
+            ),
+          );
+        },
       }),
     );
   }
@@ -96,27 +112,13 @@ export function createApp(options: AppOptions = {}) {
     res.json({ success: true, status: "Server is healthy and responsive." });
   });
 
-  app.use((req, res) => {
+  // Rota não encontrada → problema de negócio no mesmo padrão Problem Details.
+  app.use((req, _res, next) => {
     logger.info(`[404] Route Not Found: ${req.method} ${req.originalUrl}`);
-    res.status(404).json({
-      success: false,
-      error: `Rota não encontrada: ${req.method} ${req.originalUrl}`,
-    });
+    next(new NotFoundProblem(`Rota não encontrada: ${req.method} ${req.originalUrl}`));
   });
 
-  const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
-    logger.error(
-      { err, req: { method: req.method, url: req.url } },
-      "Unhandled Error",
-    );
-    res.status(500).json({
-      success: false,
-      error: "Ocorreu um erro interno no servidor.",
-      details: err.message,
-    });
-  };
-
-  app.use(errorHandler);
+  app.use(problemErrorHandler);
   return app;
 }
 

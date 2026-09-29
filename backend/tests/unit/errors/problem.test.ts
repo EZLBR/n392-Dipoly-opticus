@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  BadRequestProblem,
   ConflictProblem,
   ForbiddenProblem,
   HttpProblem,
+  InternalServerErrorProblem,
   NotFoundProblem,
+  PROBLEM_TYPE_NAMESPACE,
+  TooManyRequestsProblem,
+  UnauthorizedProblem,
   ValidationProblem,
+  problemType,
 } from "../../../src/errors/problem.js";
 
 const violacoes = [
@@ -46,6 +52,42 @@ const casos: Array<{
     type: "https://opticus.example/problems/forbidden",
     title: "Acesso não autorizado ao recurso",
     status: 403,
+    extra: {},
+  },
+  {
+    nome: "BadRequestProblem",
+    criar: () => new BadRequestProblem(),
+    criarCom: (detail, instance) => new BadRequestProblem(detail, { instance }),
+    type: "https://opticus.example/problems/bad-request",
+    title: "Requisição inválida",
+    status: 400,
+    extra: {},
+  },
+  {
+    nome: "UnauthorizedProblem",
+    criar: () => new UnauthorizedProblem(),
+    criarCom: (detail, instance) => new UnauthorizedProblem(detail, { instance }),
+    type: "https://opticus.example/problems/unauthorized",
+    title: "Autenticação necessária",
+    status: 401,
+    extra: {},
+  },
+  {
+    nome: "TooManyRequestsProblem",
+    criar: () => new TooManyRequestsProblem(),
+    criarCom: (detail, instance) => new TooManyRequestsProblem(detail, { instance }),
+    type: "https://opticus.example/problems/rate-limit",
+    title: "Muitas requisições",
+    status: 429,
+    extra: {},
+  },
+  {
+    nome: "InternalServerErrorProblem",
+    criar: () => new InternalServerErrorProblem(),
+    criarCom: (detail, instance) => new InternalServerErrorProblem(detail, { instance }),
+    type: "https://opticus.example/problems/internal-error",
+    title: "Erro interno no servidor",
+    status: 500,
     extra: {},
   },
   {
@@ -127,6 +169,24 @@ describe("HttpProblem — hierarquia base", () => {
       expect(problema.instance).toBe("/orders/01J");
     },
   );
+});
+
+describe("ProblemDetails — namespace de tipos", () => {
+  it("PROBLEM_TYPE_NAMESPACE é a base estável de todas as URIs", () => {
+    expect(PROBLEM_TYPE_NAMESPACE).toBe("https://opticus.example/problems");
+  });
+
+  it("problemType monta uma URI estável a partir de um slug", () => {
+    expect(problemType("not-found")).toBe(`${PROBLEM_TYPE_NAMESPACE}/not-found`);
+    expect(problemType("internal-error")).toBe(`${PROBLEM_TYPE_NAMESPACE}/internal-error`);
+  });
+
+  it("todas as subclasses usam o namespace central e um slug consistente", () => {
+    const tipos = casos.map((c) => c.type);
+    for (const tipo of tipos) {
+      expect(tipo.startsWith(`${PROBLEM_TYPE_NAMESPACE}/`)).toBe(true);
+    }
+  });
 });
 
 describe("ValidationProblem — violações de campo", () => {

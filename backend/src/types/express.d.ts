@@ -9,6 +9,7 @@ declare global {
         name?: string;
         role?: string;
       };
+      requestId?: string;
     }
   }
 }
