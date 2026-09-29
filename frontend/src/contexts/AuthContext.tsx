@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { apiFetch, setAuthErrorHandler } from "../utils/api";
 
 let API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 if (API_URL.endsWith('/')) API_URL = API_URL.slice(0, -1);
@@ -10,11 +11,30 @@ export function AuthProvider({ children }) {
   const [users, setUsers] = useState([]);
   const [session, setSession] = useState(null);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
+  const [authWarning, setAuthWarning] = useState<string | null>(null);
 
-  const fetchBackendUsers = async (token) => {
+  const clearAuthWarning = () => setAuthWarning(null);
+
+  useEffect(() => {
+    setAuthErrorHandler((status, problem) => {
+      const message = problem?.title || (status === 401 ? "Acesso não autorizado." : "Acesso negado.");
+      if (status === 401) {
+        localStorage.removeItem("opticus_token");
+        setSession(null);
+      } else if (status === 403) {
+        setAuthWarning(message);
+      }
+    });
+
+    return () => {
+      setAuthErrorHandler(null);
+    };
+  }, []);
+
+  const fetchBackendUsers = async (token?: string) => {
     try {
-      const res = await fetch(`${API_URL}/auth/users`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const res = await apiFetch(`${API_URL}/auth/users`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -25,10 +45,10 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const fetchBackendDesigns = async (token) => {
+  const fetchBackendDesigns = async (token?: string) => {
     try {
-      const res = await fetch(`${API_URL}/designs`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const res = await apiFetch(`${API_URL}/designs`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -45,7 +65,7 @@ export function AuthProvider({ children }) {
       const token = localStorage.getItem("opticus_token");
       if (token) {
         try {
-          const res = await fetch(`${API_URL}/auth/me`, {
+          const res = await apiFetch(`${API_URL}/auth/me`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           const data = await res.json();
@@ -127,7 +147,7 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        const res = await fetch(`${API_URL}/designs`, {
+        const res = await apiFetch(`${API_URL}/designs`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -160,7 +180,7 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        await fetch(`${API_URL}/designs/${designId}`, {
+        await apiFetch(`${API_URL}/designs/${designId}`, {
           method: "DELETE",
           headers: { "Authorization": `Bearer ${token}` }
         });
@@ -175,7 +195,7 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        const res = await fetch(`${API_URL}/auth/users/${userId}`, {
+        const res = await apiFetch(`${API_URL}/auth/users/${userId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -188,7 +208,7 @@ export function AuthProvider({ children }) {
           fetchBackendUsers(token);
           return { ok: true };
         }
-        return { ok: false, message: data.error };
+        return { ok: false, message: data.title || data.error };
       } catch (e) {
         console.error("User update failed:", e);
       }
@@ -201,7 +221,7 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        const res = await fetch(`${API_URL}/auth/users/${userId}`, {
+        const res = await apiFetch(`${API_URL}/auth/users/${userId}`, {
           method: "DELETE",
           headers: { "Authorization": `Bearer ${token}` }
         });
@@ -210,7 +230,7 @@ export function AuthProvider({ children }) {
           fetchBackendUsers(token);
           return { ok: true };
         }
-        return { ok: false, message: data.error };
+        return { ok: false, message: data.title || data.error };
       } catch (e) {
         console.error("User deletion failed:", e);
       }
@@ -222,9 +242,13 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       session,
+      setSession,
       users,
       designs,
       isBackendConnected,
+      authWarning,
+      clearAuthWarning,
+      setAuthWarning,
       login,
       signup,
       logout,

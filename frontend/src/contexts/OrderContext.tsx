@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
+import { apiFetch } from "../utils/api";
 
 const OrderContext = createContext<any>(undefined);
 
@@ -14,10 +15,10 @@ export function OrderProvider({ children }) {
     return localOrders ? JSON.parse(localOrders) : [];
   });
 
-  const fetchBackendOrders = async (token) => {
+  const fetchBackendOrders = async (token?: string) => {
     try {
-      const res = await fetch(`${API_URL}/orders`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const res = await apiFetch(`${API_URL}/orders`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -40,7 +41,7 @@ export function OrderProvider({ children }) {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        const res = await fetch(`${API_URL}/orders/${orderId}/status`, {
+        const res = await apiFetch(`${API_URL}/orders/${orderId}/status`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -73,7 +74,7 @@ export function OrderProvider({ children }) {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        const res = await fetch(`${API_URL}/payments/create-billing`, {
+        const res = await apiFetch(`${API_URL}/payments/create-billing`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
