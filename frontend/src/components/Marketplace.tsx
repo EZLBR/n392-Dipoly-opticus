@@ -151,6 +151,7 @@ export default function Marketplace({ setView }) {
     } else {
       localStorage.setItem("opticus_active_product", product.id);
       localStorage.removeItem("opticus_active_design");
+      localStorage.removeItem("opticus_active_design_id");
     }
 
     setView("create");

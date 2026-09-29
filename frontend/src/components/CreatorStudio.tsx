@@ -1,203 +1,195 @@
 import React, { useState } from "react";
 import { useTranslation } from "../contexts/LanguageContext";
-import { CreatorStudioProvider, useCreatorStudio } from "../contexts/CreatorStudioContext";
-import { useAuth } from "../contexts/AuthContext";
+import {
+  CreatorStudioProvider,
+  useCreatorStudio,
+} from "../contexts/CreatorStudioContext";
 import { useCart } from "../contexts/CartContext";
 import { calculateBasePrice } from "../utils/pricing";
-
+import { dimensions, label } from "../eyewear/config";
 import ThreePreview from "./creator/ThreePreview";
 import TryOnViewport from "./creator/TryOnViewport";
 import CustomizationPanel from "./creator/CustomizationPanel";
 import { SaveDesignModal } from "./creator/CreatorModals";
-
-import { ArrowLeft, Sparkles, Box, Camera, Download } from "lucide-react";
+import { ArrowLeft, Box, Camera, RotateCw, Check } from "lucide-react";
+import "./creator/studio.css";
 
 function CreatorStudioInner({ setView, onOpenDesigns }) {
   const {
-    frontModel, templeModel, frameProfile, frameMaterial, color,
-    isSunglasses, lensMaterial, lensTreatments,
-    nosePadMaterial, templeTipMaterial, hingeMaterial,
-    prescriptionFileName,
-    activeStep, setActiveStep,
-    tryOnMode, setTryOnMode,
-    statusMessage, showToast,
-    environment, setEnvironment
+    config,
+    tryOnMode,
+    setTryOnMode,
+    statusMessage,
+    showToast,
+    environment,
+    setEnvironment,
+    view,
+    setCameraView,
+    autoRotate,
+    setAutoRotate,
+    draftStatus,
   } = useCreatorStudio();
-
-  const { language, t } = useTranslation();
-  const { session } = useAuth();
-  const { checkoutCart, addToCart } = useCart();
-
+  const { language } = useTranslation();
+  const pt = language === "pt";
+  const { addToCart } = useCart();
   const [showSaveModal, setShowSaveModal] = useState(false);
-
-  const handleProduceClick = async () => {
-    const basePrice = calculateBasePrice({
-      isSunglasses,
-      frameProfile,
-      lensTreatments,
-      frameMaterial,
-      lensMaterial
-    });
-
-    const orderData = {
-      id: `custom-${Date.now()}`,
-      productName: `Customized ${frameMaterial.toUpperCase()} ${frontModel.toUpperCase()}`,
-      total: basePrice,
+  const d = dimensions[config.frontModel];
+  function add() {
+    addToCart({
+      id: "custom-" + Date.now(),
+      productName:
+        label(config.frontModel, language) +
+        " · " +
+        label(config.frameMaterial, language),
+      factoryId: "factory-demo",
+      factoryName: "Demo Factory",
+      total: calculateBasePrice(config),
       quantity: 1,
       customSpecs: {
-        frontModel, templeModel,
-        color, profile: frameProfile,
-        frameMaterial, lensMaterial, lensTreatments,
-        nosePadMaterial, templeTipMaterial, hingeMaterial,
-        isSunglasses,
-        prescriptionUploaded: !!prescriptionFileName
-      }
-    };
-
-    if (!session) {
-      addToCart(orderData);
-      localStorage.setItem("opticus_redirect_after_login", "cart");
-      showToast(language === "pt" ? "Faça login para continuar o pagamento." : "Please log in to continue payment.");
-      setView("login");
-      return;
-    }
-
-    try {
-      showToast(language === "pt" ? "Redirecionando para pagamento..." : "Redirecting to payment...");
-      const result = await checkoutCart([orderData]);
-      if (result && result.success) {
-        if (result.isOffline) {
-          showToast(language === "pt" ? "Pedido enfileirado (Modo Offline)" : "Order queued (Offline mode)");
-          setView("marketplace");
-        } else if (result.checkoutUrl) {
-          window.location.href = result.checkoutUrl;
-        }
-      } else {
-        showToast("Error processing order.");
-      }
-    } catch (e) {
-      console.error(e);
-      showToast("Error starting payment.");
-    }
-  };
-
+        ...config,
+        model: config.frontModel,
+        profile: config.frameProfile,
+      },
+    });
+    showToast(
+      pt
+        ? "Sua criação foi adicionada à sacola."
+        : "Your creation was added to the bag.",
+    );
+    setView("cart");
+  }
   return (
-    <div className="page-create" style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", backgroundColor: "#f8fbff" }}>
-
-      {/* Toast Notifier */}
-      {statusMessage && (
-        <div style={{
-          position: "fixed", bottom: "30px", right: "30px", background: "rgba(255, 255, 255, 0.08)",
-          backdropFilter: "blur(12px)", border: "1px solid rgba(255, 255, 255, 0.15)",
-          padding: "16px 24px", borderRadius: "8px", color: "#111", zIndex: 1000,
-          display: "flex", alignItems: "center", gap: "10px", boxShadow: "0 10px 30px rgba(0,0,0,0.3)"
-        }}>
-          <Sparkles size={18} style={{ color: "var(--primary-accent)" }} />
-          <span style={{ fontSize: "14px", fontWeight: "600" }}>{statusMessage}</span>
+    <div className="studio-shell">
+      <header className="studio-header">
+        <button
+          className="studio-back"
+          onClick={() => setView("marketplace")}
+          aria-label={pt ? "Voltar à coleção" : "Back to collection"}
+        >
+          <ArrowLeft size={18} />
+        </button>
+        <div>
+          <span className="studio-eyebrow">OPTICUS / ATELIER</span>
+          <h1>
+            Creator Studio<span>01</span>
+          </h1>
         </div>
-      )}
-
-      {/* Main Workspace */}
-      <main style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative", paddingTop: "85px" }}>
-
-        {/* Left Side: 3D / AR Viewport */}
-        <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column" }}>
-
-          {/* Top Toolbar overlay */}
-          <div style={{
-            position: "absolute", top: "24px", left: "50%", transform: "translateX(-50%)", zIndex: 20,
-            display: "flex", gap: "8px", background: "rgba(255,255,255,0.8)", backdropFilter: "blur(8px)",
-            padding: "6px", borderRadius: "16px", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", border: "1px solid #eaeaea"
-          }}>
+        <span className="studio-draft">
+          <Check size={13} />
+          {draftStatus === "saved"
+            ? pt
+              ? "Salvo neste dispositivo"
+              : "Saved on this device"
+            : pt
+              ? "Não foi possível salvar o rascunho"
+              : "Unable to save draft"}
+        </span>
+      </header>
+      <main className="studio-workspace">
+        <section
+          className={
+            "studio-stage " +
+            (environment === "wooddark" ? "studio-stage-dark" : "")
+          }
+          aria-label={pt ? "Prévia do óculos" : "Eyewear preview"}
+        >
+          <div className="studio-mode">
             <button
-              style={{
-                padding: "8px 24px", borderRadius: "12px", fontSize: "12px", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "1px",
-                display: "flex", alignItems: "center", gap: "8px", border: "none", cursor: "pointer", transition: "all 0.2s",
-                background: !tryOnMode ? "#fff" : "transparent",
-                color: !tryOnMode ? "#000" : "#666",
-                boxShadow: !tryOnMode ? "0 2px 8px rgba(0,0,0,0.1)" : "none"
-              }}
+              aria-pressed={!tryOnMode}
               onClick={() => setTryOnMode(false)}
             >
-              <Box size={14} />
-              {language === "pt" ? "Renderização 3D" : "3D Render"}
+              <Box size={15} />
+              {pt ? "Modelo 3D" : "3D model"}
             </button>
-            <button
-              style={{
-                padding: "8px 24px", borderRadius: "12px", fontSize: "12px", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "1px",
-                display: "flex", alignItems: "center", gap: "8px", border: "none", cursor: "pointer", transition: "all 0.2s",
-                background: tryOnMode ? "#fff" : "transparent",
-                color: tryOnMode ? "#000" : "#666",
-                boxShadow: tryOnMode ? "0 2px 8px rgba(0,0,0,0.1)" : "none"
-              }}
-              onClick={() => setTryOnMode(true)}
-            >
-              <Camera size={14} />
-              {language === "pt" ? "Live Try-On" : "Live Try-On"}
+            <button aria-pressed={tryOnMode} onClick={() => setTryOnMode(true)}>
+              <Camera size={15} />
+              {pt ? "Experimentar" : "Try on"}
             </button>
           </div>
-
-          {/* Environment Switcher */}
+          <div className="studio-model">
+            {tryOnMode ? <TryOnViewport /> : <ThreePreview />}
+          </div>
           {!tryOnMode && (
-            <div style={{
-              position: "absolute", bottom: "24px", left: "24px", zIndex: 20, display: "flex", flexDirection: "column", gap: "8px",
-              background: "rgba(255,255,255,0.8)", backdropFilter: "blur(8px)", padding: "10px", borderRadius: "16px",
-              boxShadow: "0 2px 10px rgba(0,0,0,0.05)", border: "1px solid #eaeaea"
-            }}>
-              <span style={{ fontSize: "10px", fontWeight: "bold", color: "#aaa", textTransform: "uppercase", letterSpacing: "1px", padding: "0 8px" }}>
-                {language === "pt" ? "Cenário" : "Environment"}
-              </span>
-              <div style={{ display: "flex", gap: "4px" }}>
-                <button
-                  style={{
-                    width: "32px", height: "32px", borderRadius: "8px", border: environment === "studio" ? "2px solid #000" : "1px solid #ccc",
-                    background: "#f8fbff", cursor: "pointer"
-                  }}
-                  onClick={() => setEnvironment("studio")}
-                  title="Studio Lighting"
-                />
-                <button
-                  style={{
-                    width: "32px", height: "32px", borderRadius: "8px", border: environment === "wood" ? "2px solid #000" : "1px solid #ccc",
-                    background: "#3d2713", cursor: "pointer"
-                  }}
-                  onClick={() => setEnvironment("wood")}
-                  title="Dark Wood"
-                />
+            <>
+              <div className="studio-model-caption">
+                <span className="studio-eyebrow">
+                  OPTICUS /{" "}
+                  {label(config.frameMaterial, language).toUpperCase()}
+                </span>
+                <h2>{label(config.frontModel, language)}</h2>
+                <span>
+                  {d.lensWidth} □ {d.bridge} — {d.temple} mm
+                </span>
               </div>
-            </div>
+              <div
+                className="studio-view-controls"
+                aria-label={pt ? "Ângulo da câmera" : "Camera angle"}
+              >
+                {(["perspective", "front", "side"] as const).map((v, i) => (
+                  <button
+                    key={v}
+                    aria-pressed={view === v}
+                    onClick={() => {
+                      setCameraView(v);
+                      setAutoRotate(false);
+                    }}
+                  >
+                    {
+                      (pt
+                        ? ["¾", "Frente", "Lateral"]
+                        : ["¾", "Front", "Side"])[i]
+                    }
+                  </button>
+                ))}
+                <button
+                  aria-label={pt ? "Rotação automática" : "Auto rotate"}
+                  aria-pressed={autoRotate}
+                  onClick={() => setAutoRotate(!autoRotate)}
+                >
+                  <RotateCw size={16} />
+                </button>
+              </div>
+              <div className="studio-stage-bottom">
+                <label>
+                  {pt ? "Luz" : "Light"}
+                  <select
+                    value={environment}
+                    onChange={(e) => setEnvironment(e.target.value)}
+                  >
+                    <option value="studio">{pt ? "Estúdio" : "Studio"}</option>
+                    <option value="wooddark">{pt ? "Escuro" : "Dark"}</option>
+                    <option value="sunlight">{pt ? "Sol" : "Sun"}</option>
+                  </select>
+                </label>
+                <p>
+                  {pt
+                    ? "Arraste para girar · Role para aproximar"
+                    : "Drag to orbit · Scroll to zoom"}
+                </p>
+              </div>
+            </>
           )}
-
-          {/* Viewport Layer */}
-          <div style={{ flex: 1, position: "relative", width: "100%", height: "100%" }}>
-            <div style={{ position: "absolute", inset: 0, opacity: tryOnMode ? 0 : 1, pointerEvents: tryOnMode ? "none" : "auto", transition: "opacity 0.5s" }}>
-              <ThreePreview />
-            </div>
-
-            <div style={{ position: "absolute", inset: 0, opacity: !tryOnMode ? 0 : 1, pointerEvents: !tryOnMode ? "none" : "auto", transition: "opacity 0.5s" }}>
-              {tryOnMode && <TryOnViewport />}
-            </div>
-          </div>
-        </div>
-
-        {/* Right Side: Customization Panel */}
-        <aside style={{ width: "400px", height: "100%", flexShrink: 0, position: "relative", zIndex: 30 }}>
-          <CustomizationPanel onSave={() => setShowSaveModal(true)} onOrder={handleProduceClick} />
+        </section>
+        <aside className="studio-sidebar">
+          <CustomizationPanel
+            onSave={() => setShowSaveModal(true)}
+            onCart={add}
+          />
         </aside>
-
       </main>
-
-      {/* Modals */}
+      {statusMessage && (
+        <div className="studio-toast" role="status">
+          {statusMessage}
+        </div>
+      )}
       <SaveDesignModal
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
-        onOpenDesigns={onOpenDesigns}
+        onOpenDesigns={onOpenDesigns || (() => setView("designs"))}
       />
     </div>
   );
 }
-
-// Wrapper to provide the Customization State Context
 export default function CreatorStudio(props) {
   return (
     <CreatorStudioProvider>
