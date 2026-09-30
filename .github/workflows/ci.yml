@@ -183,3 +183,67 @@ jobs:
         run: |
           docker logs api || true
           docker logs web || true
+
+  compose:
+    name: Stack Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Recusa subir sem os segredos obrigatórios
+        run: |
+          if docker compose config > /dev/null 2>&1; then
+            echo "::error::a stack aceitou subir sem .env"; exit 1
+          fi
+          if docker compose --env-file .env.example config > /dev/null 2>&1; then
+            echo "::error::a stack aceitou subir com os segredos vazios do .env.example"; exit 1
+          fi
+
+      - name: Preparar o .env
+        run: |
+          cp .env.example .env
+          sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 24)/" .env
+          sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$(openssl rand -hex 48)/" .env
+
+      - name: Subir a stack
+        run: docker compose up --build --detach --wait --wait-timeout 300
+
+      - name: Verificar a stack
+        run: |
+          docker compose ps --all
+          test "$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose ps -aq migrate)")" = "0"
+
+          curl -fsS http://localhost:5000/health
+          curl -fsS http://localhost:8080/ | grep -q 'id="root"'
+
+          # A API fala com o banco pelo nome do serviço, não por localhost
+          docker compose exec -T api sh -c 'echo "$DATABASE_URL"' | grep -q '@db:5432/'
+
+          # O CORS aceita a origem em que o frontend é servido
+          curl -fsS -D - -o /dev/null -X OPTIONS http://localhost:5000/api/auth/login \
+            -H 'Origin: http://localhost:8080' -H 'Access-Control-Request-Method: POST' \
+            | grep -qi '^access-control-allow-origin: http://localhost:8080'
+
+          corpo='{"name":"CI Compose","email":"ci-compose@exemplo.invalid","password":"SenhaCompose123"}'
+          status=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+            -X POST http://localhost:5000/api/auth/register -d "$corpo")
+          echo "cadastro: $status"; test "$status" = "201"
+
+      - name: down preserva os dados
+        run: |
+          docker compose down
+          docker volume inspect opticus_pgdata > /dev/null
+          docker compose up --detach --wait --wait-timeout 300
+          status=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+            -X POST http://localhost:5000/api/auth/login \
+            -d '{"email":"ci-compose@exemplo.invalid","password":"SenhaCompose123"}')
+          echo "login depois do down/up: $status"; test "$status" = "200"
+
+      - name: Logs da stack
+        if: failure()
+        run: docker compose logs
+
+      - name: Encerrar e apagar o volume
+        if: always()
+        run: docker compose down -v
