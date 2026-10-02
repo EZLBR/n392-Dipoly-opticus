@@ -76,6 +76,10 @@ function mapearErroBanco(err: Error): HttpProblem | null {
   // Prisma translada violações do Postgres para códigos P####.
   if (comCodigo.name === "PrismaClientKnownRequestError") {
     switch (comCodigo.code) {
+      case "P2000":
+        return new BadRequestProblem(
+          "Valor excede o tamanho máximo permitido para o campo."
+        );
       case "P2002": {
         const campos = alvos(comCodigo.meta?.target);
         return new ConflictProblem(
