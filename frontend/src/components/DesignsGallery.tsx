@@ -7,14 +7,18 @@ import * as THREE from "three";
 import { calculateBasePrice } from "../utils/pricing";
 
 import ThreePreview from "./ThreePreview";
+import { normalizeConfig, label } from "../eyewear/config";
 
 export default function DesignsGallery({ setView }) {
   const { session, designs, deleteBackendDesign, isBackendConnected } = useAuth();
   const { addToCart } = useCart();
   const { t, language } = useTranslation();
+  // Guest-created local drafts remain usable; authenticated remote designs keep the login gate.
+  const visibleDesigns = session ? designs : designs.filter(design => design.syncStatus === "local");
 
   const handleOpenDesign = (index) => {
     localStorage.setItem("opticus_active_design", String(index));
+    localStorage.setItem("opticus_active_design_id", String(designs[index].id));
     localStorage.removeItem("opticus_active_product");
     setView("create");
   };
@@ -34,17 +38,13 @@ export default function DesignsGallery({ setView }) {
     const activeIndex = localStorage.getItem("opticus_active_design");
     if (activeIndex !== null && Number(activeIndex) === index) {
       localStorage.removeItem("opticus_active_design");
+      localStorage.removeItem("opticus_active_design_id");
     }
   };
 
   const handleAddToCart = (design) => {
-    const price = calculateBasePrice({
-      isSunglasses: design.isSunglasses,
-      frameProfile: design.frameProfile,
-      lensTreatments: design.antiReflective ? ["anti-reflective"] : [],
-      frameMaterial: design.frameMaterial || "acetate",
-      lensMaterial: design.lensMaterial || "cr39"
-    });
+    const config = normalizeConfig(design);
+    const price = calculateBasePrice(config);
 
     const cartItem = {
       id: design.id || `design-${Date.now()}`,
@@ -53,13 +53,12 @@ export default function DesignsGallery({ setView }) {
       factoryName: "Demo Factory",
       total: price,
       customSpecs: {
-        model: design.model || "round",
-        color: design.color || "#000000",
-        profile: design.frameProfile || "standard",
+        ...config,
+        model: config.frontModel,
+        profile: config.frameProfile,
         templeStyle: design.templeStyle || "standard",
         bridgeStyle: design.bridgeStyle || "standard",
-        isSunglasses: !!design.isSunglasses,
-        antiReflective: !!design.antiReflective,
+        antiReflective: config.lensTreatments.includes("anti_reflective"),
         prescriptionUploaded: !!design.prescriptionFileName
       }
     };
@@ -68,7 +67,7 @@ export default function DesignsGallery({ setView }) {
     alert(t("cart-item-added") || "Added to cart!");
   };
 
-  if (!session) {
+  if (!session && visibleDesigns.length === 0) {
     return (
       <div className="page-wrapper" style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "80vh" }}>
         <div className="empty-state" style={{ textAlign: "center" }}>
@@ -89,7 +88,7 @@ export default function DesignsGallery({ setView }) {
             <h1>YOUR DESIGNS</h1>
             <p>Access, edit, and order the custom eyewear you have crafted in the Opticus Studio.</p>
             <div className="hero-actions">
-              <button className="btn primary hero-btn" onClick={() => setView("create")}>
+              <button className="btn primary hero-btn" onClick={() => { localStorage.removeItem("opticus_active_design"); localStorage.removeItem("opticus_active_design_id"); localStorage.removeItem("opticus_active_product"); localStorage.removeItem("opticus_creator_draft"); setView("create"); }}>
                 <Sparkles size={16} style={{ marginRight: "6px", verticalAlign: "middle" }} />
                 CREATE NEW
               </button>
@@ -98,16 +97,18 @@ export default function DesignsGallery({ setView }) {
         </section>
 
         <section className="products" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "30px", marginTop: "40px" }}>
-          {(!designs || designs.length === 0) ? (
+          {(visibleDesigns.length === 0) ? (
             <div className="empty-state" style={{ gridColumn: "1/-1", textAlign: "center", padding: "100px 0", background: "rgba(255,255,255,0.02)", borderRadius: "12px", border: "1px dashed rgba(255,255,255,0.1)" }}>
               <h3 style={{ marginBottom: "10px" }}>No designs saved yet</h3>
               <p style={{ color: "var(--color-hint)" }}>Open the Studio to start crafting your perfect frame.</p>
             </div>
           ) : (
-            (designs || []).map((design, index) => {
-              const shape = design?.model || "round";
-              const material = design.isSunglasses ? "metal" : "acetate";
-              const dateObj = design.created_at ? new Date(design.created_at) : new Date();
+            visibleDesigns.map((design) => {
+              const index = designs.indexOf(design);
+              const config = normalizeConfig(design);
+              const shape = label(config.frontModel, language);
+              const material = label(config.frameMaterial, language);
+              const dateObj = new Date(design.createdAt || design.created_at || Date.now());
 
               return (
                 <article key={design.id || index} className="product-card" style={{ display: "flex", flexDirection: "column" }}>
@@ -123,7 +124,7 @@ export default function DesignsGallery({ setView }) {
                     <Trash2 size={14} />
                   </button>
 
-                  <ThreePreview shape={shape} material={material} />
+                  <ThreePreview config={design} />
 
                   <div className="product-meta" style={{ padding: "20px", flex: 1, display: "flex", flexDirection: "column" }}>
                     <div className="product-topline" style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", textTransform: "uppercase", color: "var(--color-hint)", marginBottom: "8px" }}>
@@ -132,6 +133,7 @@ export default function DesignsGallery({ setView }) {
                     </div>
 
                     <h3 style={{ fontSize: "18px", margin: "0 0 16px 0" }}>{design.name || `Custom Design #${index + 1}`}</h3>
+                    {design.syncStatus === "local" && <p style={{ fontSize: 12 }}>{language === "pt" ? "Salvo neste dispositivo • não sincronizado" : "Saved on this device • not synced"}</p>}
 
                     <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "10px" }}>
                       <button className="btn" style={{ width: "100%", justifyContent: "center" }} onClick={() => handleOpenDesign(index)}>
