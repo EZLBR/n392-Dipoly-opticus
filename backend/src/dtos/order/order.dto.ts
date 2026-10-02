@@ -4,12 +4,14 @@ export const createOrderSchema = z.object({
   productName: z
     .string({ message: "Nome do produto é obrigatório." })
     .trim()
-    .min(1, "Nome do produto é obrigatório."),
+    .min(1, "Nome do produto é obrigatório.")
+    .max(255),
   factoryId: z.coerce.number({ message: "ID da fábrica é obrigatório." }),
   factoryName: z
     .string({ message: "Nome da fábrica é obrigatório." })
     .trim()
-    .min(1, "Nome da fábrica é obrigatório."),
+    .min(1, "Nome da fábrica é obrigatório.")
+    .max(255),
   total: z.coerce
     .number({ message: "Total é obrigatório." })
     .positive("Total deve ser um número positivo."),
@@ -20,9 +22,9 @@ export type CreateOrderDTO = z.infer<typeof createOrderSchema>;
 
 export const updateOrderStatusSchema = z.object({
   status: z
-    .string({ message: "Informe o novo status." })
-    .trim()
-    .min(1, "Informe o novo status."),
+    .enum(["Pending Payment", "Queued", "In production", "Delivered", "Cancelled"], {
+      message: "Informe um status válido.",
+    }),
 });
 
 export type UpdateOrderStatusDTO = z.infer<typeof updateOrderStatusSchema>;
@@ -31,12 +33,14 @@ export const cartItemSchema = z.object({
   productName: z
     .string({ message: "Nome do produto é obrigatório." })
     .trim()
-    .min(1, "Nome do produto é obrigatório."),
+    .min(1, "Nome do produto é obrigatório.")
+    .max(255),
   factoryId: z.coerce.number({ message: "ID da fábrica é obrigatório." }),
   factoryName: z
     .string({ message: "Nome da fábrica é obrigatório." })
     .trim()
-    .min(1, "Nome da fábrica é obrigatório."),
+    .min(1, "Nome da fábrica é obrigatório.")
+    .max(255),
   total: z.coerce
     .number({ message: "Total é obrigatório." })
     .positive("Total deve ser um número positivo."),

@@ -5,6 +5,7 @@ export const loginSchema = z.object({
     .string({ message: "Email é obrigatório." })
     .trim()
     .toLowerCase()
+    .max(255)
     .email("Formato de email inválido."),
   password: z
     .string({ message: "Senha é obrigatória." })

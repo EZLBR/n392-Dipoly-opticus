@@ -4,11 +4,13 @@ export const registerSchema = z.object({
   name: z
     .string({ message: "Nome é obrigatório." })
     .trim()
-    .min(1, "Nome é obrigatório."),
+    .min(1, "Nome é obrigatório.")
+    .max(255),
   email: z
     .string({ message: "Email é obrigatório." })
     .trim()
     .toLowerCase()
+    .max(255)
     .email("Formato de email inválido."),
   password: z
     .string({ message: "Senha é obrigatória." })
