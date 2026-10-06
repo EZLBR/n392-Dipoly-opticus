@@ -161,7 +161,7 @@ export default function Cart({ setView }) {
                   key={item.id}
                   className="premium-glass-card cart-item"
                 >
-                  <ThreePreview shape={shape} color={color} isSunglasses={isSun} />
+                  <ThreePreview config={specs} />
 
                   <div className="cart-item-details">
                     <h3 style={{ fontSize: "18px", fontWeight: "600", margin: "0 0 6px 0" }}>
