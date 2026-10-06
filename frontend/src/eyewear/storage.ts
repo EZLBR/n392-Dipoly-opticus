@@ -61,6 +61,9 @@ function readStudio(storage: Pick<Storage, "getItem">): StudioDraft {
       designId: design.id,
       name: design.name,
     };
+  const selectedProduct = readJSON(storage, "opticus_active_product_config");
+  if (product && selectedProduct?.id === product && selectedProduct.config)
+    return { config: normalizeConfig(selectedProduct.config), source };
   if (product)
     return {
       config: normalizeConfig({
