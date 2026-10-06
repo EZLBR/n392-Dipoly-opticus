@@ -132,6 +132,145 @@ npx prisma db seed
 
 Consulte [backend/.env.example](backend/.env.example) para configurar PostgreSQL, JWT, CORS e integrações.
 
+## Docker
+
+Imagens de produção para o backend e o frontend. Para subir a stack completa, com o
+PostgreSQL, use o Docker Compose (abaixo).
+
+| Imagem | Build | Conteúdo |
+| --- | --- | --- |
+| API | `docker build -t opticus-backend ./backend` | Node, dependências de produção e `dist/`. Sem CLI do Prisma, compilador ou testes |
+| Migrations | `docker build --target migrate -t opticus-backend-migrate ./backend` | CLI do Prisma, migrations e seeds |
+| Frontend | `docker build -t opticus-frontend ./frontend` | nginx sem privilégios servindo o build do Vite |
+
+Os processos rodam com usuário não-root. **Nenhum segredo entra nas imagens:**
+variáveis sensíveis são fornecidas na execução.
+
+### Stack completa com Docker Compose
+
+Sobe PostgreSQL, migrations, API e frontend com um comando:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Antes de subir, preencha no `.env` os dois valores obrigatórios, `POSTGRES_PASSWORD` e
+`JWT_SECRET`. Sem eles o Compose **recusa a subida** e diz o que falta. Para gerar
+valores aleatórios:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+| Serviço | Endereço no host | Função |
+| --- | --- | --- |
+| `db` | `127.0.0.1:5433` | PostgreSQL 16, com dados no volume persistente `pgdata` |
+| `migrate` | — | aplica as migrations e o seed de referência, e termina |
+| `api` | `http://localhost:5000` | backend; saúde em `/health` |
+| `web` | `http://localhost:8080` | frontend |
+
+Ordem de subida: `db` saudável → `migrate` conclui → `api` saudável → `web`. Dentro da
+rede do Compose os serviços se enxergam pelo nome — a API conecta em `db:5432`, nunca
+em `localhost`.
+
+As portas são configuráveis no `.env` (`API_PORT`, `WEB_PORT`, `DB_PORT`) e são
+publicadas só em `127.0.0.1`. O banco usa a **5433** para não colidir com um PostgreSQL
+já instalado na 5432; para abri-lo no pgAdmin, conecte em `localhost:5433` com o
+usuário e a senha do `.env`.
+
+```bash
+docker compose up --build -d --wait   # sobe em segundo plano e espera tudo ficar saudável
+docker compose ps                     # estado dos serviços
+docker compose logs -f api            # acompanhar a API
+docker compose down                   # encerra e MANTÉM os dados
+docker compose down -v                # encerra e APAGA o banco
+```
+
+Depois de alterar código, rode `docker compose up --build` para reconstruir as imagens.
+Mudar `API_PORT` também exige rebuild, porque o endereço da API é embutido no frontend.
+
+**Dados de exemplo (opcional, só local):**
+
+```bash
+docker compose run --rm migrate npm run seed:dev
+```
+
+> Cria `cliente@exemplo.invalid` e `fabrica@exemplo.invalid` com uma **senha fixa e
+> pública** (está no código e aparece no log). Use só na sua máquina; nunca num
+> ambiente acessível por outras pessoas.
+
+As seções abaixo descrevem o uso de cada imagem isoladamente, sem o Compose.
+
+### Backend
+
+Crie um arquivo de ambiente **fora do controle de versão**:
+
+```dotenv
+# backend.env — não versionar
+DATABASE_URL=postgresql://usuario:senha@host.docker.internal:5432/opticus_db
+JWT_SECRET=troque-por-um-segredo-longo-e-aleatorio
+FRONTEND_URL=http://localhost:8080
+```
+
+As migrations são um passo próprio, executado antes da API — nunca no boot:
+
+```bash
+docker run --rm --env-file backend.env opticus-backend-migrate
+```
+
+Seed opcional, com a mesma imagem:
+
+```bash
+docker run --rm --env-file backend.env opticus-backend-migrate npx prisma db seed
+```
+
+Depois, a API:
+
+```bash
+docker run -d --name opticus-api -p 5000:5000 --env-file backend.env opticus-backend
+```
+
+| Variável | Obrigatória | Observação |
+| --- | --- | --- |
+| `DATABASE_URL` | sim | a API não sobe sem ela |
+| `JWT_SECRET` | sim | a API não sobe sem ela |
+| `FRONTEND_URL` | não | origem liberada no CORS; padrão `http://localhost:5173` |
+| `PORT` | não | padrão `5000` |
+| `ABACATE_TOKEN` | não | sem ela, o pagamento roda em modo simulado |
+
+> **Banco na própria máquina:** dentro do container, `localhost` é o próprio
+> container. No Windows e no macOS, use `host.docker.internal` no lugar de
+> `localhost` na `DATABASE_URL`.
+>
+> **CORS:** o frontend em container é servido em `http://localhost:8080`.
+> Sem `FRONTEND_URL=http://localhost:8080`, a API recusa as requisições dele.
+
+A imagem declara um `HEALTHCHECK` sobre `/health`; o estado aparece em `docker ps`.
+
+### Frontend
+
+O endereço da API é embutido no bundle **durante o build**:
+
+```bash
+docker build --build-arg VITE_API_URL=http://localhost:5000/api -t opticus-frontend ./frontend
+docker run -d --name opticus-web -p 8080:8080 opticus-frontend
+```
+
+Acesse `http://localhost:8080`. Rotas do React Router abertas direto pela URL
+são servidas pelo `index.html`.
+
+> `VITE_API_URL` vai parar no JavaScript entregue ao navegador: trocar o endereço
+> exige gerar nova imagem. **Nunca** passe segredos em variáveis `VITE_*` nem em
+> `--build-arg` — ficam gravados na imagem e no histórico dela.
+
+### Verificação na esteira
+
+O job **Imagens Docker** do CI constrói as três imagens e as executa de verdade:
+aplica as migrations pela imagem `migrate`, sobe a API e faz cadastro e login
+passando pelo Prisma, sobe o frontend e verifica o fallback de SPA, os cabeçalhos
+de segurança, o usuário não-root e a ausência de segredos e arquivos `.env`.
+
 ## Segurança
 
 - autorização de objetos deve ocorrer no backend para prevenir BOLA/IDOR;

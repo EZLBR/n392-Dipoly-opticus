@@ -1,0 +1,25 @@
+# ============================================================
+#   Contexto de build do frontend
+#   Tudo que está aqui nunca é enviado ao daemon do Docker.
+# ============================================================
+
+# Dependências e artefatos: a imagem instala e gera o próprio build
+node_modules
+dist
+coverage
+
+# Controle de versão e deploy
+.git
+.gitignore
+.vercel
+
+# Ambiente: nenhum .env entra na imagem. O único valor que o build
+# precisa (VITE_API_URL) é passado como argumento de build.
+.env
+.env.*
+*.env
+
+# Diversos
+*.log
+Dockerfile
+.dockerignore
