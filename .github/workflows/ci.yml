@@ -82,3 +82,104 @@ jobs:
         run: npm test
       - name: Gerar build
         run: npm run build
+
+  docker:
+    name: Imagens Docker
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: opticus_docker
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opticus_docker"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/opticus_docker
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Construir imagem da API
+        run: docker build -t opticus-backend ./backend
+      - name: Construir imagem de migrations
+        run: docker build --target migrate -t opticus-backend-migrate ./backend
+      - name: Construir imagem do frontend
+        run: docker build -t opticus-frontend ./frontend
+
+      - name: Imagens sem segredos nem arquivos .env
+        run: |
+          for img in opticus-backend opticus-backend-migrate opticus-frontend; do
+            if docker image inspect "$img" --format '{{json .Config.Env}}' | grep -Eiq 'secret|token|password|database_url'; then
+              echo "::error::$img declara variável sensível no ENV da imagem"; exit 1
+            fi
+          done
+          for img in opticus-backend opticus-backend-migrate; do
+            if docker run --rm --entrypoint sh "$img" -c "find /app -path /app/node_modules -prune -o -name '.env*' -print | grep -q ."; then
+              echo "::error::$img contém arquivo .env em /app"; exit 1
+            fi
+          done
+          if docker run --rm --entrypoint sh opticus-frontend -c "find /usr/share/nginx/html -name '.env*' | grep -q ."; then
+            echo "::error::opticus-frontend contém arquivo .env"; exit 1
+          fi
+
+      - name: Aplicar migrations pela imagem
+        run: docker run --rm --network host -e DATABASE_URL opticus-backend-migrate
+      - name: Executar o seed pela imagem
+        run: docker run --rm --network host -e DATABASE_URL opticus-backend-migrate npx prisma db seed
+
+      - name: Executar a API e verificar
+        run: |
+          docker run -d --name api --network host \
+            -e DATABASE_URL \
+            -e JWT_SECRET=segredo-apenas-para-ci-nao-use-em-producao \
+            -e FRONTEND_URL=http://localhost:8080 \
+            opticus-backend
+          for i in $(seq 1 30); do curl -fsS http://localhost:5000/health > /dev/null && break; sleep 1; done
+          curl -fsS http://localhost:5000/health
+
+          # Escrita e leitura pelo Prisma: prova que o client e o motor
+          # nativo copiados para a imagem final funcionam sem a CLI.
+          corpo='{"name":"CI Docker","email":"ci-docker@exemplo.invalid","password":"SenhaDocker123"}'
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:5000/api/auth/register \
+            -H 'Content-Type: application/json' -d "$corpo")
+          echo "cadastro: $status"; test "$status" = "201"
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:5000/api/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"ci-docker@exemplo.invalid","password":"SenhaDocker123"}')
+          echo "login: $status"; test "$status" = "200"
+
+          test "$(docker exec api id -u)" != "0"
+          docker exec api sh -c 'test ! -e node_modules/prisma'
+          docker exec api wget -qO- http://127.0.0.1:5000/health > /dev/null
+
+      - name: Executar o frontend e verificar
+        run: |
+          docker run -d --name web -p 8080:8080 opticus-frontend
+          for i in $(seq 1 15); do curl -fsS http://localhost:8080/ > /dev/null && break; sleep 1; done
+          curl -fsS http://localhost:8080/ | grep -q 'id="root"'
+
+          # Rota do React Router é servida pelo index.html (fallback de SPA)
+          curl -fsS http://localhost:8080/uma/rota/do/react-router | grep -q 'id="root"'
+
+          # Asset inexistente responde 404, em vez de devolver o index.html
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/assets/nao-existe.js)" = "404"
+
+          # Cabeçalhos de segurança chegam também aos assets com cache longo
+          asset=$(curl -fsS http://localhost:8080/ | grep -o '/assets/[^"]*\.js' | head -1)
+          curl -fsSI "http://localhost:8080${asset}" | grep -qi '^x-content-type-options: nosniff'
+
+          test "$(docker exec web id -u)" != "0"
+          docker exec web wget -qO- http://127.0.0.1:8080/ > /dev/null
+
+      - name: Logs dos containers
+        if: failure()
+        run: |
+          docker logs api || true
+          docker logs web || true
