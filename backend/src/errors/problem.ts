@@ -16,6 +16,11 @@ export interface ValidationFieldError {
   message: string;
 }
 
+export interface InvalidParam {
+  name: string;
+  reason: string;
+}
+
 export interface ProblemDetails {
   type: string;
   title: string;
@@ -23,6 +28,7 @@ export interface ProblemDetails {
   detail?: string;
   instance?: string;
   errors?: ValidationFieldError[];
+  invalidParams?: InvalidParam[];
 }
 
 export abstract class HttpProblem extends Error {
@@ -94,13 +100,29 @@ export class ForbiddenProblem extends HttpProblem {
   }
 }
 
+export interface BadRequestProblemInit extends ProblemInit {
+  invalidParams?: InvalidParam[];
+}
+
 export class BadRequestProblem extends HttpProblem {
   readonly type = problemType("bad-request");
   readonly title = "Requisição inválida";
   readonly status = 400;
+  readonly invalidParams?: InvalidParam[];
 
-  constructor(detail?: string, init: ProblemInit = {}) {
+  constructor(detail?: string, init: BadRequestProblemInit = {}) {
     super(detail, init);
+    if (init.invalidParams && init.invalidParams.length > 0) {
+      this.invalidParams = init.invalidParams;
+    }
+  }
+
+  override toJSON(): ProblemDetails {
+    const base = super.toJSON();
+    if (this.invalidParams !== undefined) {
+      base.invalidParams = this.invalidParams;
+    }
+    return base;
   }
 }
 

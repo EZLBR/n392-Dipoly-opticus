@@ -5,18 +5,15 @@
 
 import pool from "../config/db.js";
 import type { Request, Response } from "express";
-import { BadRequestProblem, ConflictProblem, NotFoundProblem } from "../errors/problem.js";
+import { ConflictProblem, NotFoundProblem } from "../errors/problem.js";
+import type { CreateCategoryDTO, UpdateCategoryDTO } from "../dtos/category/category.dto.js";
 
 // ─────────────────────────────────────────────────────────
 //   CRIAR CATEGORIA
 //   POST /api/categories
 // ─────────────────────────────────────────────────────────
 export async function createCategory(req: Request, res: Response) {
-  const { nome, descricao } = req.body;
-
-  if (!nome) {
-    throw new BadRequestProblem("Nome da categoria é obrigatório.");
-  }
+  const { nome, descricao } = req.body as CreateCategoryDTO;
 
   // Verifica se já existe uma categoria com esse nome
   const { rows: existing } = await pool.query(
@@ -98,11 +95,7 @@ export async function getCategoryById(req: Request, res: Response) {
 // ─────────────────────────────────────────────────────────
 export async function updateCategory(req: Request, res: Response) {
   const { id } = req.params;
-  const { nome, descricao } = req.body;
-
-  if (!nome) {
-    throw new BadRequestProblem("Nome é obrigatório.");
-  }
+  const { nome, descricao } = req.body as UpdateCategoryDTO;
 
   const result = await pool.query(
     "UPDATE categorias SET nome = $1, descricao = $2 WHERE id = $3",

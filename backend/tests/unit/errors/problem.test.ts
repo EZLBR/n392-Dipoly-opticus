@@ -242,3 +242,32 @@ describe("ValidationProblem — violações de campo", () => {
     expect(problema).toBeInstanceOf(ValidationProblem);
   });
 });
+
+describe("BadRequestProblem — invalidParams (RFC 9457)", () => {
+  const invalidParams = [
+    { name: "email", reason: "Formato de email inválido." },
+    { name: "password", reason: "A senha deve ter pelo menos 8 caracteres." },
+  ];
+
+  it("armazena e serializa invalidParams via toJSON()", () => {
+    const problema = new BadRequestProblem("Dados da requisição inválidos.", {
+      invalidParams,
+    });
+
+    expect(problema.invalidParams).toEqual(invalidParams);
+    expect(problema.toJSON()).toEqual({
+      type: "https://opticus.example/problems/bad-request",
+      title: "Requisição inválida",
+      status: 400,
+      detail: "Dados da requisição inválidos.",
+      invalidParams,
+    });
+  });
+
+  it("omite invalidParams de toJSON() quando não fornecido", () => {
+    const problema = new BadRequestProblem("Requisição malformada.");
+    const json = problema.toJSON();
+
+    expect("invalidParams" in json).toBe(false);
+  });
+});
