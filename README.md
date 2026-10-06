@@ -134,8 +134,8 @@ Consulte [backend/.env.example](backend/.env.example) para configurar PostgreSQL
 
 ## Docker
 
-Imagens de produção para o backend e o frontend. A orquestração com o
-PostgreSQL (Docker Compose) fica na DEVOPS-02.
+Imagens de produção para o backend e o frontend. Para subir a stack completa, com o
+PostgreSQL, use o Docker Compose (abaixo).
 
 | Imagem | Build | Conteúdo |
 | --- | --- | --- |
@@ -145,6 +145,62 @@ PostgreSQL (Docker Compose) fica na DEVOPS-02.
 
 Os processos rodam com usuário não-root. **Nenhum segredo entra nas imagens:**
 variáveis sensíveis são fornecidas na execução.
+
+### Stack completa com Docker Compose
+
+Sobe PostgreSQL, migrations, API e frontend com um comando:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Antes de subir, preencha no `.env` os dois valores obrigatórios, `POSTGRES_PASSWORD` e
+`JWT_SECRET`. Sem eles o Compose **recusa a subida** e diz o que falta. Para gerar
+valores aleatórios:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+| Serviço | Endereço no host | Função |
+| --- | --- | --- |
+| `db` | `127.0.0.1:5433` | PostgreSQL 16, com dados no volume persistente `pgdata` |
+| `migrate` | — | aplica as migrations e o seed de referência, e termina |
+| `api` | `http://localhost:5000` | backend; saúde em `/health` |
+| `web` | `http://localhost:8080` | frontend |
+
+Ordem de subida: `db` saudável → `migrate` conclui → `api` saudável → `web`. Dentro da
+rede do Compose os serviços se enxergam pelo nome — a API conecta em `db:5432`, nunca
+em `localhost`.
+
+As portas são configuráveis no `.env` (`API_PORT`, `WEB_PORT`, `DB_PORT`) e são
+publicadas só em `127.0.0.1`. O banco usa a **5433** para não colidir com um PostgreSQL
+já instalado na 5432; para abri-lo no pgAdmin, conecte em `localhost:5433` com o
+usuário e a senha do `.env`.
+
+```bash
+docker compose up --build -d --wait   # sobe em segundo plano e espera tudo ficar saudável
+docker compose ps                     # estado dos serviços
+docker compose logs -f api            # acompanhar a API
+docker compose down                   # encerra e MANTÉM os dados
+docker compose down -v                # encerra e APAGA o banco
+```
+
+Depois de alterar código, rode `docker compose up --build` para reconstruir as imagens.
+Mudar `API_PORT` também exige rebuild, porque o endereço da API é embutido no frontend.
+
+**Dados de exemplo (opcional, só local):**
+
+```bash
+docker compose run --rm migrate npm run seed:dev
+```
+
+> Cria `cliente@exemplo.invalid` e `fabrica@exemplo.invalid` com uma **senha fixa e
+> pública** (está no código e aparece no log). Use só na sua máquina; nunca num
+> ambiente acessível por outras pessoas.
+
+As seções abaixo descrevem o uso de cada imagem isoladamente, sem o Compose.
 
 ### Backend
 
