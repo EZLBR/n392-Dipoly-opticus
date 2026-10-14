@@ -6,6 +6,9 @@ import { useTranslation } from "../contexts/LanguageContext";
 import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, Info, AlertCircle } from "lucide-react";
 
 import ThreePreview from "./ThreePreview";
+import { fetchSimulatedCheckoutHtml } from "../utils/simulated-checkout";
+import { hasArtwork } from "../eyewear/artwork";
+import { normalizeConfig } from "../eyewear/config";
 
 export default function Cart({ setView }) {
   const { session } = useAuth();
@@ -13,6 +16,8 @@ export default function Cart({ setView }) {
   const { t, language } = useTranslation();
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [simulatedCheckout, setSimulatedCheckout] = useState<{ html: string; owner: string } | null>(null);
+  const containsArtwork = cart.some(item => hasArtwork(normalizeConfig(item.customSpecs)));
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -33,6 +38,7 @@ export default function Cart({ setView }) {
   };
 
   const handleCheckout = async () => {
+    if (containsArtwork) return;
     if (!session) {
       alert(
         language === "pt"
@@ -55,8 +61,12 @@ export default function Cart({ setView }) {
             setView("marketplace");
           }, 2000);
         } else if (result.checkoutUrl) {
-          // Redirect the browser window to AbacatePay checkout page (real or simulated)
-          window.location.href = result.checkoutUrl;
+          if (result.isSimulated) {
+            const html = await fetchSimulatedCheckoutHtml(result.checkoutUrl);
+            setSimulatedCheckout({ html, owner: String(session.id) });
+          } else {
+            window.location.href = result.checkoutUrl;
+          }
         }
       } else {
         alert(
@@ -77,6 +87,16 @@ export default function Cart({ setView }) {
     }
   };
 
+  if (simulatedCheckout && simulatedCheckout.owner === String(session?.id)) {
+    return <section aria-label={language === "pt" ? "Pagamento simulado" : "Simulated payment"} style={{ padding: 16 }}>
+      <button className="btn" onClick={() => setSimulatedCheckout(null)}>
+        {language === "pt" ? "Voltar à sacola" : "Back to bag"}
+      </button>
+      <iframe title={language === "pt" ? "Sua cobrança Pix" : "Your Pix billing"}
+        srcDoc={simulatedCheckout.html} sandbox="allow-forms allow-same-origin allow-top-navigation-by-user-activation"
+        referrerPolicy="no-referrer" style={{ width: "100%", height: "80vh", border: 0, marginTop: 16 }} />
+    </section>;
+  }
   return (
     <div className="page-wrapper" style={{ padding: "40px 20px", maxWidth: "1200px", margin: "0 auto" }}>
       {toastMessage && (
@@ -352,10 +372,11 @@ export default function Cart({ setView }) {
               </div>
             </div>
 
+            {containsArtwork && <p role="status">{language === "pt" ? "Remova os designs com arte da sacola para continuar. A fabricação está em validação." : "Remove artwork designs from the bag to continue. Manufacturing is under review."}</p>}
             <button
               className="btn primary"
               onClick={handleCheckout}
-              disabled={checkoutLoading}
+              disabled={checkoutLoading || containsArtwork}
               style={{
                 width: "100%",
                 padding: "16px",

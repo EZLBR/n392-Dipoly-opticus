@@ -1,3 +1,5 @@
+import { normalizeArtwork, type Artwork } from "./artwork";
+
 export const silhouettes = ["wayfarer", "aviator", "cateye", "round"] as const;
 export const materials = [
   "acetate",
@@ -19,6 +21,8 @@ export const treatments = [
 export type Silhouette = (typeof silhouettes)[number];
 export type FrameMaterial = (typeof materials)[number];
 export interface EyewearConfig {
+  version: 1;
+  artwork: Artwork;
   frontModel: Silhouette;
   templeModel: Silhouette;
   frameProfile: "thin" | "medium" | "bold";
@@ -34,6 +38,8 @@ export interface EyewearConfig {
   templeOpen: number;
 }
 export const defaultConfig: EyewearConfig = {
+  version: 1,
+  artwork: { version: 1, layers: [] },
   frontModel: "wayfarer",
   templeModel: "wayfarer",
   frameProfile: "medium",
@@ -78,6 +84,8 @@ export function normalizeConfig(input: unknown = {}): EyewearConfig {
   );
   const hasOldDesign = Object.keys(c).length > 0;
   return {
+    version: 1,
+    artwork: normalizeArtwork(c.artwork),
     frontModel,
     templeModel: choose(
       shapeAlias(c.templeModel || legacy[1]?.replace("_temples", "")),

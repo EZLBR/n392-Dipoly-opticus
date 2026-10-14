@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { mergeSavedDesigns, readJSON } from "../eyewear/storage";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import { ANONYMOUS_STUDIO_OWNER, STUDIO_OWNER_KEY, mergeSavedDesigns, readJSON, switchStudioOwner } from "../eyewear/storage";
 import { apiFetch, setAuthErrorHandler } from "../utils/api";
 
 let API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
@@ -13,6 +13,46 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
   const [authWarning, setAuthWarning] = useState<string | null>(null);
+  const [studioOwner, setStudioOwner] = useState<string | undefined>();
+  const ownerRef = useRef<string | undefined>(undefined);
+  const authTokenRef = useRef<string | null>(null);
+  const [studioSessionChanged, setStudioSessionChanged] = useState(false);
+  const isCurrentStudioSession = () => ownerRef.current === localStorage.getItem(STUDIO_OWNER_KEY)
+    && authTokenRef.current === localStorage.getItem("opticus_token");
+  const invalidateLocalSession = () => {
+    ownerRef.current = undefined;
+    authTokenRef.current = null;
+    setStudioOwner(undefined);
+    setStudioSessionChanged(true);
+    setSession(null); setDesigns([]); setUsers([]);
+  };
+
+  const changeStudioOwner = (owner: string) => {
+    switchStudioOwner(localStorage, owner);
+    ownerRef.current = owner;
+    setStudioOwner(owner);
+    setDesigns(readJSON(localStorage, "opticus_designs", []));
+  };
+  const endSession = () => {
+    if (ownerRef.current && ownerRef.current !== localStorage.getItem(STUDIO_OWNER_KEY)) {
+      invalidateLocalSession(); return;
+    }
+    localStorage.removeItem("opticus_token");
+    authTokenRef.current = null;
+    setStudioSessionChanged(false);
+    changeStudioOwner(ANONYMOUS_STUDIO_OWNER);
+    setSession(null);
+    setUsers([]);
+  };
+  const startSession = (user, token: string) => {
+    changeStudioOwner("user:" + String(user.publicId ?? user.id));
+    authTokenRef.current = token;
+    setStudioSessionChanged(false);
+    localStorage.setItem("opticus_token", token);
+    setSession(user);
+    setIsBackendConnected(true);
+    fetchBackendDesigns(token);
+  };
 
   const clearAuthWarning = () => setAuthWarning(null);
 
@@ -20,8 +60,7 @@ export function AuthProvider({ children }) {
     setAuthErrorHandler((status, problem) => {
       const message = problem?.title || (status === 401 ? "Acesso não autorizado." : "Acesso negado.");
       if (status === 401) {
-        localStorage.removeItem("opticus_token");
-        setSession(null);
+        endSession();
       } else if (status === 403) {
         setAuthWarning(message);
       }
@@ -38,7 +77,7 @@ export function AuthProvider({ children }) {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined
       });
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.ok && data.success && token === localStorage.getItem("opticus_token")) {
         setUsers(data.users);
       }
     } catch (e) {
@@ -47,12 +86,14 @@ export function AuthProvider({ children }) {
   };
 
   const fetchBackendDesigns = async (token?: string) => {
+    const owner = ownerRef.current;
+    if (owner !== localStorage.getItem(STUDIO_OWNER_KEY) || token !== localStorage.getItem("opticus_token")) return;
     try {
       const res = await apiFetch(`${API_URL}/designs`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined
       });
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.ok && data.success && owner === ownerRef.current && isCurrentStudioSession() && token === authTokenRef.current) {
         const merged = mergeSavedDesigns(data.designs, readJSON(localStorage, "opticus_designs", []));
         setDesigns(merged);
         localStorage.setItem("opticus_designs", JSON.stringify(merged));
@@ -65,6 +106,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     async function initSession() {
       const token = localStorage.getItem("opticus_token");
+      authTokenRef.current = token;
       if (token) {
         try {
           const res = await apiFetch(`${API_URL}/auth/me`, {
@@ -72,22 +114,31 @@ export function AuthProvider({ children }) {
           });
           const data = await res.json();
           if (res.ok && data.success) {
-            setSession(data.user);
-            setIsBackendConnected(true);
-            fetchBackendDesigns(token);
+            if (localStorage.getItem("opticus_token") !== token) return;
+            startSession(data.user, token);
             fetchBackendUsers(token);
             return;
           }
         } catch (e) {
           console.error("Não foi possível validar a sessão no backend:", e);
         }
-        localStorage.removeItem("opticus_token");
+        if (localStorage.getItem("opticus_token") !== token) return;
+        endSession();
       }
-
-      setDesigns(readJSON(localStorage, "opticus_designs", []));
+      changeStudioOwner(ANONYMOUS_STUDIO_OWNER);
     }
 
     initSession();
+  }, []);
+
+  useEffect(() => {
+    const changed = (event: StorageEvent) => {
+      if ((!event.key || event.key === STUDIO_OWNER_KEY || event.key === "opticus_token") && !isCurrentStudioSession()) {
+        invalidateLocalSession();
+      }
+    };
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
   }, []);
 
   const login = async (email, password) => {
@@ -100,10 +151,7 @@ export function AuthProvider({ children }) {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        localStorage.setItem("opticus_token", data.token);
-        setSession(data.user);
-        setIsBackendConnected(true);
-        fetchBackendDesigns(data.token);
+        startSession(data.user, data.token);
         return { ok: true, role: data.user.role };
       } else {
         return { ok: false, message: data.error || "Login failed." };
@@ -125,9 +173,7 @@ export function AuthProvider({ children }) {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        localStorage.setItem("opticus_token", data.token);
-        setSession(data.user);
-        setIsBackendConnected(true);
+        startSession(data.user, data.token);
         return { ok: true, role: data.user.role };
       } else {
         return { ok: false, message: data.error || "Signup failed." };
@@ -139,13 +185,16 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem("opticus_token");
-    setSession(null);
-  };
+  const logout = endSession;
 
   const saveDesign = async (designData) => {
-    const token = localStorage.getItem("opticus_token");
+    const token = authTokenRef.current;
+    const owner = ownerRef.current;
+    if (!owner) throw new Error("Aguarde o carregamento da sessão.");
+    if (!isCurrentStudioSession()) {
+      invalidateLocalSession();
+      throw new Error("A sessão mudou em outra aba. Atualize a página antes de salvar.");
+    }
     let finalId = designData.id || `design-${Date.now()}`;
     let syncStatus = "local";
     if (isBackendConnected && token) {
@@ -168,6 +217,9 @@ export function AuthProvider({ children }) {
       }
     }
 
+    if (owner !== ownerRef.current || token !== authTokenRef.current || !isCurrentStudioSession()) {
+      throw new Error("A sessão mudou durante o salvamento. Abra o Studio novamente.");
+    }
     const cached = readJSON(localStorage, "opticus_designs", []);
     const existingIndex = cached.findIndex(item => String(item.id) === String(finalId));
     const previousDesign = existingIndex >= 0 ? cached[existingIndex] : {};
@@ -253,6 +305,8 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       session,
+      studioOwner,
+      studioSessionChanged,
       setSession,
       users,
       designs,
