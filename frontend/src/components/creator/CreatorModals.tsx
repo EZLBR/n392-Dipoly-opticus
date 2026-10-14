@@ -1,147 +1,123 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useCreatorStudio } from "../../contexts/CreatorStudioContext";
 import { useAuth } from "../../contexts/AuthContext";
-import { useCart } from "../../contexts/CartContext";
 import { useTranslation } from "../../contexts/LanguageContext";
-import { X, Sparkles, Check, ShoppingBag } from "lucide-react";
 
 export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
-  const {
-    frontModel, templeModel, frameProfile, frameMaterial, color,
-    isSunglasses, lensMaterial, lensTreatments,
-    nosePadMaterial, templeTipMaterial, hingeMaterial,
-    templeOpen, prescriptionFileName, showToast
-  } = useCreatorStudio();
-
+  const { config, designId, designName, setDesignName, markSaved, showToast } =
+    useCreatorStudio();
   const { saveDesign } = useAuth();
   const { language } = useTranslation();
-  const [designName, setDesignName] = useState("");
-
-  if (!isOpen) return null;
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    const cleanName = designName.trim();
-    if (!cleanName) {
-      showToast(language === "pt" ? "Por favor forneça um nome" : "Please provide a design name.");
-      return;
-    }
-
+  const pt = language === "pt";
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  useEffect(() => {
+    if (isOpen) {
+      setError("");
+      dialog.current?.showModal();
+    } else dialog.current?.close();
+  }, [isOpen]);
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (!designName.trim() || busy) return;
+    setBusy(true);
+    setError("");
     try {
-      const activeIndex = localStorage.getItem("opticus_active_design");
-      const isNew = activeIndex === null;
-
-      const savedRaw = localStorage.getItem("opticus_designs") || "[]";
-      const designs = JSON.parse(savedRaw);
-      const activeDesignId = !isNew && designs[parseInt(activeIndex, 10)] ? designs[parseInt(activeIndex, 10)].id : null;
-      let finalId = activeDesignId || `design-${Date.now()}`;
-
-      const newDesign = {
-        id: finalId,
-        name: cleanName,
-        model: `${frontModel}_front_${templeModel}_temples`, // Legacy compatibility
-        frontModel,
-        templeModel,
-        color,
-        isSunglasses,
-        antiReflective: lensTreatments.includes("anti_reflective"), // Legacy support
-        prescriptionFileName,
-        templeStyle: "classic", // Legacy support
-        topBar: false, // Legacy support
-        bridgeStyle: "soft", // Legacy support
-        frameProfile,
-        templeOpen,
-
-        // New features
-        frameMaterial,
-        lensMaterial,
-        lensTreatments,
-        nosePadMaterial,
-        templeTipMaterial,
-        hingeMaterial,
-
+      const saved = await saveDesign({
+        id: designId,
+        name: designName.trim(),
+        ...config,
+        config,
+        model: config.frontModel + "_front_" + config.templeModel + "_temples",
+        is_sunglasses: config.isSunglasses,
+        anti_reflective: config.lensTreatments.includes("anti_reflective"),
+        temple_style: "classic",
+        top_bar: config.frontModel === "aviator",
+        bridge_style: "soft",
+        frame_profile: config.frameProfile,
+        temple_open: config.templeOpen,
         published: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      try {
-        const backendRes = await saveDesign({
-          id: finalId.startsWith("design-") ? null : finalId,
-          name: newDesign.name,
-          model: newDesign.model,
-          color: newDesign.color,
-          is_sunglasses: newDesign.isSunglasses,
-          anti_reflective: newDesign.antiReflective,
-          temple_style: newDesign.templeStyle,
-          top_bar: newDesign.topBar,
-          bridge_style: newDesign.bridgeStyle,
-          frame_profile: newDesign.frameProfile,
-          temple_open: newDesign.templeOpen,
-          published: newDesign.published
-        });
-
-        if (backendRes && backendRes.id) {
-          finalId = backendRes.id;
-          newDesign.id = finalId;
-        }
-      } catch (err) {
-         console.warn("Backend save failed, saved locally", err);
-      }
-
-      if (isNew) {
-        designs.push(newDesign);
-        localStorage.setItem("opticus_active_design", String(designs.length - 1));
-      } else {
-        designs[parseInt(activeIndex, 10)] = newDesign;
-      }
-
-      localStorage.setItem("opticus_designs", JSON.stringify(designs));
-      localStorage.removeItem("opticus_creator_draft");
-
-      showToast(language === "pt" ? "Design salvo com sucesso!" : "Design saved successfully!");
+      });
+      markSaved(String(saved.id));
+      showToast(
+        saved.syncStatus === "local"
+          ? pt
+            ? "Salvo neste dispositivo. A sincronização não está disponível."
+            : "Saved on this device. Sync is unavailable."
+          : pt
+            ? "Design salvo. Materiais detalhados ficam neste dispositivo."
+            : "Design saved. Detailed materials remain on this device.",
+      );
       onClose();
-      if (onOpenDesigns) onOpenDesigns();
-    } catch (err) {
-      console.error(err);
-      showToast("Failed to save design.");
+      onOpenDesigns?.();
+    } catch {
+      setError(
+        pt
+          ? "Não foi possível salvar. Verifique o armazenamento do navegador e tente novamente."
+          : "Unable to save. Check browser storage and try again.",
+      );
+    } finally {
+      setBusy(false);
     }
-  };
-
+  }
   return (
-    <div className="modal open" style={{ display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-      <div className="modal-card" style={{ maxWidth: "420px" }}>
-        <div className="modal-head" style={{ borderBottom: "1px solid var(--glass-card-border)", paddingBottom: "12px" }}>
-          <h3>{language === "pt" ? "SALVAR PROJETO" : "SAVE TO MY DESIGNS"}</h3>
-          <button className="modal-close" onClick={onClose}><X size={18} /></button>
+    <dialog
+      ref={dialog}
+      className="studio-dialog"
+      aria-labelledby="save-design-title"
+      onCancel={(event) => {
+        if (busy) event.preventDefault();
+        else onClose();
+      }}
+    >
+      <form onSubmit={save}>
+        <h2 id="save-design-title">
+          {pt ? "Guarde sua criação." : "Keep your creation."}
+        </h2>
+        <p className="studio-note">
+          {pt
+            ? "O acabamento e os materiais completos são guardados neste navegador. Não limpe os dados do site antes de fazer uma cópia."
+            : "The complete finish and materials are stored in this browser. Keep a copy before clearing site data."}
+        </p>
+        <label>
+          {pt ? "Nome do design" : "Design name"}
+          <input
+            autoFocus
+            required
+            maxLength={100}
+            value={designName}
+            onChange={(e) => setDesignName(e.target.value)}
+            placeholder={
+              pt ? "Ex.: Meu Wayfarer âmbar" : "e.g. My amber Wayfarer"
+            }
+          />
+        </label>
+        {error && <p role="alert">{error}</p>}
+        <div className="studio-actions">
+          <button
+            type="button"
+            className="studio-secondary"
+            disabled={busy}
+            onClick={onClose}
+          >
+            {pt ? "Cancelar" : "Cancel"}
+          </button>
+          <button
+            type="submit"
+            className="studio-primary"
+            disabled={busy || !designName.trim()}
+          >
+            {busy
+              ? pt
+                ? "Salvando…"
+                : "Saving…"
+              : pt
+                ? "Salvar design"
+                : "Save design"}
+          </button>
         </div>
-
-        <form onSubmit={handleSave} style={{ marginTop: "20px" }}>
-          <div style={{ marginBottom: "20px" }}>
-            <label style={{ display: "block", fontSize: "11px", fontWeight: "600", color: "var(--color-hint)", marginBottom: "8px", textTransform: "uppercase" }}>
-              {language === "pt" ? "Nome do Design" : "Design Name"}
-            </label>
-            <input
-              type="text"
-              value={designName}
-              onChange={(e) => setDesignName(e.target.value)}
-              placeholder="e.g. Amber Hexagon, Summer Edition"
-              required
-              className="premium-input"
-              style={{ width: "100%", padding: "10px 14px", fontSize: "14px" }}
-            />
-          </div>
-
-          <div style={{ display: "flex", gap: "10px" }}>
-            <button type="button" className="btn" style={{ flex: 1 }} onClick={onClose}>
-              {language === "pt" ? "CANCELAR" : "CANCEL"}
-            </button>
-            <button type="submit" className="btn primary" style={{ flex: 1 }}>
-              {language === "pt" ? "CONFIRMAR" : "CONFIRM SAVE"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </dialog>
   );
 }

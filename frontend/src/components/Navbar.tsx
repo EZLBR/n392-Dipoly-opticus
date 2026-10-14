@@ -48,21 +48,23 @@ export default function Navbar({ currentView, setView }) {
   return (
     <header className="navbar">
       <div className="navbar-top-row">
-        <div className="logo" onClick={(e) => handleNavClick("marketplace", e)} style={{ cursor: "pointer" }}>
+        <a href="/" className="logo" onClick={(e) => handleNavClick("marketplace", e)} style={{ cursor: "pointer", textDecoration: "none", color: "inherit" }}>
           OPTICUS
-        </div>
+        </a>
 
         <button
           className="mobile-menu-btn"
-          aria-label="Toggle navigation menu"
+          aria-label={language === "pt" ? "Abrir ou fechar menu" : "Toggle navigation menu"}
+          aria-expanded={menuOpen}
+          aria-controls="main-navigation"
           onClick={() => setMenuOpen(!menuOpen)}
         >
           {menuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
       </div>
 
-      <div className={`nav-menu ${menuOpen ? "open" : ""}`}>
-        <nav>
+      <div id="main-navigation" className={`nav-menu ${menuOpen ? "open" : ""}`}>
+        <nav aria-label={language === "pt" ? "Navegação principal" : "Main navigation"}>
           <a
             href="#"
             className={currentView === "marketplace" ? "active" : ""}
@@ -161,7 +163,7 @@ export default function Navbar({ currentView, setView }) {
             <Globe size={14} className="globe-icon" style={{ marginRight: "4px", verticalAlign: "middle" }} />
             <select
               id="languageSelector"
-              aria-label="Select language"
+              aria-label={language === "pt" ? "Selecionar idioma" : "Select language"}
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
             >
@@ -173,7 +175,8 @@ export default function Navbar({ currentView, setView }) {
           <button
             id="darkToggle"
             className="dark-toggle"
-            aria-label="Toggle dark mode"
+            aria-label={language === "pt" ? "Alternar modo escuro" : "Toggle dark mode"}
+            aria-pressed={darkMode}
             onClick={() => setDarkMode(!darkMode)}
           >
             {darkMode ? <Sun size={16} /> : <Moon size={16} />}

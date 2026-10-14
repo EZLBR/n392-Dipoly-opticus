@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { apiClient, ProblemError, setAuthErrorHandler } from "../api/client";
+import { mergeSavedDesigns, readJSON } from "../eyewear/storage";
 
 const AuthContext = createContext<any>(undefined);
 
@@ -40,9 +41,10 @@ export function AuthProvider({ children }) {
   const fetchBackendDesigns = async () => {
     try {
       const data = await apiClient.get<any>("/designs");
-      const designsList = data.designs || data;
-      setDesigns(designsList);
-      localStorage.setItem("opticus_designs", JSON.stringify(designsList));
+      const backendDesigns = data.designs || data;
+      const merged = mergeSavedDesigns(backendDesigns, readJSON(localStorage, "opticus_designs", []));
+      setDesigns(merged);
+      localStorage.setItem("opticus_designs", JSON.stringify(merged));
     } catch (e) {
       console.error("Failed to load backend designs:", e);
     }
@@ -66,8 +68,7 @@ export function AuthProvider({ children }) {
         }
       }
 
-      const localDesigns = localStorage.getItem("opticus_designs") || "[]";
-      setDesigns(JSON.parse(localDesigns));
+      setDesigns(readJSON(localStorage, "opticus_designs", []));
     }
 
     initSession();
@@ -117,23 +118,34 @@ export function AuthProvider({ children }) {
 
   const saveDesign = async (designData) => {
     const token = localStorage.getItem("opticus_token");
+    let finalId = designData.id || `design-${Date.now()}`;
+    let syncStatus = "local";
     if (isBackendConnected && token) {
       try {
-        const data = await apiClient.post<any>("/designs", designData);
+        const data = await apiClient.post<any>("/designs", { ...designData, id: finalId });
+        finalId = data.id || data.design?.id || finalId;
+        syncStatus = "synced";
         fetchBackendDesigns();
-        return data.design || data;
       } catch (e) {
         console.error("Backend design save failed, shifting to local cache:", e);
       }
     }
 
+    const cached = readJSON(localStorage, "opticus_designs", []);
+    const existingIndex = cached.findIndex(item => String(item.id) === String(finalId));
+    const previousDesign = existingIndex >= 0 ? cached[existingIndex] : {};
     const newDesign = {
-      id: `des-${Date.now()}`,
+      ...previousDesign,
       ...designData,
-      createdAt: new Date().toISOString()
+      id: finalId,
+      syncStatus,
+      createdAt: previousDesign.createdAt || previousDesign.created_at || designData.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
-    const updatedDesigns = [...designs, newDesign];
+    const updatedDesigns = existingIndex >= 0 ? cached.map((item, i) => i === existingIndex ? newDesign : item) : [...cached, newDesign];
     localStorage.setItem("opticus_designs", JSON.stringify(updatedDesigns));
+    localStorage.setItem("opticus_active_design", String(existingIndex >= 0 ? existingIndex : updatedDesigns.length - 1));
+    localStorage.setItem("opticus_active_design_id", String(finalId));
     setDesigns(updatedDesigns);
     return newDesign;
   };
