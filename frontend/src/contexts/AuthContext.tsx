@@ -37,8 +37,8 @@ export function AuthProvider({ children }) {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined
       });
       const data = await res.json();
-      if (res.ok && data.success) {
-        setUsers(data.users);
+      if (res.ok) {
+        setUsers(data.users || data);
       }
     } catch (e) {
       console.error("Failed to load backend users:", e);
@@ -51,9 +51,10 @@ export function AuthProvider({ children }) {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined
       });
       const data = await res.json();
-      if (res.ok && data.success) {
-        setDesigns(data.designs);
-        localStorage.setItem("opticus_designs", JSON.stringify(data.designs));
+      if (res.ok) {
+        const designsList = data.designs || data;
+        setDesigns(designsList);
+        localStorage.setItem("opticus_designs", JSON.stringify(designsList));
       }
     } catch (e) {
       console.error("Failed to load backend designs:", e);
@@ -69,8 +70,9 @@ export function AuthProvider({ children }) {
             headers: { Authorization: `Bearer ${token}` }
           });
           const data = await res.json();
-          if (res.ok && data.success) {
-            setSession(data.user);
+          if (res.ok) {
+            const userData = data.user || data;
+            setSession(userData);
             setIsBackendConnected(true);
             fetchBackendDesigns(token);
             fetchBackendUsers(token);
@@ -98,14 +100,15 @@ export function AuthProvider({ children }) {
       });
       const data = await res.json();
 
-      if (res.ok && data.success) {
+      if (res.ok) {
         localStorage.setItem("opticus_token", data.token);
-        setSession(data.user);
+        const userData = data.user || data;
+        setSession(userData);
         setIsBackendConnected(true);
         fetchBackendDesigns(data.token);
-        return { ok: true, role: data.user.role };
+        return { ok: true, role: userData.role };
       } else {
-        return { ok: false, message: data.error || "Login failed." };
+        return { ok: false, message: data.detail || data.title || data.error || "Login failed." };
       }
     } catch (err) {
       console.error("Falha ao acessar o backend durante o login:", err);
@@ -123,13 +126,14 @@ export function AuthProvider({ children }) {
       });
       const data = await res.json();
 
-      if (res.ok && data.success) {
+      if (res.ok) {
         localStorage.setItem("opticus_token", data.token);
-        setSession(data.user);
+        const userData = data.user || data;
+        setSession(userData);
         setIsBackendConnected(true);
-        return { ok: true, role: data.user.role };
+        return { ok: true, role: userData.role };
       } else {
-        return { ok: false, message: data.error || "Signup failed." };
+        return { ok: false, message: data.detail || data.title || data.error || "Signup failed." };
       }
     } catch (err) {
       console.error("Falha ao acessar o backend durante o cadastro:", err);
@@ -156,9 +160,9 @@ export function AuthProvider({ children }) {
           body: JSON.stringify(designData)
         });
         const data = await res.json();
-        if (res.ok && data.success) {
+        if (res.ok) {
           fetchBackendDesigns(token);
-          return data.design;
+          return data.design || data;
         }
       } catch (e) {
         console.error("Backend design save failed, shifting to local cache:", e);
@@ -204,11 +208,11 @@ export function AuthProvider({ children }) {
           body: JSON.stringify(dataToUpdate)
         });
         const data = await res.json();
-        if (res.ok && data.success) {
+        if (res.ok) {
           fetchBackendUsers(token);
           return { ok: true };
         }
-        return { ok: false, message: data.title || data.error };
+        return { ok: false, message: data.detail || data.title || data.error };
       } catch (e) {
         console.error("User update failed:", e);
       }
@@ -226,11 +230,11 @@ export function AuthProvider({ children }) {
           headers: { "Authorization": `Bearer ${token}` }
         });
         const data = await res.json();
-        if (res.ok && data.success) {
+        if (res.ok) {
           fetchBackendUsers(token);
           return { ok: true };
         }
-        return { ok: false, message: data.title || data.error };
+        return { ok: false, message: data.detail || data.title || data.error };
       } catch (e) {
         console.error("User deletion failed:", e);
       }

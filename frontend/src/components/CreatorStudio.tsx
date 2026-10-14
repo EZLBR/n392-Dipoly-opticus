@@ -65,7 +65,7 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
     try {
       showToast(language === "pt" ? "Redirecionando para pagamento..." : "Redirecting to payment...");
       const result = await checkoutCart([orderData]);
-      if (result && result.success) {
+      if (result && (result.ok || result.checkoutUrl || result.isOffline || result.success)) {
         if (result.isOffline) {
           showToast(language === "pt" ? "Pedido enfileirado (Modo Offline)" : "Order queued (Offline mode)");
           setView("marketplace");
@@ -73,7 +73,7 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
           window.location.href = result.checkoutUrl;
         }
       } else {
-        showToast("Error processing order.");
+        showToast(result?.error || "Error processing order.");
       }
     } catch (e) {
       console.error(e);

@@ -21,9 +21,10 @@ export function OrderProvider({ children }) {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined
       });
       const data = await res.json();
-      if (res.ok && data.success) {
-        setOrders(data.orders);
-        localStorage.setItem("opticus_orders", JSON.stringify(data.orders));
+      if (res.ok) {
+        const ordersList = data.orders || data;
+        setOrders(ordersList);
+        localStorage.setItem("opticus_orders", JSON.stringify(ordersList));
       }
     } catch (e) {
       console.error("Failed to load backend orders:", e);
@@ -50,7 +51,7 @@ export function OrderProvider({ children }) {
           body: JSON.stringify({ status: newStatus })
         });
         const data = await res.json();
-        if (res.ok && data.success) {
+        if (res.ok) {
           fetchBackendOrders(token);
           return;
         }
@@ -83,13 +84,16 @@ export function OrderProvider({ children }) {
           body: JSON.stringify({ orderId })
         });
         const data = await res.json();
-        return data;
+        if (res.ok) {
+          return { ok: true, ...data };
+        }
+        return { ok: false, error: data.detail || data.title || data.error };
       } catch (e) {
         console.error("AbacatePay billing setup failed:", e);
-        return { success: false, error: "Backend payment service is currently offline." };
+        return { ok: false, error: "Backend payment service is currently offline." };
       }
     }
-    return { success: false, error: "Backend offline. Simulated checkout is unavailable." };
+    return { ok: false, error: "Backend offline. Simulated checkout is unavailable." };
   };
 
   return (
