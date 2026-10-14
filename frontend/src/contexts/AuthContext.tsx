@@ -1,9 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { apiFetch, setAuthErrorHandler } from "../utils/api";
+import { apiClient, ProblemError, setAuthErrorHandler } from "../api/client";
 
-let API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-if (API_URL.endsWith('/')) API_URL = API_URL.slice(0, -1);
-if (!API_URL.endsWith('/api')) API_URL = `${API_URL}/api`;
 const AuthContext = createContext<any>(undefined);
 
 export function AuthProvider({ children }) {
@@ -31,31 +28,21 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const fetchBackendUsers = async (token?: string) => {
+  const fetchBackendUsers = async () => {
     try {
-      const res = await apiFetch(`${API_URL}/auth/users`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setUsers(data.users || data);
-      }
+      const data = await apiClient.get<any>("/auth/users");
+      setUsers(data.users || data);
     } catch (e) {
       console.error("Failed to load backend users:", e);
     }
   };
 
-  const fetchBackendDesigns = async (token?: string) => {
+  const fetchBackendDesigns = async () => {
     try {
-      const res = await apiFetch(`${API_URL}/designs`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined
-      });
-      const data = await res.json();
-      if (res.ok) {
-        const designsList = data.designs || data;
-        setDesigns(designsList);
-        localStorage.setItem("opticus_designs", JSON.stringify(designsList));
-      }
+      const data = await apiClient.get<any>("/designs");
+      const designsList = data.designs || data;
+      setDesigns(designsList);
+      localStorage.setItem("opticus_designs", JSON.stringify(designsList));
     } catch (e) {
       console.error("Failed to load backend designs:", e);
     }
@@ -66,22 +53,17 @@ export function AuthProvider({ children }) {
       const token = localStorage.getItem("opticus_token");
       if (token) {
         try {
-          const res = await apiFetch(`${API_URL}/auth/me`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const data = await res.json();
-          if (res.ok) {
-            const userData = data.user || data;
-            setSession(userData);
-            setIsBackendConnected(true);
-            fetchBackendDesigns(token);
-            fetchBackendUsers(token);
-            return;
-          }
+          const data = await apiClient.get<any>("/auth/me");
+          const userData = data.user || data;
+          setSession(userData);
+          setIsBackendConnected(true);
+          fetchBackendDesigns();
+          fetchBackendUsers();
+          return;
         } catch (e) {
           console.error("Não foi possível validar a sessão no backend:", e);
+          localStorage.removeItem("opticus_token");
         }
-        localStorage.removeItem("opticus_token");
       }
 
       const localDesigns = localStorage.getItem("opticus_designs") || "[]";
@@ -93,25 +75,18 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     try {
-      const res = await fetch(`${API_URL}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        localStorage.setItem("opticus_token", data.token);
-        const userData = data.user || data;
-        setSession(userData);
-        setIsBackendConnected(true);
-        fetchBackendDesigns(data.token);
-        return { ok: true, role: userData.role };
-      } else {
-        return { ok: false, message: data.detail || data.title || data.error || "Login failed." };
-      }
-    } catch (err) {
+      const data = await apiClient.post<any>("/auth/login", { email, password });
+      localStorage.setItem("opticus_token", data.token);
+      const userData = data.user || data;
+      setSession(userData);
+      setIsBackendConnected(true);
+      fetchBackendDesigns();
+      return { ok: true, role: userData.role };
+    } catch (err: any) {
       console.error("Falha ao acessar o backend durante o login:", err);
+      if (err instanceof ProblemError) {
+        return { ok: false, message: err.detail || err.title || err.message };
+      }
       setIsBackendConnected(false);
       return { ok: false, message: "Serviço de autenticação indisponível. Tente novamente." };
     }
@@ -119,24 +94,17 @@ export function AuthProvider({ children }) {
 
   const signup = async ({ name, email, password }) => {
     try {
-      const res = await fetch(`${API_URL}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password })
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        localStorage.setItem("opticus_token", data.token);
-        const userData = data.user || data;
-        setSession(userData);
-        setIsBackendConnected(true);
-        return { ok: true, role: userData.role };
-      } else {
-        return { ok: false, message: data.detail || data.title || data.error || "Signup failed." };
-      }
-    } catch (err) {
+      const data = await apiClient.post<any>("/auth/register", { name, email, password });
+      localStorage.setItem("opticus_token", data.token);
+      const userData = data.user || data;
+      setSession(userData);
+      setIsBackendConnected(true);
+      return { ok: true, role: userData.role };
+    } catch (err: any) {
       console.error("Falha ao acessar o backend durante o cadastro:", err);
+      if (err instanceof ProblemError) {
+        return { ok: false, message: err.detail || err.title || err.message };
+      }
       setIsBackendConnected(false);
       return { ok: false, message: "Serviço de cadastro indisponível. Tente novamente." };
     }
@@ -151,19 +119,9 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        const res = await apiFetch(`${API_URL}/designs`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify(designData)
-        });
-        const data = await res.json();
-        if (res.ok) {
-          fetchBackendDesigns(token);
-          return data.design || data;
-        }
+        const data = await apiClient.post<any>("/designs", designData);
+        fetchBackendDesigns();
+        return data.design || data;
       } catch (e) {
         console.error("Backend design save failed, shifting to local cache:", e);
       }
@@ -181,14 +139,10 @@ export function AuthProvider({ children }) {
   };
 
   const deleteBackendDesign = async (designId) => {
-    const token = localStorage.getItem("opticus_token");
-    if (isBackendConnected && token) {
+    if (isBackendConnected) {
       try {
-        await apiFetch(`${API_URL}/designs/${designId}`, {
-          method: "DELETE",
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        fetchBackendDesigns(token);
+        await apiClient.delete(`/designs/${designId}`);
+        fetchBackendDesigns();
       } catch (e) {
         console.error("Failed to delete backend design:", e);
       }
@@ -196,25 +150,16 @@ export function AuthProvider({ children }) {
   };
 
   const updateUser = async (userId, dataToUpdate) => {
-    const token = localStorage.getItem("opticus_token");
-    if (isBackendConnected && token) {
+    if (isBackendConnected) {
       try {
-        const res = await apiFetch(`${API_URL}/auth/users/${userId}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify(dataToUpdate)
-        });
-        const data = await res.json();
-        if (res.ok) {
-          fetchBackendUsers(token);
-          return { ok: true };
-        }
-        return { ok: false, message: data.detail || data.title || data.error };
-      } catch (e) {
+        await apiClient.put(`/auth/users/${userId}`, dataToUpdate);
+        fetchBackendUsers();
+        return { ok: true };
+      } catch (e: any) {
         console.error("User update failed:", e);
+        if (e instanceof ProblemError) {
+          return { ok: false, message: e.detail || e.title || e.message };
+        }
       }
     }
 
@@ -222,21 +167,16 @@ export function AuthProvider({ children }) {
   };
 
   const deleteUser = async (userId) => {
-    const token = localStorage.getItem("opticus_token");
-    if (isBackendConnected && token) {
+    if (isBackendConnected) {
       try {
-        const res = await apiFetch(`${API_URL}/auth/users/${userId}`, {
-          method: "DELETE",
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        const data = await res.json();
-        if (res.ok) {
-          fetchBackendUsers(token);
-          return { ok: true };
-        }
-        return { ok: false, message: data.detail || data.title || data.error };
-      } catch (e) {
+        await apiClient.delete(`/auth/users/${userId}`);
+        fetchBackendUsers();
+        return { ok: true };
+      } catch (e: any) {
         console.error("User deletion failed:", e);
+        if (e instanceof ProblemError) {
+          return { ok: false, message: e.detail || e.title || e.message };
+        }
       }
     }
 
