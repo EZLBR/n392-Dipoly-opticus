@@ -45,7 +45,6 @@ export async function getAllStock(req: Request, res: Response) {
   const alertas = rows.filter(r => r.alerta_baixo_estoque);
 
   return res.json({
-    success:  true,
     estoque:  rows,
     alertas:  alertas.length,
     produtos_criticos: alertas.map(r => r.produto_nome),
@@ -80,7 +79,6 @@ export async function getStockByProduct(req: Request, res: Response) {
   const item = rows[0];
 
   return res.json({
-    success: true,
     estoque: item,
     alerta:  item.quantidade <= item.estoque_minimo
   });
@@ -146,7 +144,6 @@ export async function updateStock(req: Request, res: Response) {
   const alerta = item.quantidade <= item.estoque_minimo;
 
   return res.json({
-    success: true,
     estoque: item,
     alerta,
     message: alerta
@@ -174,7 +171,6 @@ export async function getStockAlerts(req: Request, res: Response) {
   );
 
   return res.json({
-    success: true,
     alertas: rows,
     total:   rows.length
   });

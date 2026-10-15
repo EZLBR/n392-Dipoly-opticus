@@ -73,7 +73,7 @@ export async function createOrder(req: Request, res: Response) {
   const pedido = rows[0];
   pedido.customSpecs = JSON.parse(pedido.customSpecs || "{}");
 
-  return res.status(201).json({ success: true, order: pedido });
+  return res.status(201).json({ ...pedido, order: pedido });
 }
 
 // ─────────────────────────────────────────────────────────
@@ -140,7 +140,6 @@ export async function getOrders(req: Request, res: Response) {
   }));
 
   return res.json({
-    success: true,
     orders: parsedRows,
     pagination: {
       page,
@@ -180,9 +179,9 @@ export async function updateOrderStatus(req: Request, res: Response) {
   );
 
   return res.json({
-    success: true,
     message: `Status do pedido atualizado para "${status}" com sucesso.`,
     order: pedido,
+    ...pedido,
   });
 }
 
@@ -301,7 +300,6 @@ export async function checkoutCart(req: Request, res: Response) {
           );
 
           return res.json({
-            success:     true,
             checkoutUrl: realCheckoutUrl,
             isSimulated: false,
             billingId:   realBillingId
@@ -318,7 +316,6 @@ export async function checkoutCart(req: Request, res: Response) {
     const simulatedCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${consolidatedBillingId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
 
     return res.json({
-      success:     true,
       checkoutUrl: simulatedCheckoutUrl,
       isSimulated: true,
       billingId:   consolidatedBillingId

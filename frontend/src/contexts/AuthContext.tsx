@@ -77,8 +77,8 @@ export function AuthProvider({ children }) {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined
       });
       const data = await res.json();
-      if (res.ok && data.success && token === localStorage.getItem("opticus_token")) {
-        setUsers(data.users);
+      if (res.ok && token === localStorage.getItem("opticus_token")) {
+        setUsers(data.users || data);
       }
     } catch (e) {
       console.error("Failed to load backend users:", e);
@@ -93,8 +93,8 @@ export function AuthProvider({ children }) {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined
       });
       const data = await res.json();
-      if (res.ok && data.success && owner === ownerRef.current && isCurrentStudioSession() && token === authTokenRef.current) {
-        const merged = mergeSavedDesigns(data.designs, readJSON(localStorage, "opticus_designs", []));
+      if (res.ok && owner === ownerRef.current && isCurrentStudioSession() && token === authTokenRef.current) {
+        const merged = mergeSavedDesigns(data.designs || data, readJSON(localStorage, "opticus_designs", []));
         setDesigns(merged);
         localStorage.setItem("opticus_designs", JSON.stringify(merged));
       }
@@ -113,9 +113,9 @@ export function AuthProvider({ children }) {
             headers: { Authorization: `Bearer ${token}` }
           });
           const data = await res.json();
-          if (res.ok && data.success) {
+          if (res.ok) {
             if (localStorage.getItem("opticus_token") !== token) return;
-            startSession(data.user, token);
+            startSession(data.user || data, token);
             fetchBackendUsers(token);
             return;
           }
@@ -150,11 +150,12 @@ export function AuthProvider({ children }) {
       });
       const data = await res.json();
 
-      if (res.ok && data.success) {
-        startSession(data.user, data.token);
-        return { ok: true, role: data.user.role };
+      if (res.ok) {
+        const userData = data.user || data;
+        startSession(userData, data.token);
+        return { ok: true, role: userData.role };
       } else {
-        return { ok: false, message: data.error || "Login failed." };
+        return { ok: false, message: data.detail || data.title || data.error || "Login failed." };
       }
     } catch (err) {
       console.error("Falha ao acessar o backend durante o login:", err);
@@ -172,11 +173,12 @@ export function AuthProvider({ children }) {
       });
       const data = await res.json();
 
-      if (res.ok && data.success) {
-        startSession(data.user, data.token);
-        return { ok: true, role: data.user.role };
+      if (res.ok) {
+        const userData = data.user || data;
+        startSession(userData, data.token);
+        return { ok: true, role: userData.role };
       } else {
-        return { ok: false, message: data.error || "Signup failed." };
+        return { ok: false, message: data.detail || data.title || data.error || "Signup failed." };
       }
     } catch (err) {
       console.error("Falha ao acessar o backend durante o cadastro:", err);
@@ -208,7 +210,7 @@ export function AuthProvider({ children }) {
           body: JSON.stringify({ ...designData, id: finalId })
         });
         const data = await res.json();
-        if (res.ok && data.success) {
+        if (res.ok) {
           finalId = data.id || data.design?.id || finalId;
           syncStatus = "synced";
         }
@@ -267,11 +269,11 @@ export function AuthProvider({ children }) {
           body: JSON.stringify(dataToUpdate)
         });
         const data = await res.json();
-        if (res.ok && data.success) {
+        if (res.ok) {
           fetchBackendUsers(token);
           return { ok: true };
         }
-        return { ok: false, message: data.title || data.error };
+        return { ok: false, message: data.detail || data.title || data.error };
       } catch (e) {
         console.error("User update failed:", e);
       }
@@ -289,11 +291,11 @@ export function AuthProvider({ children }) {
           headers: { "Authorization": `Bearer ${token}` }
         });
         const data = await res.json();
-        if (res.ok && data.success) {
+        if (res.ok) {
           fetchBackendUsers(token);
           return { ok: true };
         }
-        return { ok: false, message: data.title || data.error };
+        return { ok: false, message: data.detail || data.title || data.error };
       } catch (e) {
         console.error("User deletion failed:", e);
       }

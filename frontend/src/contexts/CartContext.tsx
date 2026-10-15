@@ -62,14 +62,17 @@ export function CartProvider({ children }) {
           body: JSON.stringify({ cartItems })
         });
         const data = await res.json();
-        return data;
+        if (res.ok) {
+          return { ok: true, ...data };
+        }
+        return { ok: false, error: data.detail || data.title || data.error };
       } catch (e) {
         console.error("Consolidated backend checkout failed, shifting to local cache simulation:", e);
       }
     }
 
     return {
-      success: false,
+      ok: false,
       error: "Checkout indisponível sem conexão segura com o backend."
     };
   };
