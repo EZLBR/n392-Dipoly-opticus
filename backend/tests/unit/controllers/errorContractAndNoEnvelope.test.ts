@@ -99,18 +99,19 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
       await expect(productController.getProductById(req, res)).rejects.toThrow(NotFoundProblem);
     });
 
-    it("stockController lança BadRequestProblem se operação resultar em estoque negativo", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({
-        rows: [{ quantidade: 2 }],
-        rowCount: 1,
-      } as any);
+    // CONC-01: a baixa é um UPDATE atômico com guarda no WHERE. Se a guarda
+    // barra (nenhuma linha afetada) e o produto existe, a resposta é 409.
+    it("stockController lança ConflictProblem se a baixa resultaria em estoque negativo", async () => {
+      vi.spyOn(pool, "query")
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 } as any)
+        .mockResolvedValueOnce({ rows: [{ quantidade: 2 }], rowCount: 1 } as any);
       const req = {
         params: { produtoId: "1" },
         body: { quantidade: 5, operacao: "subtract" },
       } as unknown as Request;
       const res = mockResponse();
 
-      await expect(stockController.updateStock(req, res)).rejects.toThrow(BadRequestProblem);
+      await expect(stockController.updateStock(req, res)).rejects.toThrow(ConflictProblem);
     });
   });
 
