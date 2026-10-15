@@ -7,6 +7,7 @@ import pool from "../config/db.js";
 import type { Request, Response } from "express";
 import { NotFoundProblem } from "../errors/problem.js";
 import type { SaveDesignDTO } from "../dtos/design/design.dto.js";
+import { resolveStudioConfig } from "../services/designConfig.js";
 
 // ─────────────────────────────────────────────────────────
 //   SALVAR DESIGN (cria ou atualiza)
@@ -16,7 +17,7 @@ export async function saveDesign(req: Request, res: Response) {
   const {
     id, name, model, color,
     is_sunglasses, anti_reflective, temple_style,
-    top_bar, bridge_style, frame_profile, temple_open, published
+    top_bar, bridge_style, frame_profile, temple_open, published, config
   } = req.body as SaveDesignDTO;
 
   const customerEmail = req.user!.email;
@@ -27,24 +28,26 @@ export async function saveDesign(req: Request, res: Response) {
 
   if (id) {
     const { rows: existing } = await pool.query(
-      "SELECT id FROM saved_designs WHERE id = $1 AND customer_email = $2",
+      "SELECT id, studio_config FROM saved_designs WHERE id = $1 AND customer_email = $2",
       [finalId, customerEmail]
     );
 
     if (existing.length > 0) {
+      const document = resolveStudioConfig(req.body as SaveDesignDTO, existing[0].studio_config);
       await pool.query(
         `UPDATE saved_designs SET
           name = $1, model = $2, color = $3,
           is_sunglasses = $4, anti_reflective = $5, temple_style = $6,
           top_bar = $7, bridge_style = $8, frame_profile = $9,
-          temple_open = $10, published = $11, updated_at = CURRENT_TIMESTAMP
+          temple_open = $10, published = $11, updated_at = CURRENT_TIMESTAMP,
+          studio_config = COALESCE($14::jsonb, studio_config)
          WHERE id = $12 AND customer_email = $13`,
         [
-          name, model, color,
-          Boolean(is_sunglasses), Boolean(anti_reflective), temple_style || "standard",
-          Boolean(top_bar), bridge_style || "keyhole", frame_profile || "medium",
-          temple_open || 0.00, Boolean(published),
-          finalId, customerEmail
+          name, document ? `${document.frontModel}_front_${document.templeModel}_temples` : model, document?.color ?? color,
+          document?.isSunglasses ?? Boolean(is_sunglasses), document ? document.lensTreatments.includes("anti_reflective") : Boolean(anti_reflective), temple_style || "standard",
+          Boolean(top_bar), bridge_style || "keyhole", document?.frameProfile ?? frame_profile ?? "medium",
+          document?.templeOpen ?? temple_open ?? 0.00, Boolean(published),
+          finalId, customerEmail, document ? JSON.stringify(document) : null
         ]
       );
 
@@ -56,13 +59,13 @@ export async function saveDesign(req: Request, res: Response) {
     `INSERT INTO saved_designs
       (id, usuario_id, customer_email, name, model, color,
        is_sunglasses, anti_reflective, temple_style,
-       top_bar, bridge_style, frame_profile, temple_open, published)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+       top_bar, bridge_style, frame_profile, temple_open, published, studio_config)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb) RETURNING id`,
     [
       finalId, usuarioId, customerEmail, name, model, color,
       Boolean(is_sunglasses), Boolean(anti_reflective), temple_style || "standard",
       Boolean(top_bar), bridge_style || "keyhole", frame_profile || "medium",
-      temple_open || 0.00, Boolean(published)
+      temple_open || 0.00, Boolean(published), config ? JSON.stringify(config) : null
     ]
   );
 
@@ -99,7 +102,8 @@ export async function getDesigns(req: Request, res: Response) {
     templeOpen:     Number(row.temple_open),
     published:      Boolean(row.published),
     createdAt:      row.created_at,
-    updatedAt:      row.updated_at
+    updatedAt:      row.updated_at,
+    config:         row.studio_config ?? null
   }));
 
   return res.json({ success: true, designs });

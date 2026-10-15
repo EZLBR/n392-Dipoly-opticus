@@ -20,8 +20,8 @@ const router = express.Router();
 // Webhook do AbacatePay (sem autenticação — chamado externamente)
 router.post("/webhook", handleWebhook);
 
-// Simulador Pix (sem autenticação — página HTML pública)
-router.get( "/simulated-checkout",        getSimulatedCheckoutPage);
+// A página contém dados pessoais: somente o dono autenticado pode consultá-la.
+router.get( "/simulated-checkout", routerGuard(), getSimulatedCheckoutPage);
 router.post("/confirm-simulated-payment", confirmSimulatedPayment);
 
 // Criar cobrança (usuário autenticado)

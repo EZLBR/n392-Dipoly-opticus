@@ -725,7 +725,46 @@ body.page-create .navbar .nav-menu.open {
   outline: 3px solid #a46027;
   outline-offset: -4px;
 }
+.studio-art-layer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 0 12px;
+  font-size: 12px;
+}
+.studio-art-layer-header button { font-size: 11px; padding: 9px 12px; }
+.studio-art-layers { display: grid; gap: 6px; margin-bottom: 24px; }
+.studio-art-layers button {
+  display: flex; gap: 12px; text-align: left; padding: 12px;
+  border: 1px solid var(--st-line); border-radius: 6px;
+  color: var(--st-ink); background: transparent; font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.studio-art-layers button[aria-pressed="true"] { background: #e9eee6; border-color: var(--st-accent); }
+.studio-art-layers button span { color: var(--st-muted); }
+.studio-art-fields > label { display: grid; gap: 8px; margin-bottom: 16px; font-size: 12px; }
+.studio-art-fields input[type="text"], .studio-art-fields select {
+  width: 100%; min-height: 42px; padding: 10px; box-sizing: border-box;
+  border: 1px solid var(--st-line); border-radius: 5px;
+  background: #fffdf8; color: var(--st-ink); font: inherit;
+}
+.studio-art-control > span { display: flex; justify-content: space-between; }
+.studio-art-control { display: grid; gap: 8px; margin-bottom: 16px; font-size: 12px; }
+.studio-art-control output { color: var(--st-muted); font-variant-numeric: tabular-nums; }
+.studio-art-color input { width: 100%; height: 38px; border: 1px solid var(--st-line); padding: 3px; background: transparent; }
+.studio-art-empty { padding: 22px 0; font-size: 13px; line-height: 1.8; color: var(--st-muted); }
+.studio-art-production-note { padding: 12px 14px; font-size: 11px; line-height: 1.8; background: #f0eadb; color: #66512d; border-radius: 5px; }
+.studio-art-remove { width: 100%; margin-top: 8px; }
+.studio-shell button:disabled { opacity: 0.5; cursor: not-allowed; }
+.studio-art-panel input:focus-visible, .studio-art-panel select:focus-visible { outline: 2px solid var(--st-accent); outline-offset: 2px; }
 @media (max-width: 760px) {
+  /* The legacy full-screen route lock clips the mobile editor's controls. */
+  body.page-create {
+    width: 100%;
+    height: auto;
+    overflow-y: auto;
+  }
   body.page-create .navbar {
     height: 70px;
     padding: 12px 18px;

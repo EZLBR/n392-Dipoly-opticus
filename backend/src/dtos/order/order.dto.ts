@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+const customSpecsSchema = z.record(z.string(), z.any()).superRefine((specs, context) => {
+  const hasUnapprovedArtwork = [specs, specs.config].some(document => {
+    const artwork = document?.artwork;
+    return artwork != null && (!Array.isArray(artwork.layers) || artwork.layers.length > 0);
+  });
+  if (hasUnapprovedArtwork) context.addIssue({ code: "custom", path: ["artwork"],
+    message: "A compra de designs com arte aguarda validação da fábrica. Salve sua criação no Studio." });
+});
+
 export const createOrderSchema = z.object({
   productName: z
     .string({ message: "Nome do produto é obrigatório." })
@@ -15,7 +24,7 @@ export const createOrderSchema = z.object({
   total: z.coerce
     .number({ message: "Total é obrigatório." })
     .positive("Total deve ser um número positivo."),
-  customSpecs: z.record(z.string(), z.any()),
+  customSpecs: customSpecsSchema,
 });
 
 export type CreateOrderDTO = z.infer<typeof createOrderSchema>;
@@ -44,7 +53,7 @@ export const cartItemSchema = z.object({
   total: z.coerce
     .number({ message: "Total é obrigatório." })
     .positive("Total deve ser um número positivo."),
-  customSpecs: z.record(z.string(), z.any()),
+  customSpecs: customSpecsSchema,
   quantity: z.coerce.number().int().positive().optional().default(1),
 });
 

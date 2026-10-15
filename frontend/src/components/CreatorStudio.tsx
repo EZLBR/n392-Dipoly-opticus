@@ -7,6 +7,7 @@ import {
 import { useCart } from "../contexts/CartContext";
 import { calculateBasePrice } from "../utils/pricing";
 import { dimensions, label } from "../eyewear/config";
+import { hasArtwork } from "../eyewear/artwork";
 import ThreePreview from "./creator/ThreePreview";
 import TryOnViewport from "./creator/TryOnViewport";
 import CustomizationPanel from "./creator/CustomizationPanel";
@@ -35,6 +36,10 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const d = dimensions[config.frontModel];
   function add() {
+    if (hasArtwork(config)) {
+      showToast(pt ? "Salve sua criação. A compra com arte aguarda validação da fábrica." : "Save your creation. Artwork purchasing awaits factory approval.");
+      return;
+    }
     addToCart({
       id: "custom-" + Date.now(),
       productName:
@@ -125,7 +130,7 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
                 className="studio-view-controls"
                 aria-label={pt ? "Ângulo da câmera" : "Camera angle"}
               >
-                {(["perspective", "front", "side"] as const).map((v, i) => (
+                {(["perspective", "front", "side", "left-side"] as const).map((v, i) => (
                   <button
                     key={v}
                     aria-pressed={view === v}
@@ -136,8 +141,8 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
                   >
                     {
                       (pt
-                        ? ["¾", "Frente", "Lateral"]
-                        : ["¾", "Front", "Side"])[i]
+                        ? ["¾", "Frente", "Direita", "Esquerda"]
+                        : ["¾", "Front", "Right", "Left"])[i]
                     }
                   </button>
                 ))}
