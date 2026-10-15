@@ -1,10 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { ANONYMOUS_STUDIO_OWNER, STUDIO_OWNER_KEY, mergeSavedDesigns, readJSON, switchStudioOwner } from "../eyewear/storage";
-import { apiFetch, setAuthErrorHandler } from "../utils/api";
+import { apiClient, ProblemError, setAuthErrorHandler } from "../api/client";
 
-let API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-if (API_URL.endsWith('/')) API_URL = API_URL.slice(0, -1);
-if (!API_URL.endsWith('/api')) API_URL = `${API_URL}/api`;
+// O token vai explícito quando a resposta precisa ser conferida contra a
+// sessão que fez a requisição (BUG #82): se a sessão mudar no meio do
+// caminho, a resposta antiga é descartada.
+const comToken = (token?: string | null) =>
+  token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+const mensagemDoProblema = (erro: unknown) =>
+  erro instanceof ProblemError ? erro.detail || erro.title || erro.message : undefined;
+
 const AuthContext = createContext<any>(undefined);
 
 export function AuthProvider({ children }) {
@@ -73,11 +78,8 @@ export function AuthProvider({ children }) {
 
   const fetchBackendUsers = async (token?: string) => {
     try {
-      const res = await apiFetch(`${API_URL}/auth/users`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined
-      });
-      const data = await res.json();
-      if (res.ok && token === localStorage.getItem("opticus_token")) {
+      const data = await apiClient.get<any>("/auth/users", comToken(token));
+      if (token === localStorage.getItem("opticus_token")) {
         setUsers(data.users || data);
       }
     } catch (e) {
@@ -89,11 +91,8 @@ export function AuthProvider({ children }) {
     const owner = ownerRef.current;
     if (owner !== localStorage.getItem(STUDIO_OWNER_KEY) || token !== localStorage.getItem("opticus_token")) return;
     try {
-      const res = await apiFetch(`${API_URL}/designs`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined
-      });
-      const data = await res.json();
-      if (res.ok && owner === ownerRef.current && isCurrentStudioSession() && token === authTokenRef.current) {
+      const data = await apiClient.get<any>("/designs", comToken(token));
+      if (owner === ownerRef.current && isCurrentStudioSession() && token === authTokenRef.current) {
         const merged = mergeSavedDesigns(data.designs || data, readJSON(localStorage, "opticus_designs", []));
         setDesigns(merged);
         localStorage.setItem("opticus_designs", JSON.stringify(merged));
@@ -109,16 +108,11 @@ export function AuthProvider({ children }) {
       authTokenRef.current = token;
       if (token) {
         try {
-          const res = await apiFetch(`${API_URL}/auth/me`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const data = await res.json();
-          if (res.ok) {
-            if (localStorage.getItem("opticus_token") !== token) return;
-            startSession(data.user || data, token);
-            fetchBackendUsers(token);
-            return;
-          }
+          const data = await apiClient.get<any>("/auth/me", comToken(token));
+          if (localStorage.getItem("opticus_token") !== token) return;
+          startSession(data.user || data, token);
+          fetchBackendUsers(token);
+          return;
         } catch (e) {
           console.error("Não foi possível validar a sessão no backend:", e);
         }
@@ -143,22 +137,15 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     try {
-      const res = await fetch(`${API_URL}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        const userData = data.user || data;
-        startSession(userData, data.token);
-        return { ok: true, role: userData.role };
-      } else {
-        return { ok: false, message: data.detail || data.title || data.error || "Login failed." };
-      }
+      const data = await apiClient.post<any>("/auth/login", { email, password });
+      const userData = data.user || data;
+      startSession(userData, data.token);
+      return { ok: true, role: userData.role };
     } catch (err) {
       console.error("Falha ao acessar o backend durante o login:", err);
+      if (err instanceof ProblemError) {
+        return { ok: false, message: mensagemDoProblema(err) || "Login failed." };
+      }
       setIsBackendConnected(false);
       return { ok: false, message: "Serviço de autenticação indisponível. Tente novamente." };
     }
@@ -166,22 +153,15 @@ export function AuthProvider({ children }) {
 
   const signup = async ({ name, email, password }) => {
     try {
-      const res = await fetch(`${API_URL}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password })
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        const userData = data.user || data;
-        startSession(userData, data.token);
-        return { ok: true, role: userData.role };
-      } else {
-        return { ok: false, message: data.detail || data.title || data.error || "Signup failed." };
-      }
+      const data = await apiClient.post<any>("/auth/register", { name, email, password });
+      const userData = data.user || data;
+      startSession(userData, data.token);
+      return { ok: true, role: userData.role };
     } catch (err) {
       console.error("Falha ao acessar o backend durante o cadastro:", err);
+      if (err instanceof ProblemError) {
+        return { ok: false, message: mensagemDoProblema(err) || "Signup failed." };
+      }
       setIsBackendConnected(false);
       return { ok: false, message: "Serviço de cadastro indisponível. Tente novamente." };
     }
@@ -201,19 +181,9 @@ export function AuthProvider({ children }) {
     let syncStatus = "local";
     if (isBackendConnected && token) {
       try {
-        const res = await apiFetch(`${API_URL}/designs`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify({ ...designData, id: finalId })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          finalId = data.id || data.design?.id || finalId;
-          syncStatus = "synced";
-        }
+        const data = await apiClient.post<any>("/designs", { ...designData, id: finalId }, comToken(token));
+        finalId = data.id || data.design?.id || finalId;
+        syncStatus = "synced";
       } catch (e) {
         console.error("Backend design save failed, shifting to local cache:", e);
       }
@@ -245,10 +215,7 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        await apiFetch(`${API_URL}/designs/${designId}`, {
-          method: "DELETE",
-          headers: { "Authorization": `Bearer ${token}` }
-        });
+        await apiClient.delete(`/designs/${designId}`, comToken(token));
         fetchBackendDesigns(token);
       } catch (e) {
         console.error("Failed to delete backend design:", e);
@@ -260,22 +227,12 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        const res = await apiFetch(`${API_URL}/auth/users/${userId}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify(dataToUpdate)
-        });
-        const data = await res.json();
-        if (res.ok) {
-          fetchBackendUsers(token);
-          return { ok: true };
-        }
-        return { ok: false, message: data.detail || data.title || data.error };
+        await apiClient.put(`/auth/users/${userId}`, dataToUpdate, comToken(token));
+        fetchBackendUsers(token);
+        return { ok: true };
       } catch (e) {
         console.error("User update failed:", e);
+        if (e instanceof ProblemError) return { ok: false, message: mensagemDoProblema(e) };
       }
     }
 
@@ -286,18 +243,12 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        const res = await apiFetch(`${API_URL}/auth/users/${userId}`, {
-          method: "DELETE",
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        const data = await res.json();
-        if (res.ok) {
-          fetchBackendUsers(token);
-          return { ok: true };
-        }
-        return { ok: false, message: data.detail || data.title || data.error };
+        await apiClient.delete(`/auth/users/${userId}`, comToken(token));
+        fetchBackendUsers(token);
+        return { ok: true };
       } catch (e) {
         console.error("User deletion failed:", e);
+        if (e instanceof ProblemError) return { ok: false, message: mensagemDoProblema(e) };
       }
     }
 

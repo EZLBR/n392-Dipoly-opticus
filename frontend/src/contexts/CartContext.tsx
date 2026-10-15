@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
-import { apiFetch } from "../utils/api";
+import { apiClient, ProblemError } from "../api/client";
 import { normalizeConfig } from "../eyewear/config";
 import { hasArtwork } from "../eyewear/artwork";
 
@@ -8,9 +8,6 @@ const CartContext = createContext<any>(undefined);
 
 export function CartProvider({ children }) {
   const { isBackendConnected } = useAuth();
-  let API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-  if (API_URL.endsWith('/')) API_URL = API_URL.slice(0, -1);
-  if (!API_URL.endsWith('/api')) API_URL = `${API_URL}/api`;
 
   const [cart, setCart] = useState(() => {
     try {
@@ -53,20 +50,12 @@ export function CartProvider({ children }) {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        const res = await apiFetch(`${API_URL}/orders/checkout-cart`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify({ cartItems })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          return { ok: true, ...data };
+        const data = await apiClient.post<any>("/orders/checkout-cart", { cartItems });
+        return { ok: true, ...data };
+      } catch (e: any) {
+        if (e instanceof ProblemError) {
+          return { ok: false, error: e.detail || e.title || e.message };
         }
-        return { ok: false, error: data.detail || data.title || data.error };
-      } catch (e) {
         console.error("Consolidated backend checkout failed, shifting to local cache simulation:", e);
       }
     }
