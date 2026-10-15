@@ -1,6 +1,14 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import { ANONYMOUS_STUDIO_OWNER, STUDIO_OWNER_KEY, mergeSavedDesigns, readJSON, switchStudioOwner } from "../eyewear/storage";
 import { apiClient, ProblemError, setAuthErrorHandler } from "../api/client";
-import { mergeSavedDesigns, readJSON } from "../eyewear/storage";
+
+// O token vai explícito quando a resposta precisa ser conferida contra a
+// sessão que fez a requisição (BUG #82): se a sessão mudar no meio do
+// caminho, a resposta antiga é descartada.
+const comToken = (token?: string | null) =>
+  token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+const mensagemDoProblema = (erro: unknown) =>
+  erro instanceof ProblemError ? erro.detail || erro.title || erro.message : undefined;
 
 const AuthContext = createContext<any>(undefined);
 
@@ -10,6 +18,46 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
   const [authWarning, setAuthWarning] = useState<string | null>(null);
+  const [studioOwner, setStudioOwner] = useState<string | undefined>();
+  const ownerRef = useRef<string | undefined>(undefined);
+  const authTokenRef = useRef<string | null>(null);
+  const [studioSessionChanged, setStudioSessionChanged] = useState(false);
+  const isCurrentStudioSession = () => ownerRef.current === localStorage.getItem(STUDIO_OWNER_KEY)
+    && authTokenRef.current === localStorage.getItem("opticus_token");
+  const invalidateLocalSession = () => {
+    ownerRef.current = undefined;
+    authTokenRef.current = null;
+    setStudioOwner(undefined);
+    setStudioSessionChanged(true);
+    setSession(null); setDesigns([]); setUsers([]);
+  };
+
+  const changeStudioOwner = (owner: string) => {
+    switchStudioOwner(localStorage, owner);
+    ownerRef.current = owner;
+    setStudioOwner(owner);
+    setDesigns(readJSON(localStorage, "opticus_designs", []));
+  };
+  const endSession = () => {
+    if (ownerRef.current && ownerRef.current !== localStorage.getItem(STUDIO_OWNER_KEY)) {
+      invalidateLocalSession(); return;
+    }
+    localStorage.removeItem("opticus_token");
+    authTokenRef.current = null;
+    setStudioSessionChanged(false);
+    changeStudioOwner(ANONYMOUS_STUDIO_OWNER);
+    setSession(null);
+    setUsers([]);
+  };
+  const startSession = (user, token: string) => {
+    changeStudioOwner("user:" + String(user.publicId ?? user.id));
+    authTokenRef.current = token;
+    setStudioSessionChanged(false);
+    localStorage.setItem("opticus_token", token);
+    setSession(user);
+    setIsBackendConnected(true);
+    fetchBackendDesigns(token);
+  };
 
   const clearAuthWarning = () => setAuthWarning(null);
 
@@ -17,8 +65,7 @@ export function AuthProvider({ children }) {
     setAuthErrorHandler((status, problem) => {
       const message = problem?.title || (status === 401 ? "Acesso não autorizado." : "Acesso negado.");
       if (status === 401) {
-        localStorage.removeItem("opticus_token");
-        setSession(null);
+        endSession();
       } else if (status === 403) {
         setAuthWarning(message);
       }
@@ -29,22 +76,27 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const fetchBackendUsers = async () => {
+  const fetchBackendUsers = async (token?: string) => {
     try {
-      const data = await apiClient.get<any>("/auth/users");
-      setUsers(data.users || data);
+      const data = await apiClient.get<any>("/auth/users", comToken(token));
+      if (token === localStorage.getItem("opticus_token")) {
+        setUsers(data.users || data);
+      }
     } catch (e) {
       console.error("Failed to load backend users:", e);
     }
   };
 
-  const fetchBackendDesigns = async () => {
+  const fetchBackendDesigns = async (token?: string) => {
+    const owner = ownerRef.current;
+    if (owner !== localStorage.getItem(STUDIO_OWNER_KEY) || token !== localStorage.getItem("opticus_token")) return;
     try {
-      const data = await apiClient.get<any>("/designs");
-      const backendDesigns = data.designs || data;
-      const merged = mergeSavedDesigns(backendDesigns, readJSON(localStorage, "opticus_designs", []));
-      setDesigns(merged);
-      localStorage.setItem("opticus_designs", JSON.stringify(merged));
+      const data = await apiClient.get<any>("/designs", comToken(token));
+      if (owner === ownerRef.current && isCurrentStudioSession() && token === authTokenRef.current) {
+        const merged = mergeSavedDesigns(data.designs || data, readJSON(localStorage, "opticus_designs", []));
+        setDesigns(merged);
+        localStorage.setItem("opticus_designs", JSON.stringify(merged));
+      }
     } catch (e) {
       console.error("Failed to load backend designs:", e);
     }
@@ -53,40 +105,46 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     async function initSession() {
       const token = localStorage.getItem("opticus_token");
+      authTokenRef.current = token;
       if (token) {
         try {
-          const data = await apiClient.get<any>("/auth/me");
-          const userData = data.user || data;
-          setSession(userData);
-          setIsBackendConnected(true);
-          fetchBackendDesigns();
-          fetchBackendUsers();
+          const data = await apiClient.get<any>("/auth/me", comToken(token));
+          if (localStorage.getItem("opticus_token") !== token) return;
+          startSession(data.user || data, token);
+          fetchBackendUsers(token);
           return;
         } catch (e) {
           console.error("Não foi possível validar a sessão no backend:", e);
-          localStorage.removeItem("opticus_token");
         }
+        if (localStorage.getItem("opticus_token") !== token) return;
+        endSession();
       }
-
-      setDesigns(readJSON(localStorage, "opticus_designs", []));
+      changeStudioOwner(ANONYMOUS_STUDIO_OWNER);
     }
 
     initSession();
   }, []);
 
+  useEffect(() => {
+    const changed = (event: StorageEvent) => {
+      if ((!event.key || event.key === STUDIO_OWNER_KEY || event.key === "opticus_token") && !isCurrentStudioSession()) {
+        invalidateLocalSession();
+      }
+    };
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  }, []);
+
   const login = async (email, password) => {
     try {
       const data = await apiClient.post<any>("/auth/login", { email, password });
-      localStorage.setItem("opticus_token", data.token);
       const userData = data.user || data;
-      setSession(userData);
-      setIsBackendConnected(true);
-      fetchBackendDesigns();
+      startSession(userData, data.token);
       return { ok: true, role: userData.role };
-    } catch (err: any) {
+    } catch (err) {
       console.error("Falha ao acessar o backend durante o login:", err);
       if (err instanceof ProblemError) {
-        return { ok: false, message: err.detail || err.title || err.message };
+        return { ok: false, message: mensagemDoProblema(err) || "Login failed." };
       }
       setIsBackendConnected(false);
       return { ok: false, message: "Serviço de autenticação indisponível. Tente novamente." };
@@ -96,41 +154,44 @@ export function AuthProvider({ children }) {
   const signup = async ({ name, email, password }) => {
     try {
       const data = await apiClient.post<any>("/auth/register", { name, email, password });
-      localStorage.setItem("opticus_token", data.token);
       const userData = data.user || data;
-      setSession(userData);
-      setIsBackendConnected(true);
+      startSession(userData, data.token);
       return { ok: true, role: userData.role };
-    } catch (err: any) {
+    } catch (err) {
       console.error("Falha ao acessar o backend durante o cadastro:", err);
       if (err instanceof ProblemError) {
-        return { ok: false, message: err.detail || err.title || err.message };
+        return { ok: false, message: mensagemDoProblema(err) || "Signup failed." };
       }
       setIsBackendConnected(false);
       return { ok: false, message: "Serviço de cadastro indisponível. Tente novamente." };
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem("opticus_token");
-    setSession(null);
-  };
+  const logout = endSession;
 
   const saveDesign = async (designData) => {
-    const token = localStorage.getItem("opticus_token");
+    const token = authTokenRef.current;
+    const owner = ownerRef.current;
+    if (!owner) throw new Error("Aguarde o carregamento da sessão.");
+    if (!isCurrentStudioSession()) {
+      invalidateLocalSession();
+      throw new Error("A sessão mudou em outra aba. Atualize a página antes de salvar.");
+    }
     let finalId = designData.id || `design-${Date.now()}`;
     let syncStatus = "local";
     if (isBackendConnected && token) {
       try {
-        const data = await apiClient.post<any>("/designs", { ...designData, id: finalId });
+        const data = await apiClient.post<any>("/designs", { ...designData, id: finalId }, comToken(token));
         finalId = data.id || data.design?.id || finalId;
         syncStatus = "synced";
-        fetchBackendDesigns();
       } catch (e) {
         console.error("Backend design save failed, shifting to local cache:", e);
       }
     }
 
+    if (owner !== ownerRef.current || token !== authTokenRef.current || !isCurrentStudioSession()) {
+      throw new Error("A sessão mudou durante o salvamento. Abra o Studio novamente.");
+    }
     const cached = readJSON(localStorage, "opticus_designs", []);
     const existingIndex = cached.findIndex(item => String(item.id) === String(finalId));
     const previousDesign = existingIndex >= 0 ? cached[existingIndex] : {};
@@ -151,10 +212,11 @@ export function AuthProvider({ children }) {
   };
 
   const deleteBackendDesign = async (designId) => {
-    if (isBackendConnected) {
+    const token = localStorage.getItem("opticus_token");
+    if (isBackendConnected && token) {
       try {
-        await apiClient.delete(`/designs/${designId}`);
-        fetchBackendDesigns();
+        await apiClient.delete(`/designs/${designId}`, comToken(token));
+        fetchBackendDesigns(token);
       } catch (e) {
         console.error("Failed to delete backend design:", e);
       }
@@ -162,16 +224,15 @@ export function AuthProvider({ children }) {
   };
 
   const updateUser = async (userId, dataToUpdate) => {
-    if (isBackendConnected) {
+    const token = localStorage.getItem("opticus_token");
+    if (isBackendConnected && token) {
       try {
-        await apiClient.put(`/auth/users/${userId}`, dataToUpdate);
-        fetchBackendUsers();
+        await apiClient.put(`/auth/users/${userId}`, dataToUpdate, comToken(token));
+        fetchBackendUsers(token);
         return { ok: true };
-      } catch (e: any) {
+      } catch (e) {
         console.error("User update failed:", e);
-        if (e instanceof ProblemError) {
-          return { ok: false, message: e.detail || e.title || e.message };
-        }
+        if (e instanceof ProblemError) return { ok: false, message: mensagemDoProblema(e) };
       }
     }
 
@@ -179,16 +240,15 @@ export function AuthProvider({ children }) {
   };
 
   const deleteUser = async (userId) => {
-    if (isBackendConnected) {
+    const token = localStorage.getItem("opticus_token");
+    if (isBackendConnected && token) {
       try {
-        await apiClient.delete(`/auth/users/${userId}`);
-        fetchBackendUsers();
+        await apiClient.delete(`/auth/users/${userId}`, comToken(token));
+        fetchBackendUsers(token);
         return { ok: true };
-      } catch (e: any) {
+      } catch (e) {
         console.error("User deletion failed:", e);
-        if (e instanceof ProblemError) {
-          return { ok: false, message: e.detail || e.title || e.message };
-        }
+        if (e instanceof ProblemError) return { ok: false, message: mensagemDoProblema(e) };
       }
     }
 
@@ -198,6 +258,8 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       session,
+      studioOwner,
+      studioSessionChanged,
       setSession,
       users,
       designs,

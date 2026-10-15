@@ -6,9 +6,10 @@ import { useTranslation } from "../../contexts/LanguageContext";
 export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
   const { config, designId, designName, setDesignName, markSaved, showToast } =
     useCreatorStudio();
-  const { saveDesign } = useAuth();
+  const { saveDesign, session } = useAuth();
   const { language } = useTranslation();
   const pt = language === "pt";
+  const hasEmptyText = config.artwork.layers.some(layer => !layer.text.trim());
   const dialog = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -20,7 +21,7 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
   }, [isOpen]);
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    if (!designName.trim() || busy) return;
+    if (!designName.trim() || busy || hasEmptyText) return;
     setBusy(true);
     setError("");
     try {
@@ -46,8 +47,8 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
             ? "Salvo neste dispositivo. A sincronização não está disponível."
             : "Saved on this device. Sync is unavailable."
           : pt
-            ? "Design salvo. Materiais detalhados ficam neste dispositivo."
-            : "Design saved. Detailed materials remain on this device.",
+            ? "Design salvo na sua conta, com materiais e textos."
+            : "Design saved to your account, including materials and text.",
       );
       onClose();
       onOpenDesigns?.();
@@ -76,9 +77,11 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
           {pt ? "Guarde sua criação." : "Keep your creation."}
         </h2>
         <p className="studio-note">
-          {pt
-            ? "O acabamento e os materiais completos são guardados neste navegador. Não limpe os dados do site antes de fazer uma cópia."
-            : "The complete finish and materials are stored in this browser. Keep a copy before clearing site data."}
+          {session
+            ? pt ? "Salve na sua conta para continuar esta criação em outro dispositivo. Se estiver sem conexão, o Studio informa quando a cópia ficou apenas aqui."
+              : "Save to your account to continue on another device. When offline, Studio tells you if the copy is only stored here."
+            : pt ? "Entre na sua conta para acessar esta criação em outros dispositivos. Sem login, o design fica apenas neste navegador."
+              : "Sign in to access this creation on other devices. Without login, it is only saved in this browser."}
         </p>
         <label>
           {pt ? "Nome do design" : "Design name"}
@@ -94,6 +97,7 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
           />
         </label>
         {error && <p role="alert">{error}</p>}
+        {hasEmptyText && <p role="alert">{pt ? "Preencha ou remova as camadas de texto vazias antes de salvar." : "Fill in or remove empty text layers before saving."}</p>}
         <div className="studio-actions">
           <button
             type="button"
@@ -106,7 +110,7 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
           <button
             type="submit"
             className="studio-primary"
-            disabled={busy || !designName.trim()}
+            disabled={busy || !designName.trim() || hasEmptyText}
           >
             {busy
               ? pt

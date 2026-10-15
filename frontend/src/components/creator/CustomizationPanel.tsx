@@ -11,6 +11,8 @@ import {
 } from "../../eyewear/config";
 import { calculateBasePrice } from "../../utils/pricing";
 import { ArrowRight, Check, Bookmark, ShoppingBag } from "lucide-react";
+import ArtworkPanel from "./ArtworkPanel";
+import { hasArtwork } from "../../eyewear/artwork";
 
 export default function CustomizationPanel({
   onSave,
@@ -29,8 +31,8 @@ export default function CustomizationPanel({
   const { language } = useTranslation();
   const pt = language === "pt";
   const steps = pt
-    ? ["Armação", "Lentes", "Componentes", "Revisão"]
-    : ["Frame", "Lenses", "Components", "Review"];
+    ? ["Armação", "Lentes", "Componentes", "Arte", "Revisão"]
+    : ["Frame", "Lenses", "Components", "Artwork", "Review"];
   const choices = (
     title: string,
     key: keyof EyewearConfig,
@@ -81,6 +83,7 @@ export default function CustomizationPanel({
                 pt ? "Sua forma de ver." : "Your point of view.",
                 pt ? "Uma nova perspectiva." : "A fresh perspective.",
                 pt ? "Detalhes que importam." : "Details that matter.",
+                pt ? "Sua marca, seu óculos." : "Your mark, your eyewear.",
                 pt ? "Exatamente seu." : "Uniquely yours.",
               ][activeStep - 1]
             }
@@ -97,6 +100,7 @@ export default function CustomizationPanel({
                 pt
                   ? "Personalize cada ponto de contato."
                   : "Personalize every point of contact.",
+                pt ? "Escreva na armação e veja sua ideia tomar forma." : "Write on the frame and see your idea take shape.",
                 pt
                   ? "Confira sua criação antes de continuar."
                   : "Check your creation before continuing.",
@@ -267,7 +271,8 @@ export default function CustomizationPanel({
             ])}
           </>
         )}
-        {activeStep === 4 && (
+        {activeStep === 4 && <ArtworkPanel />}
+        {activeStep === 5 && (
           <>
             <dl className="studio-summary">
               {[
@@ -327,6 +332,10 @@ export default function CustomizationPanel({
                 ? "Modelo conceitual. Medidas e disponibilidade precisam ser confirmadas antes da fabricação."
                 : "Concept model. Dimensions and availability must be confirmed before manufacturing."}
             </p>
+            {hasArtwork(c) && <p className="studio-art-production-note">
+              {pt ? `${c.artwork.layers.length} camada(s) de texto. Salve seu design; compra com arte ainda em validação.`
+                : `${c.artwork.layers.length} text layer(s). Save your design; artwork purchasing is still under review.`}
+            </p>}
           </>
         )}
       </div>
@@ -347,7 +356,7 @@ export default function CustomizationPanel({
             <Bookmark size={16} />
             {pt ? "Salvar" : "Save"}
           </button>
-          {activeStep < 4 ? (
+          {activeStep < 5 ? (
             <button
               className="studio-primary"
               onClick={() => setActiveStep(activeStep + 1)}
@@ -356,7 +365,7 @@ export default function CustomizationPanel({
               <ArrowRight size={16} />
             </button>
           ) : (
-            <button className="studio-primary" onClick={onCart}>
+            <button className="studio-primary" onClick={onCart} disabled={hasArtwork(c)}>
               <ShoppingBag size={16} />
               {pt ? "Adicionar à sacola" : "Add to bag"}
             </button>

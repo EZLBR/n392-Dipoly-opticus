@@ -6,10 +6,11 @@ import React, {
   useRef,
 } from "react";
 import { normalizeConfig, type EyewearConfig } from "../eyewear/config";
-import { restoreStudio } from "../eyewear/storage";
+import { restoreStudio, STUDIO_OWNER_KEY } from "../eyewear/storage";
+import { useAuth } from "./AuthContext";
 import type { CameraView } from "../eyewear/EyewearViewer";
 
-function useStudioState() {
+function useStudioState(owner: string) {
   const [initial] = useState(() => restoreStudio(localStorage));
   const [config, setConfig] = useState(initial.config);
   const [activeStep, setActiveStep] = useState(1);
@@ -34,6 +35,7 @@ function useStudioState() {
   };
   useEffect(() => () => clearTimeout(timer.current), []);
   useEffect(() => {
+    if (localStorage.getItem(STUDIO_OWNER_KEY) !== owner) return;
     try {
       localStorage.setItem(
         "opticus_creator_draft",
@@ -50,6 +52,7 @@ function useStudioState() {
     }
   }, [config]);
   const markSaved = (id: string) => {
+    if (localStorage.getItem(STUDIO_OWNER_KEY) !== owner) return;
     setDesignId(id);
     source.current = "design:" + id;
     localStorage.setItem(
@@ -95,8 +98,17 @@ export function CreatorStudioProvider({
 }: {
   children: React.ReactNode;
 }) {
+  const { studioOwner, studioSessionChanged } = useAuth();
+  if (studioSessionChanged) return <div className="page-wrapper" role="alert">
+    <p>A sessão mudou em outra aba. Atualize a página para continuar.</p>
+    <button className="btn" onClick={() => window.location.reload()}>Atualizar página</button>
+  </div>;
+  if (!studioOwner) return <p role="status">Carregando Studio…</p>;
+  return <StudioWorkspace key={studioOwner} owner={studioOwner}>{children}</StudioWorkspace>;
+}
+function StudioWorkspace({ children, owner }: { children: React.ReactNode; owner: string }) {
   return (
-    <StudioContext.Provider value={useStudioState()}>
+    <StudioContext.Provider value={useStudioState(owner)}>
       {children}
     </StudioContext.Provider>
   );

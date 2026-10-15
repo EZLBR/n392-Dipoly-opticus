@@ -5,8 +5,9 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { geometryKey, type EyewearConfig } from "./config";
 import { buildEyewear, type EyewearModel } from "./geometry";
 import { createMaterials } from "./materials";
+import { createArtworkRenderer } from "./artwork-renderer";
 
-export type CameraView = "perspective" | "front" | "side";
+export type CameraView = "perspective" | "front" | "side" | "left-side";
 interface Props {
   config: EyewearConfig;
   compact?: boolean;
@@ -98,6 +99,8 @@ export default function EyewearViewer({
     controls.target.set(0, -3, -48);
     controls.enabled = !compact;
     const surfaces = createMaterials();
+    const artwork = createArtworkRenderer();
+    let artworkKey = "";
     let model: EyewearModel | undefined,
       currentKey = "",
       visible = true,
@@ -111,12 +114,19 @@ export default function EyewearViewer({
         nextKey = geometryKey(c);
       if (nextKey !== currentKey) {
         if (model) {
+          artwork.dispose();
           scene.remove(model.group);
           model.dispose();
         }
         model = buildEyewear(c, surfaces.materials);
         scene.add(model.group);
         currentKey = nextKey;
+        artworkKey = "";
+      }
+      const nextArtworkKey = JSON.stringify(c.artwork);
+      if (artworkKey !== nextArtworkKey) {
+        artwork.update(model!, c);
+        artworkKey = nextArtworkKey;
       }
       model!.setFold(c.templeOpen);
       surfaces.update(c, live.current.environment);
@@ -133,12 +143,15 @@ export default function EyewearViewer({
     changeView.current = (v) => {
       needsRender = true;
       currentView = v;
+      controls.target.set(0, -3, v === "side" || v === "left-side" ? -68 : -48);
       const distance = 340 / Math.min(1, Math.max(0.55, camera.aspect));
       const direction =
         v === "front"
           ? new THREE.Vector3(0, 0.015, 1)
           : v === "side"
             ? new THREE.Vector3(1, 0.1, 0.02)
+            : v === "left-side"
+              ? new THREE.Vector3(-1, 0.1, 0.02)
             : new THREE.Vector3(0.6, 0.35, 1);
       camera.position
         .copy(controls.target)
@@ -211,6 +224,7 @@ export default function EyewearViewer({
       observer.disconnect();
       intersection.disconnect();
       controls.dispose();
+      artwork.dispose();
       renderer.domElement.removeEventListener("webglcontextlost", lost);
       model?.dispose();
       surfaces.dispose();

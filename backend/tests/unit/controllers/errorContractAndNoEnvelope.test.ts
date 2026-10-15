@@ -23,6 +23,8 @@ function mockResponse() {
   res.status = vi.fn().mockReturnValue(res);
   res.json = vi.fn().mockReturnValue(res);
   res.send = vi.fn().mockReturnValue(res);
+  // O checkout simulado define Cache-Control (SEC-03) antes de validar a entrada.
+  res.set = vi.fn().mockReturnValue(res);
   return res as Response;
 }
 

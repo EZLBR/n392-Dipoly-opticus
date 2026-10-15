@@ -132,7 +132,8 @@ export async function fetchStorePage(
   const response = await fetch(`${api}/products?${params}`, { signal });
   if (!response.ok) throw new Error("Catalog unavailable");
   const data = await response.json();
-  if (!data.success || !Array.isArray(data.produtos))
+  // API-04: as respostas de sucesso não trazem mais o envelope `success`.
+  if (!Array.isArray(data.produtos))
     throw new Error("Invalid catalog response");
   const total = Number(data.total),
     totalPages = Number(data.totalPages);

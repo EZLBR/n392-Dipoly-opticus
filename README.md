@@ -59,6 +59,29 @@ Variável pública do frontend:
 VITE_API_URL=http://localhost:5000/api
 ```
 
+### Studio: textos na armação
+
+Abra o Studio e selecione **04 — Arte**. É possível adicionar até seis textos
+de até 24 caracteres na frente ou nas hastes, ajustar fonte, cor, posição,
+tamanho e rotação. As lentes não recebem arte.
+
+Ao salvar conectado, a configuração completa é persistida na conta. Sem
+conexão, o design fica identificado como local; edições locais pendentes não
+são descartadas pela sincronização. Ao sair ou trocar de conta, o workspace
+privado é limpo. Uma troca de sessão em outra aba exige recarregar o Studio.
+Caches antigos sem identidade são descartados para não expor designs a outra
+conta; rascunhos identificados como anônimos podem acompanhar o primeiro login.
+
+A arte é uma prévia conceitual: a compra de designs com texto permanece
+bloqueada no frontend e na API até a validação do processo pela fábrica.
+Imagens, desenhos livres e aplicação sobre lentes não fazem parte desta etapa.
+
+**Atualização do banco:** aplique as migrations antes de iniciar a nova API
+(`npx prisma migrate deploy`). A migration
+`20261014223000_studio_config` adiciona apenas uma coluna JSONB opcional;
+designs legados sem esse documento continuam legíveis. O checkout simulado
+é carregado por requisição autenticada e mostra somente pedidos da conta.
+
 ## Backend
 
 Requisitos: Node.js 22, npm e **PostgreSQL 14+**.

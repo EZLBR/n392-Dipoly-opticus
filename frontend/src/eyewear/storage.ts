@@ -1,4 +1,24 @@
 import { normalizeConfig, type EyewearConfig } from "./config";
+
+export const ANONYMOUS_STUDIO_OWNER = "anonymous";
+export const STUDIO_OWNER_KEY = "opticus_studio_owner";
+const privateStudioKeys = [
+  "opticus_designs", "opticus_creator_draft", "opticus_active_design",
+  "opticus_active_design_id", "opticus_active_product", "opticus_active_product_config",
+];
+
+/** Only a known anonymous workspace may be claimed when its creator logs in. */
+export function switchStudioOwner(
+  storage: Pick<Storage, "getItem" | "setItem" | "removeItem">,
+  nextOwner: string,
+) {
+  const previousOwner = storage.getItem(STUDIO_OWNER_KEY);
+  if (previousOwner === nextOwner) return;
+  if (previousOwner !== ANONYMOUS_STUDIO_OWNER || nextOwner === ANONYMOUS_STUDIO_OWNER) {
+    privateStudioKeys.forEach(key => storage.removeItem(key));
+  }
+  storage.setItem(STUDIO_OWNER_KEY, nextOwner);
+}
 export interface StudioDraft {
   config: EyewearConfig;
   source: string;
@@ -87,6 +107,8 @@ export function mergeSavedDesigns(remote: any[], local: any[]) {
         (item) => String(item.id) === String(design.id),
       );
       const canonical = normalizeConfig(design);
+      if (cached?.syncStatus === "local") return { ...design, ...cached, config: normalizeConfig(cached) };
+      if (design.config) return { ...design, config: canonical };
       const config = cached
         ? normalizeConfig({
             ...normalizeConfig(cached),

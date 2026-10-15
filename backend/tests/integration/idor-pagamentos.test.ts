@@ -162,26 +162,14 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
   });
 
   describe("GET /api/payments/simulated-checkout", () => {
-    it("[VULNERÁVEL · SEC-03 #4] usuário anônimo lê dados pessoais do cliente", () =>
-      vulnerabilidadeConhecida({
-        issue: "SEC-03 #4",
-        observar: async () => {
-          const { dono, cobranca } = await cenarioDeCobranca();
-          const res = await request(app)
-            .get("/api/payments/simulated-checkout")
-            .query({ billingId: cobranca.billingId });
-          return { res, emailDoDono: dono.email };
-        },
-        seguro: ({ res, emailDoDono }) => {
-          esperarProblema(res, 401, "unauthorized");
-          expect(res.text).not.toContain(emailDoDono);
-        },
-        // Hoje: página pública que exibe nome e e-mail do cliente.
-        vulneravel: ({ res, emailDoDono }) => {
-          expect(res.status).toBe(200);
-          expect(res.text).toContain(emailDoDono);
-        },
-      }));
+    it("SEC-03 #4 — usuário anônimo não lê dados pessoais do cliente", async () => {
+      const { dono, cobranca } = await cenarioDeCobranca();
+      const res = await request(app)
+        .get("/api/payments/simulated-checkout")
+        .query({ billingId: cobranca.billingId });
+      esperarProblema(res, 401, "unauthorized");
+      expect(res.text).not.toContain(dono.email);
+    });
   });
 
   describe("POST /api/payments/webhook", () => {
