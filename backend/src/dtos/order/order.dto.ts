@@ -37,6 +37,10 @@ const customSpecsSchema = z.looseObject({
     message: "A compra de designs com arte aguarda validação da fábrica. Salve sua criação no Studio." });
 });
 
+// Quantidade cobrada e gravada no pedido, nos dois endpoints. Uma
+// customSpecs.quantity enviada pelo cliente é sobrescrita por esta.
+const quantidadeSchema = z.coerce.number().int().positive().max(QUANTIDADE_MAXIMA_POR_ITEM).optional().default(1);
+
 export const createOrderSchema = z.object({
   productName: z
     .string({ message: "Nome do produto é obrigatório." })
@@ -50,6 +54,7 @@ export const createOrderSchema = z.object({
     .min(1, "Nome da fábrica é obrigatório.")
     .max(255),
   customSpecs: customSpecsSchema,
+  quantity: quantidadeSchema,
 });
 
 export type CreateOrderDTO = z.infer<typeof createOrderSchema>;
@@ -76,7 +81,7 @@ export const cartItemSchema = z.object({
     .min(1, "Nome da fábrica é obrigatório.")
     .max(255),
   customSpecs: customSpecsSchema,
-  quantity: z.coerce.number().int().positive().max(QUANTIDADE_MAXIMA_POR_ITEM).optional().default(1),
+  quantity: quantidadeSchema,
 });
 
 export type CartItemDTO = z.infer<typeof cartItemSchema>;

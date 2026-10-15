@@ -73,6 +73,53 @@ describe("POST /api/orders — total calculado no servidor (SEC-05)", () => {
     // 180 + 40 (sol) + 80 (titânio)
     expect((await pedidosGravados()).map((p) => p.total)).toEqual(["300.00"]);
   });
+
+  // A ficha que a fábrica recebe (custom_specs) não pode divergir do que foi cobrado.
+  describe("a quantidade gravada é a quantidade cobrada", () => {
+    it("customSpecs.quantity 100 sem quantity: cobra e grava 1 unidade", async () => {
+      const fabrica = await criarUsuario("factory");
+      const cliente = await criarUsuario("client");
+
+      const res = await request(app)
+        .post("/api/orders")
+        .set(...comToken(cliente.token))
+        .send(itemDoCarrinho(fabrica.id, { quantity: undefined, customSpecs: especificacaoDoStudio({ quantity: 100 }) }));
+
+      expect(res.status).toBe(201);
+      const [pedido] = await pedidosGravados();
+      expect(pedido.total).toBe(PRECO_DA_ESPECIFICACAO_PADRAO);
+      expect(pedido.customSpecs.quantity).toBe(1);
+    });
+
+    it("quantity 3 cobra e grava 3 unidades, mesmo com outra quantidade em customSpecs", async () => {
+      const fabrica = await criarUsuario("factory");
+      const cliente = await criarUsuario("client");
+
+      const res = await request(app)
+        .post("/api/orders")
+        .set(...comToken(cliente.token))
+        .send(itemDoCarrinho(fabrica.id, { quantity: 3, customSpecs: especificacaoDoStudio({ quantity: 100 }) }));
+
+      expect(res.status).toBe(201);
+      const [pedido] = await pedidosGravados();
+      expect(pedido.total).toBe("630.00");
+      expect(pedido.customSpecs.quantity).toBe(3);
+    });
+
+    it.each([0, 101, 2.5])("quantity %s responde 400 e não cria pedido", async (quantity) => {
+      const fabrica = await criarUsuario("factory");
+      const cliente = await criarUsuario("client");
+
+      const res = await request(app)
+        .post("/api/orders")
+        .set(...comToken(cliente.token))
+        .send(itemDoCarrinho(fabrica.id, { quantity }));
+
+      esperarProblema(res, 400, "bad-request");
+      expect(res.body.invalidParams).toEqual([expect.objectContaining({ name: "quantity" })]);
+      expect(await prisma.pedido.count()).toBe(0);
+    });
+  });
 });
 
 describe("POST /api/orders/checkout-cart — total calculado no servidor (SEC-05)", () => {

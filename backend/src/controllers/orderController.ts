@@ -22,10 +22,12 @@ import type {
 // ─────────────────────────────────────────────────────────
 export async function createOrder(req: Request, res: Response) {
   // 🔐 Security Fix: 'status' is completely ignored from req.body to prevent payment bypass.
-  const { productName, factoryId, factoryName, customSpecs } = req.body as CreateOrderDTO;
+  const { productName, factoryId, factoryName, customSpecs, quantity } = req.body as CreateOrderDTO;
 
-  // O preço vem das especificações, calculado no servidor (SEC-05).
-  const { total } = precoDoItem(customSpecs, 1);
+  // O preço vem das especificações, calculado no servidor (SEC-05). A
+  // quantidade gravada é a cobrada, nunca a que vier em customSpecs.
+  const { total } = precoDoItem(customSpecs, quantity);
+  const especificacaoGravada = { ...customSpecs, quantity };
 
   const customerName  = req.user!.name;
   const customerEmail = req.user!.email;
@@ -50,7 +52,7 @@ export async function createOrder(req: Request, res: Response) {
       finalFactoryId,
       factoryName,
       centavosParaDecimal(total),
-      JSON.stringify(customSpecs),
+      JSON.stringify(especificacaoGravada),
       "Pending Payment" // 🔒 Trava de Segurança
     ]
   );
