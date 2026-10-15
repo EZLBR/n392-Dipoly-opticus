@@ -6,12 +6,18 @@
 
 import pool from "../config/db.js";
 import { env } from "../config/env.js";
+import {
+  PAGAMENTO_INDISPONIVEL,
+  TEMPO_LIMITE_DO_GATEWAY_MS,
+  simuladorDePagamentoAtivo,
+} from "../config/pagamento.js";
 import crypto from "crypto";
 import type { NextFunction, Request, Response } from "express";
 import {
   BadRequestProblem,
   ForbiddenProblem,
   NotFoundProblem,
+  ServiceUnavailableProblem,
   UnauthorizedProblem,
 } from "../errors/problem.js";
 import logger from "../utils/logger.js";
@@ -58,6 +64,13 @@ export async function createBilling(req: Request, res: Response, next: NextFunct
     const backendOrigin = `${backendProto}://${req.get("host")}`;
 
     if (isMockToken) {
+      // SEC-06: em produção não há simulador. Sem gateway, não existe
+      // cobrança possível, e o pedido não é alterado. Lançado (e não
+      // next()) para valer também quando o API-04 remove o next.
+      if (!simuladorDePagamentoAtivo) {
+        throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
+      }
+
       const mockBillingId  = `bill-sim-${Math.floor(100000 + Math.random() * 900000)}`;
 
       await pool.query(
@@ -72,6 +85,7 @@ export async function createBilling(req: Request, res: Response, next: NextFunct
 
     const abacateResponse = await fetch("https://api.abacatepay.com/v2/billing", {
       method:  "POST",
+      signal:  AbortSignal.timeout(TEMPO_LIMITE_DO_GATEWAY_MS),
       headers: {
         Authorization:  `Bearer ${ABACATE_TOKEN}`,
         "Content-Type": "application/json"
@@ -107,8 +121,14 @@ export async function createBilling(req: Request, res: Response, next: NextFunct
   } catch (err) {
     logger.error(
       { err, traceId: req.requestId, requestId: req.requestId },
-      "[AbacatePay] Falha na cobrança; caindo para o simulador",
+      "[AbacatePay] Falha ao criar cobrança no gateway",
     );
+
+    // SEC-06: em produção o simulador não existe. A falha do gateway vira
+    // erro explícito, sem link para um checkout que responderia 404.
+    if (!simuladorDePagamentoAtivo) {
+      throw err instanceof ServiceUnavailableProblem ? err : new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
+    }
 
     const fallbackId  = `bill-fallback-${Math.floor(100000 + Math.random() * 900000)}`;
 

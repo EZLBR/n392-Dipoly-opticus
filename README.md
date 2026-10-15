@@ -172,6 +172,13 @@ confirma um pagamento sem pagar no ambiente real, mesmo se o token do gateway fa
 | `test` | disponível, para os testes de integração |
 | `production` (imagem Docker e Compose) | inexistente, responde 404 |
 
+Em produção, quando não é possível criar a cobrança real (`ABACATE_TOKEN` ausente, gateway
+recusando a cobrança ou fora do ar), `POST /api/orders/checkout-cart` e
+`POST /api/payments/create-billing` respondem **503** em Problem Details, sem link para o
+simulador. O checkout sem token falha antes de criar pedidos. Se o gateway falhar depois da
+criação, os pedidos daquela tentativa são desfeitos. O `create-billing` não altera o pedido.
+A chamada ao gateway tem tempo limite de 10 segundos.
+
 ## Docker
 
 Imagens de produção para o backend e o frontend. Para subir a stack completa, com o

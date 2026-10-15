@@ -6,7 +6,13 @@
 import pool from "../config/db.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
 import type { Request, Response } from "express";
-import { ForbiddenProblem } from "../errors/problem.js";
+import { ForbiddenProblem, ServiceUnavailableProblem } from "../errors/problem.js";
+import {
+  PAGAMENTO_INDISPONIVEL,
+  TEMPO_LIMITE_DO_GATEWAY_MS,
+  gatewayDePagamentoConfigurado,
+  simuladorDePagamentoAtivo,
+} from "../config/pagamento.js";
 import { OrderService } from "../services/orderService.js";
 import logger from "../utils/logger.js";
 import type {
@@ -193,6 +199,12 @@ export async function updateOrderStatus(req: Request, res: Response) {
 export async function checkoutCart(req: Request, res: Response) {
   const { cartItems } = req.body as CheckoutCartDTO;
 
+  // SEC-06: em produção não há simulador. Sem gateway configurado não há
+  // onde pagar, então a requisição falha antes de criar qualquer pedido.
+  if (!simuladorDePagamentoAtivo && !gatewayDePagamentoConfigurado()) {
+    throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
+  }
+
   const customerName  = req.user!.name;
   const customerEmail = req.user!.email;
   const usuarioId     = req.user!.id;
@@ -275,6 +287,7 @@ export async function checkoutCart(req: Request, res: Response) {
 
         const abacateResponse = await fetch("https://api.abacatepay.com/v2/billing", {
           method:  "POST",
+          signal:  AbortSignal.timeout(TEMPO_LIMITE_DO_GATEWAY_MS),
           headers: {
             Authorization:  `Bearer ${ABACATE_TOKEN}`,
             "Content-Type": "application/json"
@@ -310,9 +323,20 @@ export async function checkoutCart(req: Request, res: Response) {
       } catch (err) {
         logger.error(
           { err, traceId: req.requestId, requestId: req.requestId },
-          "[AbacatePay] Falha ao criar cobrança; caindo para o simulador",
+          "[AbacatePay] Falha ao criar cobrança no gateway",
         );
       }
+    }
+
+    // SEC-06: o gateway falhou e, em produção, não há simulador para onde
+    // mandar o cliente. Os pedidos desta tentativa são desfeitos, para não
+    // ficarem pendentes sem cobrança nem se acumularem a cada nova tentativa.
+    if (!simuladorDePagamentoAtivo) {
+      await pool.query(
+        "DELETE FROM pedidos WHERE abacate_billing_id = $1 AND usuario_id = $2 AND status = 'Pending Payment'",
+        [consolidatedBillingId, usuarioId]
+      );
+      throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
     }
 
     const simulatedCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${consolidatedBillingId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
