@@ -1,0 +1,29 @@
+# ============================================================
+#   Contexto de build do backend
+#   Tudo que está aqui nunca é enviado ao daemon do Docker.
+# ============================================================
+
+# Dependências e artefatos: a imagem instala e compila os próprios
+node_modules
+dist
+coverage
+
+# Controle de versão
+.git
+.gitignore
+
+# Ambiente: nenhum .env, nem os de exemplo, entra na imagem.
+# Segredos são fornecidos na execução.
+.env
+.env.*
+*.env
+
+# Testes e configuração de teste não fazem parte da imagem
+tests
+vitest.config.ts
+tsconfig.test.json
+
+# Diversos
+*.log
+Dockerfile
+.dockerignore

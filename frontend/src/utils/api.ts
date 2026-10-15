@@ -60,13 +60,20 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
     headers,
   });
 
+  const belongsToCurrentSession = () => {
+    const activeToken = localStorage.getItem("opticus_token");
+    return headers.get("Authorization") === (activeToken ? `Bearer ${activeToken}` : null);
+  };
+
   if (response.status === 401) {
     const problem = await parseProblemDetails(response);
+    if (!belongsToCurrentSession()) return response;
     localStorage.removeItem("opticus_token");
     handleAuthError(401, problem);
     redirectToLogin();
   } else if (response.status === 403) {
     const problem = await parseProblemDetails(response);
+    if (!belongsToCurrentSession()) return response;
     handleAuthError(403, problem);
   }
 

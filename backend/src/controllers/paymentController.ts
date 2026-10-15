@@ -250,14 +250,16 @@ export async function handleWebhook(req: Request, res: Response) {
 // ─────────────────────────────────────────────────────────
 export async function getSimulatedCheckoutPage(req: Request, res: Response) {
   const { billingId, orderId, returnTo } = req.query;
+  res.set("Cache-Control", "private, no-store");
 
-  if (!billingId) {
+  // API-04: erros em Problem Details. SEC-03: só o dono autenticado vê a cobrança.
+  if (typeof billingId !== "string" || !billingId.trim()) {
     throw new BadRequestProblem("billingId ausente.");
   }
 
   const { rows: orders } = await pool.query(
-    "SELECT * FROM pedidos WHERE abacate_billing_id = $1",
-    [billingId]
+    "SELECT * FROM pedidos WHERE abacate_billing_id = $1 AND usuario_id = $2",
+    [billingId, req.user!.id]
   );
 
   if (orders.length === 0) {
@@ -312,7 +314,7 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
       <div class="detail-row"><span>Cobrança:</span><strong style="font-size:11px;color:#8b949e">${escapeHTML(billingId)}</strong></div>
       <div class="detail-row"><span>Cliente:</span><strong>${escapeHTML(customerName)} (${escapeHTML(customerEmail)})</strong></div>
     </div>
-    <form action="${backendOrigin}/api/payments/confirm-simulated-payment" method="POST">
+    <form action="${backendOrigin}/api/payments/confirm-simulated-payment" method="POST" target="_top">
       <input type="hidden" name="billingId" value="${escapeHTML(billingId)}" />
       <input type="hidden" name="returnTo" value="${escapeHTML(returnTo || 'http://localhost:5173')}" />
       <button type="submit" class="btn">Simular Pagamento Pix</button>

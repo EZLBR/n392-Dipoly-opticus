@@ -1,0 +1,117 @@
+# ============================================================
+#   OPTICUS — stack completa com Docker Compose
+#
+#   cp .env.example .env          # preencha POSTGRES_PASSWORD e JWT_SECRET
+#   docker compose up --build     # sobe tudo; a API responde em /health
+#
+#   Serviços (os nomes são os hosts da rede interna do Compose):
+#
+#     db       PostgreSQL 16              host: 127.0.0.1:${DB_PORT:-5433}
+#     migrate  migrations + seed          roda uma vez e termina
+#     api      backend Express + Prisma   host: 127.0.0.1:${API_PORT:-5000}
+#     web      frontend React (nginx)     host: 127.0.0.1:${WEB_PORT:-8080}
+#
+#   Ordem de subida:  db saudável → migrate conclui → api saudável → web
+#
+#   docker compose down       encerra os serviços e MANTÉM os dados
+#   docker compose down -v    encerra e APAGA o banco (volume pgdata)
+# ============================================================
+
+name: opticus
+
+# A API e as migrations falam com o banco pelo nome do serviço na rede
+# interna do Compose — nunca por localhost, que dentro de um container é o
+# próprio container. Segredos obrigatórios sem valor impedem a subida.
+x-database-url: &database-url "postgresql://${POSTGRES_USER:-opticus}:${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env (veja .env.example)}@db:5432/${POSTGRES_DB:-opticus}"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-opticus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env (veja .env.example)}
+      POSTGRES_DB: ${POSTGRES_DB:-opticus}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Publicado só no loopback, em porta diferente da 5432 padrão, para não
+    # colidir com um PostgreSQL instalado na máquina. Serve para abrir o
+    # banco no pgAdmin; a API não usa esta porta.
+    ports:
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  migrate:
+    build:
+      context: ./backend
+      target: migrate
+    image: opticus-backend-migrate
+    # O Prisma Client é gerado no build da imagem. Aqui roda o que depende
+    # do banco: aplicar as migrations e garantir os dados de referência.
+    # Os dois passos são idempotentes — rodam a cada `up` sem efeito
+    # colateral.
+    command: ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed"]
+    environment:
+      DATABASE_URL: *database-url
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD_HASH: ${SEED_ADMIN_PASSWORD_HASH:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ./backend
+    image: opticus-backend
+    environment:
+      DATABASE_URL: *database-url
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no .env (veja .env.example)}
+      # Origem liberada no CORS: onde o navegador carrega o frontend.
+      FRONTEND_URL: http://localhost:${WEB_PORT:-8080}
+      ABACATE_TOKEN: ${ABACATE_TOKEN:-}
+    ports:
+      - "127.0.0.1:${API_PORT:-5000}:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # Mesma verificação do HEALTHCHECK da imagem, com intervalo menor na
+    # subida para o `up --wait` e o serviço web não esperarem 30s à toa.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/health > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+      start_interval: 2s
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        # Endereço da API como o NAVEGADOR o enxerga — não é a rede interna.
+        # Embutido no bundle durante o build.
+        VITE_API_URL: http://localhost:${API_PORT:-5000}/api
+    image: opticus-frontend
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+      start_interval: 2s
+
+volumes:
+  # Volume nomeado: sobrevive a `docker compose down`. Só `down -v` o apaga.
+  pgdata:

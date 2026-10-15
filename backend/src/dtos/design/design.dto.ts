@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { studioConfigSchema } from "./studio-config.dto.js";
 
 export const saveDesignSchema = z.object({
   id: z.string().optional().nullable(),
@@ -25,6 +26,7 @@ export const saveDesignSchema = z.object({
   frame_profile: z.string().max(50).optional(),
   temple_open: z.coerce.number().max(99.99).optional(),
   published: z.boolean().optional(),
+  config: studioConfigSchema.optional().nullable(),
 });
 
 export type SaveDesignDTO = z.infer<typeof saveDesignSchema>;
