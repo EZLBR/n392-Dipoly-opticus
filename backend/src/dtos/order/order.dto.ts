@@ -1,7 +1,35 @@
 import { z } from "zod";
+import {
+  MATERIAIS_DE_ARMACAO,
+  MATERIAIS_DE_LENTE,
+  PERFIS_DE_ARMACAO,
+  QUANTIDADE_MAXIMA_POR_ITEM,
+  TRATAMENTOS_DE_LENTE,
+} from "../../domain/pricing.js";
 
-const customSpecsSchema = z.record(z.string(), z.any()).superRefine((specs, context) => {
-  const hasUnapprovedArtwork = [specs, specs.config].some(document => {
+// O cliente não envia preço: o total vem de precoUnitarioEmCentavos() a
+// partir das especificações (SEC-05). Um `total` no corpo é descartado
+// pelo parse, como qualquer campo fora do schema.
+//
+// Os campos que mudam o preço são validados contra o catálogo de opções,
+// e o resultado do parse é o que se grava em custom_specs. Assim, o que é
+// cobrado é exatamente o que vai para a fábrica. Os demais campos do
+// Studio (cor, modelo, acabamento...) seguem como foram enviados.
+const customSpecsSchema = z.looseObject({
+  isSunglasses: z.boolean({ message: "Informe se a lente é de sol (true ou false)." }),
+  frameProfile: z.enum(PERFIS_DE_ARMACAO, { message: "Perfil de armação inválido." }),
+  frameMaterial: z.enum(MATERIAIS_DE_ARMACAO, { message: "Material de armação inválido." }),
+  lensMaterial: z.enum(MATERIAIS_DE_LENTE, { message: "Material de lente inválido." }),
+  lensTreatments: z
+    .array(z.enum(TRATAMENTOS_DE_LENTE, { message: "Tratamento de lente inválido." }), {
+      message: "Informe a lista de tratamentos de lente.",
+    })
+    .max(TRATAMENTOS_DE_LENTE.length)
+    .transform((tratamentos) => [...new Set(tratamentos)]),
+}).superRefine((specs, context) => {
+  // Campos fora dos de preço chegam como unknown no looseObject.
+  const documento = specs as Record<string, any>;
+  const hasUnapprovedArtwork = [documento, documento.config].some(document => {
     const artwork = document?.artwork;
     return artwork != null && (!Array.isArray(artwork.layers) || artwork.layers.length > 0);
   });
@@ -21,9 +49,6 @@ export const createOrderSchema = z.object({
     .trim()
     .min(1, "Nome da fábrica é obrigatório.")
     .max(255),
-  total: z.coerce
-    .number({ message: "Total é obrigatório." })
-    .positive("Total deve ser um número positivo."),
   customSpecs: customSpecsSchema,
 });
 
@@ -50,11 +75,8 @@ export const cartItemSchema = z.object({
     .trim()
     .min(1, "Nome da fábrica é obrigatório.")
     .max(255),
-  total: z.coerce
-    .number({ message: "Total é obrigatório." })
-    .positive("Total deve ser um número positivo."),
   customSpecs: customSpecsSchema,
-  quantity: z.coerce.number().int().positive().optional().default(1),
+  quantity: z.coerce.number().int().positive().max(QUANTIDADE_MAXIMA_POR_ITEM).optional().default(1),
 });
 
 export type CartItemDTO = z.infer<typeof cartItemSchema>;

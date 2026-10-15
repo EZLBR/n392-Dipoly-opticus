@@ -8,6 +8,7 @@ import { sendOrderStatusEmail } from "../utils/emailService.js";
 import type { Request, Response } from "express";
 import { ForbiddenProblem } from "../errors/problem.js";
 import { OrderService } from "../services/orderService.js";
+import { centavosParaDecimal, precoDoItem } from "../domain/pricing.js";
 import logger from "../utils/logger.js";
 import type {
   CreateOrderDTO,
@@ -21,7 +22,10 @@ import type {
 // ─────────────────────────────────────────────────────────
 export async function createOrder(req: Request, res: Response) {
   // 🔐 Security Fix: 'status' is completely ignored from req.body to prevent payment bypass.
-  const { productName, factoryId, factoryName, total, customSpecs } = req.body as CreateOrderDTO;
+  const { productName, factoryId, factoryName, customSpecs } = req.body as CreateOrderDTO;
+
+  // O preço vem das especificações, calculado no servidor (SEC-05).
+  const { total } = precoDoItem(customSpecs, 1);
 
   const customerName  = req.user!.name;
   const customerEmail = req.user!.email;
@@ -45,7 +49,7 @@ export async function createOrder(req: Request, res: Response) {
       productName,
       finalFactoryId,
       factoryName,
-      Number(total),
+      centavosParaDecimal(total),
       JSON.stringify(customSpecs),
       "Pending Payment" // 🔒 Trava de Segurança
     ]
@@ -205,10 +209,11 @@ export async function checkoutCart(req: Request, res: Response) {
     let finalFactoryIdCache = null;
 
     for (const item of cartItems) {
-      const { productName, factoryId, factoryName, total, customSpecs, quantity } = item;
+      const { productName, factoryId, factoryName, customSpecs, quantity } = item;
 
-      const specsWithQty    = { ...customSpecs, quantity: quantity || 1 };
-      const orderTotal      = Number(total) * (quantity || 1);
+      const specsWithQty    = { ...customSpecs, quantity };
+      // O preço vem das especificações, calculado no servidor (SEC-05).
+      const preco           = precoDoItem(customSpecs, quantity);
 
       let finalFactoryId = Number(factoryId);
       if (isNaN(finalFactoryId)) {
@@ -231,7 +236,7 @@ export async function checkoutCart(req: Request, res: Response) {
           productName,
           finalFactoryId,
           factoryName,
-          orderTotal,
+          centavosParaDecimal(preco.total),
           JSON.stringify(specsWithQty),
           consolidatedBillingId
         ]
@@ -240,7 +245,8 @@ export async function checkoutCart(req: Request, res: Response) {
       createdOrders.push({
         id: result[0].id,
         productName,
-        total: orderTotal,
+        quantity,
+        precoUnitarioEmCentavos: preco.unitario,
         factoryId,
         factoryName
       });
@@ -262,15 +268,12 @@ export async function checkoutCart(req: Request, res: Response) {
 
     if (!isMockToken) {
       try {
-        const totalAmountInCents = createdOrders.reduce(
-          (sum, ord) => sum + Math.round(ord.total * 100), 0
-        );
-
-        const abacateProducts = cartItems.map((item, idx) => ({
-          externalId: String(createdOrders[idx].id),
-          name:       item.productName,
-          quantity:   item.quantity || 1,
-          price:      Math.round(Number(item.total) * 100)
+        // O gateway cobra o preço unitário calculado no servidor, em centavos.
+        const abacateProducts = createdOrders.map((pedido) => ({
+          externalId: String(pedido.id),
+          name:       pedido.productName,
+          quantity:   pedido.quantity,
+          price:      pedido.precoUnitarioEmCentavos
         }));
 
         const abacateResponse = await fetch("https://api.abacatepay.com/v2/billing", {
