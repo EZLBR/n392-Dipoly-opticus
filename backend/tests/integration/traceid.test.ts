@@ -20,6 +20,7 @@ import request from "supertest";
 import { app } from "../setup/app.js";
 import { pool } from "../setup/db.js";
 import { criarUsuario, comToken } from "../helpers/auth.js";
+import { especificacaoDoStudio } from "../helpers/especificacao.js";
 import { requestId } from "../../src/middlewares/requestId.js";
 import { problemErrorHandler } from "../../src/middlewares/problemErrorHandler.js";
 import { PROBLEM_TYPE_NAMESPACE } from "../../src/errors/problem.js";
@@ -222,8 +223,7 @@ describe("regressão — falha de banco não vira 400 (pontos da evidência)", (
             productName: "Óculos sem fábrica",
             factoryId: "999999",
             factoryName: "Fábrica Fantasma",
-            total: 100,
-            customSpecs: {},
+            customSpecs: especificacaoDoStudio(),
           },
         ],
       });

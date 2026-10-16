@@ -12,6 +12,15 @@ Cobertura mínima de testes para cada recurso:
 - troca do identificador na URL, no corpo ou em relações aninhadas não amplia acesso;
 - papéis privilegiados exercem somente as ações previstas.
 
+## Preço calculado no servidor
+
+O valor de um pedido nunca vem do navegador. `POST /api/orders` e `POST /api/orders/checkout-cart` descartam qualquer `total` enviado e calculam o preço a partir das especificações do óculos, com a regra de `backend/src/domain/pricing.ts`, em centavos inteiros.
+
+- os campos que mudam o preço (`isSunglasses`, `frameProfile`, `frameMaterial`, `lensMaterial`, `lensTreatments`) são validados contra o catálogo de opções; valor fora dele responde 400 com `invalidParams`;
+- a especificação gravada no pedido é a mesma que foi precificada, então o que se cobra é o que vai para a fábrica;
+- o gateway de pagamento recebe o preço unitário calculado no servidor;
+- o frontend mantém uma cópia da regra em `frontend/src/utils/pricing.ts` só para a prévia, e um teste do backend compara as duas em todas as combinações de opções.
+
 ## Segredos e dados locais
 
 - segredos reais nunca entram no repositório;

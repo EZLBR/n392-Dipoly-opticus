@@ -3,7 +3,7 @@
 //
 //   Cria direto pelo Prisma, e não pela API: o objetivo é montar
 //   o estado para testar a autorização, não exercitar o fluxo de
-//   criação — que ainda aceita `total` do corpo (SEC-05).
+//   criação, que tem testes próprios (pedidos-preco-servidor.test.ts).
 // ============================================================
 
 import prisma from "../../src/config/prisma.js";

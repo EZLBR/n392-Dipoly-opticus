@@ -16,6 +16,7 @@ import { app } from "../setup/app.js";
 import { criarUsuario, comToken } from "../helpers/auth.js";
 import { criarPedido, lerPedido } from "../helpers/orders.js";
 import { esperarProblema } from "../helpers/problem.js";
+import { especificacaoDoStudio } from "../helpers/especificacao.js";
 
 const publicIds = (res: { body: { orders: Array<{ publicId: string }> } }) =>
   res.body.orders.map((o) => o.publicId).sort();
@@ -99,8 +100,7 @@ describe("pedidos — autorização de objeto (TEST-02)", () => {
           productName: "Armacao",
           factoryId: fabrica.id,
           factoryName: "Fabrica",
-          total: 450,
-          customSpecs: { cor: "preto" },
+          customSpecs: especificacaoDoStudio(),
           usuarioId: vitima.id,
           usuario_id: vitima.id,
           customerEmail: vitima.email,
@@ -134,8 +134,7 @@ describe("pedidos — autorização de objeto (TEST-02)", () => {
               productName: "Armacao",
               factoryId: fabrica.id,
               factoryName: "Fabrica",
-              total: 450,
-              customSpecs: { cor: "preto" },
+              customSpecs: especificacaoDoStudio(),
               quantity: 1,
               usuarioId: vitima.id,
             },
