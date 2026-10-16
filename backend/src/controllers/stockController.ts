@@ -5,8 +5,8 @@
 
 import pool from "../config/db.js";
 import type { Request, Response } from "express";
-import { BadRequestProblem, NotFoundProblem } from "../errors/problem.js";
-import type { UpdateStockDTO } from "../dtos/stock/stock.dto.js";
+import { ConflictProblem, NotFoundProblem } from "../errors/problem.js";
+import { LIMITE_QUANTIDADE_ESTOQUE, type UpdateStockDTO } from "../dtos/stock/stock.dto.js";
 
 // ─────────────────────────────────────────────────────────
 //   LISTAR TODO O ESTOQUE
@@ -45,7 +45,6 @@ export async function getAllStock(req: Request, res: Response) {
   const alertas = rows.filter(r => r.alerta_baixo_estoque);
 
   return res.json({
-    success:  true,
     estoque:  rows,
     alertas:  alertas.length,
     produtos_criticos: alertas.map(r => r.produto_nome),
@@ -80,7 +79,6 @@ export async function getStockByProduct(req: Request, res: Response) {
   const item = rows[0];
 
   return res.json({
-    success: true,
     estoque: item,
     alerta:  item.quantidade <= item.estoque_minimo
   });
@@ -88,71 +86,64 @@ export async function getStockByProduct(req: Request, res: Response) {
 
 // ─────────────────────────────────────────────────────────
 //   ATUALIZAR ESTOQUE
-//   PUT /api/stock/:produtoId
+//   PUT /api/stock/product/:produtoId
 //   Body: { quantidade, estoque_minimo, operacao }
 //   operacao: 'set' (define valor) | 'add' (adiciona) | 'subtract' (subtrai)
 // ─────────────────────────────────────────────────────────
+
+// A operação acontece dentro do próprio UPDATE, sobre o valor atual da
+// linha. Ler a quantidade, calcular em JavaScript e gravar o valor
+// absoluto perdia baixas concorrentes: duas baixas de 5 sobre um estoque
+// de 10 terminavam em 5, não em 0. A guarda no WHERE impede estoque
+// negativo e estouro do INTEGER; quando ela barra a escrita, nenhuma
+// linha é afetada.
+const OPERACOES_DE_ESTOQUE = {
+  set:      { novaQuantidade: "$1",              guarda: "TRUE" },
+  add:      { novaQuantidade: "quantidade + $1", guarda: `quantidade <= ${LIMITE_QUANTIDADE_ESTOQUE} - $1` },
+  subtract: { novaQuantidade: "quantidade - $1", guarda: "quantidade >= $1" },
+} as const;
+
 export async function updateStock(req: Request, res: Response) {
   const { produtoId } = req.params;
-  const { quantidade, estoque_minimo, operacao = "set" } = req.body as UpdateStockDTO;
+  const { quantidade, estoque_minimo, operacao } = req.body as UpdateStockDTO;
+  const { novaQuantidade, guarda } = OPERACOES_DE_ESTOQUE[operacao];
 
-  // Busca estoque atual
-  const { rows: current } = await pool.query(
-    "SELECT quantidade FROM estoque WHERE produto_id = $1",
-    [produtoId]
+  const { rows: atualizados } = await pool.query(
+    `WITH atualizado AS (
+       UPDATE estoque
+          SET quantidade     = ${novaQuantidade},
+              estoque_minimo = COALESCE($2, estoque_minimo),
+              version        = version + 1
+        WHERE produto_id = $3 AND ${guarda}
+       RETURNING *
+     )
+     SELECT a.*, p.nome AS produto_nome
+       FROM atualizado a
+       INNER JOIN produtos p ON p.id = a.produto_id`,
+    [quantidade, estoque_minimo ?? null, produtoId]
   );
 
-  if (current.length === 0) {
-    throw new NotFoundProblem("Produto não encontrado no estoque.");
+  if (atualizados.length === 0) {
+    // O UPDATE já decidiu, de forma atômica. Esta leitura serve só para
+    // escolher a resposta: produto inexistente ou guarda que barrou.
+    const { rows: atual } = await pool.query<{ quantidade: number }>(
+      "SELECT quantidade FROM estoque WHERE produto_id = $1",
+      [produtoId]
+    );
+
+    if (atual.length === 0) {
+      throw new NotFoundProblem("Produto não encontrado no estoque.");
+    }
+    if (operacao === "subtract") {
+      throw new ConflictProblem(`Estoque insuficiente. Disponível: ${atual[0].quantidade} unidades.`);
+    }
+    throw new ConflictProblem(`A entrada excederia o limite de ${LIMITE_QUANTIDADE_ESTOQUE} unidades em estoque.`);
   }
 
-  let novaQtd;
-  const qtdAtual = current[0].quantidade;
-
-  switch (operacao) {
-    case "set":
-      novaQtd = Number(quantidade);
-      break;
-    case "add":
-      novaQtd = qtdAtual + Number(quantidade);
-      break;
-    case "subtract":
-      novaQtd = qtdAtual - Number(quantidade);
-      // Impede estoque negativo
-      if (novaQtd < 0) {
-        throw new BadRequestProblem(`Estoque insuficiente. Disponível: ${qtdAtual} unidades.`);
-      }
-      break;
-  }
-
-  // Atualiza o estoque
-  let setClause = "quantidade = $1";
-  const updateParams = [novaQtd];
-
-  if (estoque_minimo !== undefined) {
-    setClause += ", estoque_minimo = $2";
-    updateParams.push(Number(estoque_minimo));
-  }
-
-  await pool.query(
-    `UPDATE estoque SET ${setClause} WHERE produto_id = $${updateParams.length + 1}`,
-    [...updateParams, produtoId]
-  );
-
-  // Retorna o estoque atualizado
-  const { rows: updated } = await pool.query(
-    `SELECT e.*, p.nome AS produto_nome
-     FROM estoque e
-     INNER JOIN produtos p ON p.id = e.produto_id
-     WHERE e.produto_id = $1`,
-    [produtoId]
-  );
-
-  const item = updated[0];
+  const item = atualizados[0];
   const alerta = item.quantidade <= item.estoque_minimo;
 
   return res.json({
-    success: true,
     estoque: item,
     alerta,
     message: alerta
@@ -180,7 +171,6 @@ export async function getStockAlerts(req: Request, res: Response) {
   );
 
   return res.json({
-    success: true,
     alertas: rows,
     total:   rows.length
   });

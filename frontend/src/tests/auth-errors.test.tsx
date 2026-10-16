@@ -77,13 +77,13 @@ describe("Épico 7 - Tratamento de 401 e 403 no Frontend", () => {
       const urlStr = String(url);
       // Mocks para inicialização bem-sucedida da sessão
       if (urlStr.includes("/auth/me")) {
-        return new Response(JSON.stringify({ success: true, user: { id: "1", name: "Maria", role: "client" } }), {
+        return new Response(JSON.stringify({ user: { id: "1", name: "Maria", role: "client" } }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
       }
       if (urlStr.includes("/designs") || (urlStr.includes("/auth/users") && !urlStr.includes("/99"))) {
-        return new Response(JSON.stringify({ success: true, designs: [], users: [] }), {
+        return new Response(JSON.stringify({ designs: [], users: [] }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
@@ -135,7 +135,7 @@ describe("Épico 7 - Tratamento de 401 e 403 no Frontend", () => {
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       if (String(url).includes("/auth/me")) {
-        return new Response(JSON.stringify({ success: true, user: { id: "2", name: "João", role: "client" } }), {
+        return new Response(JSON.stringify({ user: { id: "2", name: "João", role: "client" } }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
@@ -193,7 +193,7 @@ describe("Épico 7 - Tratamento de 401 e 403 no Frontend", () => {
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       if (String(url).includes("/auth/me")) {
-        return new Response(JSON.stringify({ success: true, user: { id: "3", name: "Ana", role: "client" } }), {
+        return new Response(JSON.stringify({ user: { id: "3", name: "Ana", role: "client" } }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });

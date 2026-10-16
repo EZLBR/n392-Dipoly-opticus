@@ -42,7 +42,7 @@ const response = (
   totalPages = produtos.length ? 1 : 0,
 ) => ({
   ok: true,
-  json: async () => ({ success: true, produtos, total, totalPages }),
+  json: async () => ({ produtos, total, totalPages }),
 });
 const storeTab = () =>
   fireEvent.click(screen.getByRole("button", { name: "Catálogo da loja" }));
@@ -215,7 +215,7 @@ describe("Store catalog states", () => {
         .fn()
         .mockResolvedValue({
           ok: true,
-          json: async () => ({ success: true, products: [] }),
+          json: async () => ({ products: [] }),
         }),
     );
     await expect(

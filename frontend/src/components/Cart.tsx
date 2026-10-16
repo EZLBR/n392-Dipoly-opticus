@@ -54,7 +54,7 @@ export default function Cart({ setView }) {
     try {
       const result = await checkoutCart(cart);
 
-      if (result && result.success) {
+      if (result && (result.ok || result.checkoutUrl || result.isOffline || result.success)) {
         if (result.isOffline) {
           showToast(t("toast-offline-checkout"));
           setTimeout(() => {
@@ -70,9 +70,10 @@ export default function Cart({ setView }) {
         }
       } else {
         alert(
-          language === "pt"
+          result?.error ||
+          (language === "pt"
             ? "Ocorreu um erro ao finalizar o pagamento."
-            : "An error occurred during checkout initialization."
+            : "An error occurred during checkout initialization.")
         );
       }
     } catch (err) {
