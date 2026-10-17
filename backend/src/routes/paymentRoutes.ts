@@ -12,6 +12,7 @@ import {
   getPayments
 } from "../controllers/paymentController.js";
 import { routerGuard } from "../middlewares/routerGuard.js";
+import { protect } from "../middlewares/auth.js";
 import { validateBody } from "../middlewares/validate.js";
 import { createBillingSchema } from "../dtos/payment/payment.dto.js";
 
@@ -22,7 +23,8 @@ router.post("/webhook", handleWebhook);
 
 // A página contém dados pessoais: somente o dono autenticado pode consultá-la.
 router.get( "/simulated-checkout", routerGuard(), getSimulatedCheckoutPage);
-router.post("/confirm-simulated-payment", confirmSimulatedPayment);
+// A confirmação aprova o pagamento: exige o dono autenticado (SEC-01).
+router.post("/confirm-simulated-payment", protect, confirmSimulatedPayment);
 
 // Criar cobrança (usuário autenticado)
 router.post("/create-billing", routerGuard(), validateBody(createBillingSchema), createBilling);
