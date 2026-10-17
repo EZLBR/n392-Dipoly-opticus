@@ -46,7 +46,7 @@ export async function createProduct(req: Request, res: Response) {
     [produtoId]
   );
 
-  return res.status(201).json({ success: true, produto: newRows[0] });
+  return res.status(201).json(newRows[0]);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -106,7 +106,6 @@ export async function getProducts(req: Request, res: Response) {
   );
 
   return res.json({
-    success: true,
     produtos:   rows,
     total:      countRows[0].total,
     page:       parseInt(String(page), 10) || 1,
@@ -138,7 +137,7 @@ export async function getProductById(req: Request, res: Response) {
     throw new NotFoundProblem("Produto não encontrado.");
   }
 
-  return res.json({ success: true, produto: rows[0] });
+  return res.json(rows[0]);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -174,7 +173,7 @@ export async function updateProduct(req: Request, res: Response) {
     [id]
   );
 
-  return res.json({ success: true, produto: rows[0] });
+  return res.json(rows[0]);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -203,7 +202,6 @@ export async function deleteProduct(req: Request, res: Response) {
   );
 
   return res.json({
-    success: true,
     message: "Produto desativado com sucesso. O histórico de pedidos foi preservado."
   });
 }

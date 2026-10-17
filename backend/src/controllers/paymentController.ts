@@ -12,7 +12,7 @@ import {
   simuladorDePagamentoAtivo,
 } from "../config/pagamento.js";
 import crypto from "crypto";
-import type { NextFunction, Request, Response } from "express";
+import type { Request, Response } from "express";
 import {
   BadRequestProblem,
   ForbiddenProblem,
@@ -41,22 +41,23 @@ import type { CreateBillingDTO } from "../dtos/payment/payment.dto.js";
 //   CRIAR COBRANÇA (AbacatePay ou simulador)
 //   POST /api/payments/create-billing
 // ─────────────────────────────────────────────────────────
-export async function createBilling(req: Request, res: Response, next: NextFunction) {
+export async function createBilling(req: Request, res: Response) {
   const { orderId } = req.body as CreateBillingDTO;
 
+  const { rows } = await pool.query("SELECT * FROM pedidos WHERE id = $1", [orderId]);
+
+  if (rows.length === 0) {
+    throw new NotFoundProblem("Pedido não encontrado.");
+  }
+
+  const order = rows[0];
+
+  // Security Fix: Verificar ownership
+  if (order.usuario_id !== req.user!.id && req.user!.role !== "staff") {
+    throw new ForbiddenProblem("Acesso negado: Este pedido pertence a outro usuário.");
+  }
+
   try {
-    const { rows } = await pool.query("SELECT * FROM pedidos WHERE id = $1", [orderId]);
-
-    if (rows.length === 0) {
-      return next(new NotFoundProblem("Pedido não encontrado."));
-    }
-
-    const order = rows[0];
-
-    // Security Fix: Verificar ownership
-    if (order.usuario_id !== req.user!.id && req.user!.role !== "staff") {
-      return next(new ForbiddenProblem("Acesso negado: Este pedido pertence a outro usuário."));
-    }
     const amountInCents   = Math.round(Number(order.total) * 100);
     const isMockToken     = !ABACATE_TOKEN || ABACATE_TOKEN.includes("your_abacatepay_token_here");
     const frontendOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `http://localhost:5173`);
@@ -80,7 +81,7 @@ export async function createBilling(req: Request, res: Response, next: NextFunct
 
       const mockCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${mockBillingId}&orderId=${orderId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
 
-      return res.json({ success: true, checkoutUrl: mockCheckoutUrl, isSimulated: true });
+      return res.json({ checkoutUrl: mockCheckoutUrl, isSimulated: true });
     }
 
     const abacateResponse = await fetch("https://api.abacatepay.com/v2/billing", {
@@ -116,9 +117,13 @@ export async function createBilling(req: Request, res: Response, next: NextFunct
 
     await _registrarPagamento(orderId, "pix", "pendente", Number(order.total), realBillingId, req.requestId);
 
-    return res.json({ success: true, checkoutUrl: realCheckoutUrl, isSimulated: false });
+    return res.json({ checkoutUrl: realCheckoutUrl, isSimulated: false });
 
   } catch (err) {
+    if (err instanceof NotFoundProblem || err instanceof ForbiddenProblem) {
+      throw err;
+    }
+
     logger.error(
       { err, traceId: req.requestId, requestId: req.requestId },
       "[AbacatePay] Falha ao criar cobrança no gateway",
@@ -142,7 +147,7 @@ export async function createBilling(req: Request, res: Response, next: NextFunct
     const backendOrigin = `${backendProto}://${req.get("host")}`;
     const fallbackUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${fallbackId}&orderId=${orderId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
 
-    return res.json({ success: true, checkoutUrl: fallbackUrl, isSimulated: true, notice: "Fallback para simulador." });
+    return res.json({ checkoutUrl: fallbackUrl, isSimulated: true, notice: "Fallback para simulador." });
   }
 }
 
@@ -201,7 +206,6 @@ export async function getPayments(req: Request, res: Response) {
   );
 
   return res.json({
-    success: true,
     pagamentos: rows,
     pagination: {
       page,
@@ -257,7 +261,7 @@ export async function handleWebhook(req: Request, res: Response) {
     }
   }
 
-  return res.status(200).json({ success: true });
+  return res.status(200).json({ received: true });
 }
 
 // ─────────────────────────────────────────────────────────
@@ -268,19 +272,21 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
   const { billingId, orderId, returnTo } = req.query;
   res.set("Cache-Control", "private, no-store");
 
+  // API-04: erros em Problem Details. SEC-03: só o dono autenticado vê a cobrança.
   if (typeof billingId !== "string" || !billingId.trim()) {
-    return res.status(400).send("<h3>billingId ausente.</h3>");
+    throw new BadRequestProblem("billingId ausente.");
+  }
+
+  const { rows: orders } = await pool.query(
+    "SELECT * FROM pedidos WHERE abacate_billing_id = $1 AND usuario_id = $2",
+    [billingId, req.user!.id]
+  );
+
+  if (orders.length === 0) {
+    throw new NotFoundProblem("Nenhum pedido encontrado para essa cobrança.");
   }
 
   try {
-    const { rows: orders } = await pool.query(
-      "SELECT * FROM pedidos WHERE abacate_billing_id = $1 AND usuario_id = $2",
-      [billingId, req.user!.id]
-    );
-
-    if (orders.length === 0) {
-      return res.status(404).send("<h3>Nenhum pedido encontrado para essa cobrança.</h3>");
-    }
 
     const totalAmount    = orders.reduce((sum, o) => sum + Number(o.total), 0);
     const customerName   = orders[0].customer_name;
@@ -353,7 +359,7 @@ export async function confirmSimulatedPayment(req: Request, res: Response) {
   const { billingId, returnTo } = req.body;
 
   if (!billingId) {
-    return res.status(400).send("<h3>billingId ausente.</h3>");
+    throw new BadRequestProblem("billingId ausente.");
   }
 
   try {

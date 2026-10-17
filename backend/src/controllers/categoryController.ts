@@ -35,7 +35,7 @@ export async function createCategory(req: Request, res: Response) {
     [rows[0].id]
   );
 
-  return res.status(201).json({ success: true, categoria: newRows[0] });
+  return res.status(201).json(newRows[0]);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ export async function getCategories(req: Request, res: Response) {
      ORDER BY c.nome ASC`
   );
 
-  return res.json({ success: true, categorias: rows });
+  return res.json(rows);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -84,8 +84,8 @@ export async function getCategoryById(req: Request, res: Response) {
   );
 
   return res.json({
-    success: true,
-    categoria: { ...catRows[0], produtos: prodRows }
+    ...catRows[0],
+    produtos: prodRows
   });
 }
 
@@ -108,7 +108,7 @@ export async function updateCategory(req: Request, res: Response) {
 
   const { rows } = await pool.query("SELECT * FROM categorias WHERE id = $1", [id]);
 
-  return res.json({ success: true, categoria: rows[0] });
+  return res.json(rows[0]);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -139,5 +139,5 @@ export async function deleteCategory(req: Request, res: Response) {
     throw new NotFoundProblem("Categoria não encontrada.");
   }
 
-  return res.json({ success: true, message: "Categoria removida com sucesso." });
+  return res.json({ message: "Categoria removida com sucesso." });
 }

@@ -51,7 +51,7 @@ export async function saveDesign(req: Request, res: Response) {
         ]
       );
 
-      return res.json({ success: true, message: "Design atualizado com sucesso.", id: finalId });
+      return res.json({ message: "Design atualizado com sucesso.", id: finalId });
     }
   }
 
@@ -70,7 +70,6 @@ export async function saveDesign(req: Request, res: Response) {
   );
 
   return res.status(201).json({
-    success: true,
     message: "Design salvo com sucesso.",
     id:      result[0].id
   });
@@ -106,7 +105,7 @@ export async function getDesigns(req: Request, res: Response) {
     config:         row.studio_config ?? null
   }));
 
-  return res.json({ success: true, designs });
+  return res.json({ designs });
 }
 
 // ─────────────────────────────────────────────────────────
@@ -126,5 +125,5 @@ export async function deleteDesign(req: Request, res: Response) {
     throw new NotFoundProblem("Design não encontrado ou sem permissão.");
   }
 
-  return res.json({ success: true, message: "Design removido com sucesso." });
+  return res.json({ message: "Design removido com sucesso." });
 }
