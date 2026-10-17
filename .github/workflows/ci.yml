@@ -58,6 +58,9 @@ jobs:
       FRONTEND_URL: http://localhost:5173
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/opticus_ci_test
       JWT_SECRET: segredo-apenas-para-ci-nao-use-em-producao
+      # Placeholder de simulador: os testes que exercitam o gateway real
+      # fazem stub do token em tempo de execução.
+      ABACATE_TOKEN: your_abacatepay_token_here
     defaults:
       run:
         working-directory: backend
@@ -140,6 +143,7 @@ jobs:
             -e DATABASE_URL \
             -e JWT_SECRET=segredo-apenas-para-ci-nao-use-em-producao \
             -e FRONTEND_URL=http://localhost:8080 \
+            -e ABACATE_TOKEN=token-de-ci-docker \
             opticus-backend
           for i in $(seq 1 30); do curl -fsS http://localhost:5000/health > /dev/null && break; sleep 1; done
           curl -fsS http://localhost:5000/health
@@ -205,6 +209,9 @@ jobs:
           cp .env.example .env
           sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 24)/" .env
           sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$(openssl rand -hex 48)/" .env
+          # A API sobe em produção (imagem NODE_ENV=production): o placeholder
+          # de simulador não vale lá, então usamos um token real-ish de teste.
+          sed -i "s/^ABACATE_TOKEN=.*/ABACATE_TOKEN=$(openssl rand -hex 24)/" .env
 
       - name: Subir a stack
         run: docker compose up --build --detach --wait --wait-timeout 300

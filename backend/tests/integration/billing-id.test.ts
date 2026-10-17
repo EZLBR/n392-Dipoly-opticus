@@ -7,6 +7,7 @@
 //   e confirmadas — nenhuma validação nova pode rejeitá-las.
 // ============================================================
 
+import { createHmac } from "node:crypto";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import request from "supertest";
 import prisma from "../../src/config/prisma.js";
@@ -137,10 +138,17 @@ describe("compatibilidade com cobranças no formato antigo", () => {
 
   it("webhook localiza uma cobrança do formato antigo", async () => {
     const { pedido } = await criarCobrancaFormatoAntigo(ANTIGO);
+    const token = "token-de-teste-webhook";
+    vi.stubEnv("ABACATE_TOKEN", token);
+
+    const corpo = JSON.stringify({ event: "billing.paid", data: { id: ANTIGO } });
+    const assinatura = createHmac("sha256", token).update(corpo).digest("hex");
 
     const res = await request(app)
       .post("/api/payments/webhook")
-      .send({ event: "billing.paid", data: { id: ANTIGO } });
+      .set("Content-Type", "application/json")
+      .set("x-abacatepay-signature", assinatura)
+      .send(corpo);
 
     expect(res.status).toBe(200);
     expect(await estadoDaCobranca(pedido.id, ANTIGO)).toEqual({
