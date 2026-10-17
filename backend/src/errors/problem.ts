@@ -156,6 +156,17 @@ export class InternalServerErrorProblem extends HttpProblem {
   }
 }
 
+/** Dependência externa indisponível, como o gateway de pagamento. */
+export class ServiceUnavailableProblem extends HttpProblem {
+  readonly type = problemType("service-unavailable");
+  readonly title = "Serviço indisponível";
+  readonly status = 503;
+
+  constructor(detail?: string, init: ProblemInit = {}) {
+    super(detail, init);
+  }
+}
+
 export class ValidationProblem extends HttpProblem {
   readonly type = problemType("validation");
   readonly title = "Erro de validação";

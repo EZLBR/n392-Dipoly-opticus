@@ -155,6 +155,36 @@ npx prisma db seed
 
 Consulte [backend/.env.example](backend/.env.example) para configurar PostgreSQL, JWT, CORS e integrações.
 
+### 5. Pagamentos e simulador
+
+Com `ABACATE_TOKEN` configurado, o checkout cria a cobrança no AbacatePay. Sem ele, o
+checkout aponta para um **simulador de pagamento** embutido na API, que confirma a
+cobrança sem dinheiro real.
+
+O simulador só existe fora de produção. Com `NODE_ENV=production`, as rotas
+`GET /api/payments/simulated-checkout` e `POST /api/payments/confirm-simulated-payment`
+**não são registradas** e respondem 404, igual a qualquer rota inexistente. Assim, ninguém
+confirma um pagamento sem pagar no ambiente real, mesmo se o token do gateway faltar.
+
+| `NODE_ENV` | Simulador |
+| --- | --- |
+| `development` (padrão do `npm run dev`) | disponível |
+| `test` | disponível, para os testes de integração |
+| `production` (imagem Docker e Compose) | inexistente, responde 404 |
+
+Em produção, `POST /api/orders/checkout-cart` e `POST /api/payments/create-billing` nunca
+devolvem link para o simulador. A reação depende do que o gateway respondeu:
+
+| Resultado do gateway | Resposta | Pedidos |
+| --- | --- | --- |
+| `ABACATE_TOKEN` ausente | 503 "nenhuma cobrança foi criada" | nenhum é criado ou alterado |
+| Recusou a cobrança | 503 "nenhuma cobrança foi criada" | os da tentativa são desfeitos (checkout); o pedido não muda (create-billing) |
+| Sem resposta conclusiva (timeout de 10 s, rede, resposta ilegível) | 503 "não foi possível confirmar" | ficam pendentes: a cobrança pode existir |
+| Criou a cobrança, mas a gravação falhou | 500, com registro no log para conciliação | preservados |
+
+O desfazimento e a gravação miram os IDs dos pedidos da tentativa, nunca o billingId
+provisório. A classificação da resposta fica em `backend/src/services/gatewayDePagamento.ts`.
+
 ## Docker
 
 Imagens de produção para o backend e o frontend. Para subir a stack completa, com o
@@ -196,6 +226,12 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 Ordem de subida: `db` saudável → `migrate` conclui → `api` saudável → `web`. Dentro da
 rede do Compose os serviços se enxergam pelo nome — a API conecta em `db:5432`, nunca
 em `localhost`.
+
+A API do Compose roda com `NODE_ENV=production`, então o simulador de pagamento não
+existe nela (veja [Pagamentos e simulador](#5-pagamentos-e-simulador)). Sem
+`ABACATE_TOKEN`, o checkout fica sem onde pagar. Para testar o fluxo de compra na sua
+máquina, defina `API_NODE_ENV=development` no `.env`. Nunca faça isso num ambiente
+acessível por outras pessoas.
 
 As portas são configuráveis no `.env` (`API_PORT`, `WEB_PORT`, `DB_PORT`) e são
 publicadas só em `127.0.0.1`. O banco usa a **5433** para não colidir com um PostgreSQL
