@@ -172,12 +172,18 @@ confirma um pagamento sem pagar no ambiente real, mesmo se o token do gateway fa
 | `test` | disponível, para os testes de integração |
 | `production` (imagem Docker e Compose) | inexistente, responde 404 |
 
-Em produção, quando não é possível criar a cobrança real (`ABACATE_TOKEN` ausente, gateway
-recusando a cobrança ou fora do ar), `POST /api/orders/checkout-cart` e
-`POST /api/payments/create-billing` respondem **503** em Problem Details, sem link para o
-simulador. O checkout sem token falha antes de criar pedidos. Se o gateway falhar depois da
-criação, os pedidos daquela tentativa são desfeitos. O `create-billing` não altera o pedido.
-A chamada ao gateway tem tempo limite de 10 segundos.
+Em produção, `POST /api/orders/checkout-cart` e `POST /api/payments/create-billing` nunca
+devolvem link para o simulador. A reação depende do que o gateway respondeu:
+
+| Resultado do gateway | Resposta | Pedidos |
+| --- | --- | --- |
+| `ABACATE_TOKEN` ausente | 503 "nenhuma cobrança foi criada" | nenhum é criado ou alterado |
+| Recusou a cobrança | 503 "nenhuma cobrança foi criada" | os da tentativa são desfeitos (checkout); o pedido não muda (create-billing) |
+| Sem resposta conclusiva (timeout de 10 s, rede, resposta ilegível) | 503 "não foi possível confirmar" | ficam pendentes: a cobrança pode existir |
+| Criou a cobrança, mas a gravação falhou | 500, com registro no log para conciliação | preservados |
+
+O desfazimento e a gravação miram os IDs dos pedidos da tentativa, nunca o billingId
+provisório. A classificação da resposta fica em `backend/src/services/gatewayDePagamento.ts`.
 
 ## Docker
 

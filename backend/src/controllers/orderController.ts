@@ -9,10 +9,11 @@ import type { Request, Response } from "express";
 import { ForbiddenProblem, ServiceUnavailableProblem } from "../errors/problem.js";
 import {
   PAGAMENTO_INDISPONIVEL,
-  TEMPO_LIMITE_DO_GATEWAY_MS,
+  PAGAMENTO_NAO_CONFIRMADO,
   gatewayDePagamentoConfigurado,
   simuladorDePagamentoAtivo,
 } from "../config/pagamento.js";
+import { solicitarCobranca } from "../services/gatewayDePagamento.js";
 import { OrderService } from "../services/orderService.js";
 import { centavosParaDecimal, precoDoItem } from "../domain/pricing.js";
 import logger from "../utils/logger.js";
@@ -279,67 +280,71 @@ export async function checkoutCart(req: Request, res: Response) {
     const ABACATE_TOKEN = process.env.ABACATE_TOKEN;
     const isMockToken   = !ABACATE_TOKEN || ABACATE_TOKEN.includes("your_abacatepay_token_here");
 
+    // Só os pedidos criados nesta tentativa. O billingId provisório não serve
+    // de chave: é aleatório e não é único no banco.
+    const pedidoIds = createdOrders.map((pedido) => pedido.id);
+
     if (!isMockToken) {
-      try {
-        // O gateway cobra o preço unitário calculado no servidor, em centavos.
-        const abacateProducts = createdOrders.map((pedido) => ({
+      // O gateway cobra o preço unitário calculado no servidor, em centavos.
+      const cobranca = await solicitarCobranca(ABACATE_TOKEN!, {
+        products: createdOrders.map((pedido) => ({
           externalId: String(pedido.id),
           name:       pedido.productName,
           quantity:   pedido.quantity,
           price:      pedido.precoUnitarioEmCentavos
-        }));
+        })),
+        returnUrl:     `${frontendOrigin}/`,
+        completionUrl: `${frontendOrigin}/`,
+        customer:      { name: customerName, email: customerEmail, taxId: "00000000000" }
+      });
 
-        const abacateResponse = await fetch("https://api.abacatepay.com/v2/billing", {
-          method:  "POST",
-          signal:  AbortSignal.timeout(TEMPO_LIMITE_DO_GATEWAY_MS),
-          headers: {
-            Authorization:  `Bearer ${ABACATE_TOKEN}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            frequency:     "ONE_TIME",
-            methods:       ["PIX"],
-            products:      abacateProducts,
-            returnUrl:     `${frontendOrigin}/`,
-            completionUrl: `${frontendOrigin}/`,
-            customer:      { name: customerName, email: customerEmail, taxId: "00000000000" }
-          })
-        });
-
-        const abacateData = await abacateResponse.json();
-
-        if (abacateResponse.ok && abacateData.success) {
-          const realBillingId  = abacateData.data.id;
-          const realCheckoutUrl = abacateData.data.url;
-
+      if (cobranca.status === "criada") {
+        // A cobrança já existe no gateway. Uma falha daqui em diante é de
+        // gravação: os pedidos ficam como estão e o caso vai para
+        // conciliação, nunca para o desfazimento abaixo.
+        try {
           await pool.query(
-            "UPDATE pedidos SET abacate_billing_id = $1 WHERE abacate_billing_id = $2",
-            [realBillingId, consolidatedBillingId]
+            "UPDATE pedidos SET abacate_billing_id = $1 WHERE id = ANY($2::int[])",
+            [cobranca.billingId, pedidoIds]
           );
-
-          return res.json({
-            checkoutUrl: realCheckoutUrl,
-            isSimulated: false,
-            billingId:   realBillingId
-          });
+        } catch (err) {
+          logger.error(
+            { err, traceId: req.requestId, requestId: req.requestId, billingId: cobranca.billingId, pedidoIds },
+            "[AbacatePay] Cobrança criada no gateway, mas não registrada nos pedidos: conciliar",
+          );
+          throw err;
         }
-      } catch (err) {
-        logger.error(
-          { err, traceId: req.requestId, requestId: req.requestId },
-          "[AbacatePay] Falha ao criar cobrança no gateway",
-        );
-      }
-    }
 
-    // SEC-06: o gateway falhou e, em produção, não há simulador para onde
-    // mandar o cliente. Os pedidos desta tentativa são desfeitos, para não
-    // ficarem pendentes sem cobrança nem se acumularem a cada nova tentativa.
-    if (!simuladorDePagamentoAtivo) {
-      await pool.query(
-        "DELETE FROM pedidos WHERE abacate_billing_id = $1 AND usuario_id = $2 AND status = 'Pending Payment'",
-        [consolidatedBillingId, usuarioId]
+        return res.json({
+          checkoutUrl: cobranca.url,
+          isSimulated: false,
+          billingId:   cobranca.billingId
+        });
+      }
+
+      logger.error(
+        { traceId: req.requestId, requestId: req.requestId, resultado: cobranca.status, motivo: cobranca.motivo, pedidoIds },
+        "[AbacatePay] Falha ao criar cobrança no gateway",
       );
-      throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
+
+      // SEC-06: em produção não há simulador para onde mandar o cliente.
+      if (!simuladorDePagamentoAtivo) {
+        if (cobranca.status === "incerta") {
+          // Sem resposta conclusiva, a cobrança pode existir: os pedidos
+          // ficam pendentes para conciliação, e a resposta não afirma que
+          // nada foi criado.
+          throw new ServiceUnavailableProblem(PAGAMENTO_NAO_CONFIRMADO);
+        }
+
+        // O gateway confirmou que não criou a cobrança. Os pedidos desta
+        // tentativa são desfeitos, para não ficarem pendentes sem cobrança
+        // nem se acumularem a cada nova tentativa.
+        await pool.query(
+          "DELETE FROM pedidos WHERE id = ANY($1::int[]) AND usuario_id = $2 AND status = 'Pending Payment'",
+          [pedidoIds, usuarioId]
+        );
+        throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
+      }
     }
 
     const simulatedCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${consolidatedBillingId}&returnTo=${encodeURIComponent(frontendOrigin)}`;

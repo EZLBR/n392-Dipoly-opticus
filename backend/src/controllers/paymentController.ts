@@ -8,9 +8,10 @@ import pool from "../config/db.js";
 import { env } from "../config/env.js";
 import {
   PAGAMENTO_INDISPONIVEL,
-  TEMPO_LIMITE_DO_GATEWAY_MS,
+  PAGAMENTO_NAO_CONFIRMADO,
   simuladorDePagamentoAtivo,
 } from "../config/pagamento.js";
+import { solicitarCobranca } from "../services/gatewayDePagamento.js";
 import crypto from "crypto";
 import type { Request, Response } from "express";
 import {
@@ -57,98 +58,83 @@ export async function createBilling(req: Request, res: Response) {
     throw new ForbiddenProblem("Acesso negado: Este pedido pertence a outro usuário.");
   }
 
-  try {
-    const amountInCents   = Math.round(Number(order.total) * 100);
-    const isMockToken     = !ABACATE_TOKEN || ABACATE_TOKEN.includes("your_abacatepay_token_here");
-    const frontendOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `http://localhost:5173`);
-    const backendProto = req.headers['x-forwarded-proto'] || req.protocol;
-    const backendOrigin = `${backendProto}://${req.get("host")}`;
+  const amountInCents   = Math.round(Number(order.total) * 100);
+  const isMockToken     = !ABACATE_TOKEN || ABACATE_TOKEN.includes("your_abacatepay_token_here");
+  const frontendOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `http://localhost:5173`);
+  const backendProto = req.headers['x-forwarded-proto'] || req.protocol;
+  const backendOrigin = `${backendProto}://${req.get("host")}`;
 
-    if (isMockToken) {
-      // SEC-06: em produção não há simulador. Sem gateway, não existe
-      // cobrança possível, e o pedido não é alterado. Lançado (e não
-      // next()) para valer também quando o API-04 remove o next.
-      if (!simuladorDePagamentoAtivo) {
-        throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
-      }
-
-      const mockBillingId  = `bill-sim-${Math.floor(100000 + Math.random() * 900000)}`;
-
-      await pool.query(
-        "UPDATE pedidos SET abacate_billing_id = $1, status = 'Pending Payment' WHERE id = $2",
-        [mockBillingId, orderId]
-      );
-
-      const mockCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${mockBillingId}&orderId=${orderId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
-
-      return res.json({ checkoutUrl: mockCheckoutUrl, isSimulated: true });
+  if (isMockToken) {
+    // SEC-06: em produção não há simulador. Sem gateway, não existe
+    // cobrança possível, e o pedido não é alterado.
+    if (!simuladorDePagamentoAtivo) {
+      throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
     }
 
-    const abacateResponse = await fetch("https://api.abacatepay.com/v2/billing", {
-      method:  "POST",
-      signal:  AbortSignal.timeout(TEMPO_LIMITE_DO_GATEWAY_MS),
-      headers: {
-        Authorization:  `Bearer ${ABACATE_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        frequency:     "ONE_TIME",
-        methods:       ["PIX"],
-        products:      [{ externalId: String(order.id), name: order.product_name, quantity: 1, price: amountInCents }],
-        returnUrl:     `${frontendOrigin}/`,
-        completionUrl: `${frontendOrigin}/`,
-        customer:      { name: order.customer_name, email: order.customer_email, taxId: "00000000000" }
-      })
-    });
-
-    const abacateData = await abacateResponse.json();
-
-    if (!abacateResponse.ok || !abacateData.success) {
-      throw new Error(abacateData.error || `HTTP ${abacateResponse.status}`);
-    }
-
-    const realBillingId   = abacateData.data.id;
-    const realCheckoutUrl = abacateData.data.url;
+    const mockBillingId  = `bill-sim-${Math.floor(100000 + Math.random() * 900000)}`;
 
     await pool.query(
       "UPDATE pedidos SET abacate_billing_id = $1, status = 'Pending Payment' WHERE id = $2",
-      [realBillingId, orderId]
+      [mockBillingId, orderId]
     );
 
-    await _registrarPagamento(orderId, "pix", "pendente", Number(order.total), realBillingId, req.requestId);
+    const mockCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${mockBillingId}&orderId=${orderId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
 
-    return res.json({ checkoutUrl: realCheckoutUrl, isSimulated: false });
+    return res.json({ checkoutUrl: mockCheckoutUrl, isSimulated: true });
+  }
 
-  } catch (err) {
-    if (err instanceof NotFoundProblem || err instanceof ForbiddenProblem) {
+  const cobranca = await solicitarCobranca(ABACATE_TOKEN!, {
+    products:      [{ externalId: String(order.id), name: order.product_name, quantity: 1, price: amountInCents }],
+    returnUrl:     `${frontendOrigin}/`,
+    completionUrl: `${frontendOrigin}/`,
+    customer:      { name: order.customer_name, email: order.customer_email, taxId: "00000000000" }
+  });
+
+  if (cobranca.status === "criada") {
+    // A cobrança já existe no gateway. Uma falha daqui em diante é de
+    // gravação: vai para conciliação, nunca para o simulador.
+    try {
+      await pool.query(
+        "UPDATE pedidos SET abacate_billing_id = $1, status = 'Pending Payment' WHERE id = $2",
+        [cobranca.billingId, orderId]
+      );
+    } catch (err) {
+      logger.error(
+        { err, traceId: req.requestId, requestId: req.requestId, billingId: cobranca.billingId, pedidoId: order.id },
+        "[AbacatePay] Cobrança criada no gateway, mas não registrada no pedido: conciliar",
+      );
       throw err;
     }
 
-    logger.error(
-      { err, traceId: req.requestId, requestId: req.requestId },
-      "[AbacatePay] Falha ao criar cobrança no gateway",
-    );
+    await _registrarPagamento(orderId, "pix", "pendente", Number(order.total), cobranca.billingId, req.requestId);
 
-    // SEC-06: em produção o simulador não existe. A falha do gateway vira
-    // erro explícito, sem link para um checkout que responderia 404.
-    if (!simuladorDePagamentoAtivo) {
-      throw err instanceof ServiceUnavailableProblem ? err : new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
-    }
-
-    const fallbackId  = `bill-fallback-${Math.floor(100000 + Math.random() * 900000)}`;
-
-    await pool.query(
-      "UPDATE pedidos SET abacate_billing_id = $1, status = 'Pending Payment' WHERE id = $2",
-      [fallbackId, orderId]
-    );
-
-    const frontendOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `http://localhost:5173`);
-    const backendProto = req.headers['x-forwarded-proto'] || req.protocol;
-    const backendOrigin = `${backendProto}://${req.get("host")}`;
-    const fallbackUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${fallbackId}&orderId=${orderId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
-
-    return res.json({ checkoutUrl: fallbackUrl, isSimulated: true, notice: "Fallback para simulador." });
+    return res.json({ checkoutUrl: cobranca.url, isSimulated: false });
   }
+
+  logger.error(
+    { traceId: req.requestId, requestId: req.requestId, resultado: cobranca.status, motivo: cobranca.motivo, pedidoId: order.id },
+    "[AbacatePay] Falha ao criar cobrança no gateway",
+  );
+
+  // SEC-06: em produção o simulador não existe. A falha do gateway vira
+  // erro explícito, sem link para um checkout que responderia 404, e o
+  // pedido não é alterado. Resultado incerto não afirma que nada foi criado.
+  if (!simuladorDePagamentoAtivo) {
+    throw new ServiceUnavailableProblem(
+      cobranca.status === "incerta" ? PAGAMENTO_NAO_CONFIRMADO : PAGAMENTO_INDISPONIVEL
+    );
+  }
+
+  const fallbackId  = `bill-fallback-${Math.floor(100000 + Math.random() * 900000)}`;
+
+  await pool.query(
+    "UPDATE pedidos SET abacate_billing_id = $1, status = 'Pending Payment' WHERE id = $2",
+    [fallbackId, orderId]
+  );
+
+  const fallbackUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${fallbackId}&orderId=${orderId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
+
+  return res.json({ checkoutUrl: fallbackUrl, isSimulated: true, notice: "Fallback para simulador." });
 }
 
 // ─────────────────────────────────────────────────────────
