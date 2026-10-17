@@ -128,7 +128,7 @@ describe("compatibilidade com cobranças no formato antigo", () => {
       .set(...comToken(dono.token))
       .send({ billingId: ANTIGO });
 
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(200);
     expect(await estadoDaCobranca(pedido.id, ANTIGO)).toEqual({
       pedido: "Queued",
       pagamento: "aprovado",

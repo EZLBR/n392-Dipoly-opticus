@@ -6,7 +6,8 @@ import { useTranslation } from "../contexts/LanguageContext";
 import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, Info, AlertCircle } from "lucide-react";
 
 import ThreePreview from "./ThreePreview";
-import { fetchSimulatedCheckoutHtml } from "../utils/simulated-checkout";
+import { fetchSimulatedCheckoutHtml, confirmSimulatedPayment } from "../utils/simulated-checkout";
+import { ProblemError } from "../api/client";
 import { hasArtwork } from "../eyewear/artwork";
 import { normalizeConfig } from "../eyewear/config";
 
@@ -15,8 +16,9 @@ export default function Cart({ setView }) {
   const { cart, removeFromCart, updateCartQty, clearCart, checkoutCart } = useCart();
   const { t, language } = useTranslation();
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
-  const [simulatedCheckout, setSimulatedCheckout] = useState<{ html: string; owner: string } | null>(null);
+  const [simulatedCheckout, setSimulatedCheckout] = useState<{ html: string; owner: string; billingId: string } | null>(null);
   const containsArtwork = cart.some(item => hasArtwork(normalizeConfig(item.customSpecs)));
 
   const showToast = (msg) => {
@@ -63,7 +65,8 @@ export default function Cart({ setView }) {
         } else if (result.checkoutUrl) {
           if (result.isSimulated) {
             const html = await fetchSimulatedCheckoutHtml(result.checkoutUrl);
-            setSimulatedCheckout({ html, owner: String(session.id) });
+            const billingId = result.billingId || new URL(result.checkoutUrl).searchParams.get("billingId") || "";
+            setSimulatedCheckout({ html, owner: String(session.id), billingId });
           } else {
             window.location.href = result.checkoutUrl;
           }
@@ -88,13 +91,44 @@ export default function Cart({ setView }) {
     }
   };
 
+  const handleConfirmSimulatedPayment = async () => {
+    if (!simulatedCheckout) return;
+    setConfirmingPayment(true);
+    try {
+      await confirmSimulatedPayment(simulatedCheckout.billingId);
+      // O App escuta `?payment=success` no carregamento e limpa a sacola.
+      window.location.href = "/?payment=success";
+    } catch (err) {
+      const detail = err instanceof ProblemError ? err.detail || err.title || "" : "";
+      alert(
+        detail ||
+        (language === "pt"
+          ? "Não foi possível confirmar o pagamento simulado."
+          : "Could not confirm the simulated payment.")
+      );
+    } finally {
+      setConfirmingPayment(false);
+    }
+  };
+
   if (simulatedCheckout && simulatedCheckout.owner === String(session?.id)) {
     return <section aria-label={language === "pt" ? "Pagamento simulado" : "Simulated payment"} style={{ padding: 16 }}>
-      <button className="btn" onClick={() => setSimulatedCheckout(null)}>
-        {language === "pt" ? "Voltar à sacola" : "Back to bag"}
-      </button>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <button className="btn" onClick={() => setSimulatedCheckout(null)}>
+          {language === "pt" ? "Voltar à sacola" : "Back to bag"}
+        </button>
+        <button
+          className="btn primary"
+          onClick={handleConfirmSimulatedPayment}
+          disabled={confirmingPayment}
+        >
+          {confirmingPayment
+            ? (language === "pt" ? "CONFIRMANDO..." : "CONFIRMING...")
+            : (language === "pt" ? "SIMULAR PAGAMENTO PIX" : "SIMULATE PIX PAYMENT")}
+        </button>
+      </div>
       <iframe title={language === "pt" ? "Sua cobrança Pix" : "Your Pix billing"}
-        srcDoc={simulatedCheckout.html} sandbox="allow-forms allow-same-origin allow-top-navigation-by-user-activation"
+        srcDoc={simulatedCheckout.html} sandbox="allow-same-origin"
         referrerPolicy="no-referrer" style={{ width: "100%", height: "80vh", border: 0, marginTop: 16 }} />
     </section>;
   }

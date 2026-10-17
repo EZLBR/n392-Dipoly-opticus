@@ -250,7 +250,7 @@ export async function handleWebhook(req: Request, res: Response) {
 //   GET /api/payments/simulated-checkout
 // ─────────────────────────────────────────────────────────
 export async function getSimulatedCheckoutPage(req: Request, res: Response) {
-  const { billingId, orderId, returnTo } = req.query;
+  const { billingId } = req.query;
   res.set("Cache-Control", "private, no-store");
 
   // API-04: erros em Problem Details. SEC-03: só o dono autenticado vê a cobrança.
@@ -272,8 +272,6 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
     const totalAmount    = orders.reduce((sum, o) => sum + Number(o.total), 0);
     const customerName   = orders[0].customer_name;
     const customerEmail  = orders[0].customer_email;
-    const backendProto = req.headers['x-forwarded-proto'] || req.protocol;
-    const backendOrigin = `${backendProto}://${req.get("host")}`;
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -303,7 +301,7 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
     <h2 style="margin:0 0 5px">Opticus Eyewear</h2>
     <div class="amount">R$ ${Number(totalAmount).toFixed(2)}</div>
     <div class="qr-box"><div class="qr"></div></div>
-    <p class="hint">Aponte o celular para o QR Code ou simule o pagamento clicando abaixo.</p>
+    <p class="hint">Aponte o celular para o QR Code ou confirme o pagamento simulado pela loja.</p>
     <div class="order-details">
       <h4 style="margin:0 0 10px;font-size:13px;text-transform:uppercase;color:#22c55e">Itens:</h4>
       ${orders.map(o => `
@@ -315,11 +313,6 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
       <div class="detail-row"><span>Cobrança:</span><strong style="font-size:11px;color:#8b949e">${escapeHTML(billingId)}</strong></div>
       <div class="detail-row"><span>Cliente:</span><strong>${escapeHTML(customerName)} (${escapeHTML(customerEmail)})</strong></div>
     </div>
-    <form action="${backendOrigin}/api/payments/confirm-simulated-payment" method="POST" target="_top">
-      <input type="hidden" name="billingId" value="${escapeHTML(billingId)}" />
-      <input type="hidden" name="returnTo" value="${escapeHTML(returnTo || 'http://localhost:5173')}" />
-      <button type="submit" class="btn">Simular Pagamento Pix</button>
-    </form>
   </div>
 </body>
 </html>`;
@@ -335,45 +328,61 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
 // ─────────────────────────────────────────────────────────
 //   CONFIRMAR PAGAMENTO SIMULADO
 //   POST /api/payments/confirm-simulated-payment
+//
+//   SEC-01: exige autenticação (protect) e autorização de dono na
+//   própria escrita. O usuário vem exclusivamente do token; nunca do
+//   corpo. As duas mutações (pedido → "Queued" e pagamento →
+//   "aprovado") acontecem na mesma transação.
 // ─────────────────────────────────────────────────────────
 export async function confirmSimulatedPayment(req: Request, res: Response) {
-  const { billingId, returnTo } = req.body;
+  const { billingId } = req.body as { billingId?: unknown };
 
-  if (!billingId) {
+  if (typeof billingId !== "string" || !billingId.trim()) {
     throw new BadRequestProblem("billingId ausente.");
   }
 
+  // A identidade vem exclusivamente do token validado por `protect`.
+  const usuarioId = req.user!.id;
+
+  const client = await pool.connect();
   try {
-    await pool.query(
-      "UPDATE pedidos SET status = 'Queued' WHERE abacate_billing_id = $1",
-      [billingId]
+    await client.query("BEGIN");
+
+    // Autorização na cláusula WHERE: só o dono, e só enquanto o pedido
+    // ainda está em "Pending Payment". rowCount 0 agrupa inexistente,
+    // de outro dono e já processado — todos respondem o mesmo 404, sem
+    // oráculo de existência/estado.
+    const { rowCount } = await client.query(
+      `UPDATE pedidos
+          SET status = 'Queued'
+        WHERE abacate_billing_id = $1
+          AND usuario_id = $2
+          AND status = 'Pending Payment'`,
+      [billingId, usuarioId]
     );
 
-    await pool.query(
-      "UPDATE pagamentos SET status = 'aprovado' WHERE referencia_externa = $1",
-      [billingId]
-    );
-
-    let redirectUrl = "http://localhost:5173/?payment=success";
-    if (returnTo) {
-      try {
-        const url = new URL(returnTo);
-        const allowedHosts = ["localhost", new URL(env.FRONTEND_URL).hostname];
-
-        if (allowedHosts.includes(url.hostname) || url.hostname.endsWith('.vercel.app')) {
-          redirectUrl = `${returnTo.replace(/\/$/, '')}/?payment=success`;
-        } else {
-          console.warn("[Security] Bloqueado open redirect para:", url.hostname);
-        }
-      } catch (e) {
-        console.warn("Invalid returnTo URL");
-      }
+    if (rowCount === 0) {
+      throw new NotFoundProblem("Nenhum pedido elegível encontrado para essa cobrança.");
     }
 
-    return res.redirect(redirectUrl);
+    // Pagamento filtrado pelo dono do pedido (vínculo via pedidos.usuario_id).
+    await client.query(
+      `UPDATE pagamentos pg
+          SET status = 'aprovado'
+         FROM pedidos pe
+        WHERE pg.pedido_id = pe.id
+          AND pg.referencia_externa = $1
+          AND pe.usuario_id = $2`,
+      [billingId, usuarioId]
+    );
 
+    await client.query("COMMIT");
   } catch (err) {
-    logger.error({ err, traceId: req.requestId, requestId: req.requestId }, "Erro ao confirmar pagamento simulado");
-    return res.status(500).send("<h3>Falha na simulação de pagamento.</h3>");
+    await client.query("ROLLBACK");
+    client.release();
+    throw err;
   }
+  client.release();
+
+  return res.json({ status: "confirmed", billingId });
 }
