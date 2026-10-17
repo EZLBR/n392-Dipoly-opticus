@@ -4,12 +4,14 @@
 // ============================================================
 
 import pool from "../config/db.js";
+import { getAbacateToken, isSimulatedPaymentGateway } from "../config/env.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
 import type { Request, Response } from "express";
 import { ForbiddenProblem } from "../errors/problem.js";
 import { OrderService } from "../services/orderService.js";
 import { centavosParaDecimal, precoDoItem } from "../domain/pricing.js";
 import logger from "../utils/logger.js";
+import { gerarBillingId } from "../utils/billingId.js";
 import type {
   CreateOrderDTO,
   UpdateOrderStatusDTO,
@@ -201,7 +203,7 @@ export async function checkoutCart(req: Request, res: Response) {
   const customerName  = req.user!.name;
   const customerEmail = req.user!.email;
   const usuarioId     = req.user!.id;
-  const consolidatedBillingId = `bill-sim-${Math.floor(100000 + Math.random() * 900000)}`;
+  const consolidatedBillingId = gerarBillingId("sim");
 
   const client = await pool.connect();
   let createdOrders = [];
@@ -264,8 +266,8 @@ export async function checkoutCart(req: Request, res: Response) {
     const backendProto = req.headers['x-forwarded-proto'] || req.protocol;
     const backendOrigin = `${backendProto}://${req.get("host")}`;
 
-    const ABACATE_TOKEN = process.env.ABACATE_TOKEN;
-    const isMockToken   = !ABACATE_TOKEN || ABACATE_TOKEN.includes("your_abacatepay_token_here");
+    const abacateToken = getAbacateToken();
+    const isMockToken   = isSimulatedPaymentGateway();
 
     if (!isMockToken) {
       try {
@@ -280,7 +282,7 @@ export async function checkoutCart(req: Request, res: Response) {
         const abacateResponse = await fetch("https://api.abacatepay.com/v2/billing", {
           method:  "POST",
           headers: {
-            Authorization:  `Bearer ${ABACATE_TOKEN}`,
+            Authorization:  `Bearer ${abacateToken}`,
             "Content-Type": "application/json"
           },
           body: JSON.stringify({

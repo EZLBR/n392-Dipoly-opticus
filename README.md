@@ -260,7 +260,7 @@ docker run -d --name opticus-api -p 5000:5000 --env-file backend.env opticus-bac
 | `JWT_SECRET` | sim | a API não sobe sem ela |
 | `FRONTEND_URL` | não | origem liberada no CORS; padrão `http://localhost:5173` |
 | `PORT` | não | padrão `5000` |
-| `ABACATE_TOKEN` | não | sem ela, o pagamento roda em modo simulado |
+| `ABACATE_TOKEN` | sim | o webhook valida a assinatura HMAC com ela; use o placeholder `your_abacatepay_token_here` para o simulador (recusado em produção) |
 
 > **Banco na própria máquina:** dentro do container, `localhost` é o próprio
 > container. No Windows e no macOS, use `host.docker.internal` no lugar de

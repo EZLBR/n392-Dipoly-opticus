@@ -10,6 +10,8 @@ declare global {
         role?: string;
       };
       requestId?: string;
+      /** Bytes crus do corpo (capturados no `verify` do express.json). */
+      rawBody?: Buffer;
     }
   }
 }
