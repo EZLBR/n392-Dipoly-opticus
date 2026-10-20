@@ -73,7 +73,10 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no .env (veja .env.example)}
       # Origem liberada no CORS: onde o navegador carrega o frontend.
       FRONTEND_URL: http://localhost:${WEB_PORT:-8080}
-      ABACATE_TOKEN: ${ABACATE_TOKEN:-}
+      # Obrigatória. Em produção (NODE_ENV=production na imagem) um token
+      # real é exigido: o placeholder de simulador faz a API recusar subir.
+      ABACATE_TOKEN: ${ABACATE_TOKEN:?Defina ABACATE_TOKEN no .env (veja .env.example)}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Defina WEBHOOK_SECRET no .env (veja .env.example)}
     ports:
       - "127.0.0.1:${API_PORT:-5000}:5000"
     depends_on:

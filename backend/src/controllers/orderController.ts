@@ -4,6 +4,7 @@
 // ============================================================
 
 import pool from "../config/db.js";
+import { getAbacateToken, isSimulatedPaymentGateway } from "../config/env.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
 import type { Request, Response } from "express";
 import { ForbiddenProblem } from "../errors/problem.js";
@@ -265,8 +266,8 @@ export async function checkoutCart(req: Request, res: Response) {
     const backendProto = req.headers['x-forwarded-proto'] || req.protocol;
     const backendOrigin = `${backendProto}://${req.get("host")}`;
 
-    const ABACATE_TOKEN = process.env.ABACATE_TOKEN;
-    const isMockToken   = !ABACATE_TOKEN || ABACATE_TOKEN.includes("your_abacatepay_token_here");
+    const abacateToken = getAbacateToken();
+    const isMockToken   = isSimulatedPaymentGateway();
 
     if (!isMockToken) {
       try {
@@ -281,7 +282,7 @@ export async function checkoutCart(req: Request, res: Response) {
         const abacateResponse = await fetch("https://api.abacatepay.com/v2/billing", {
           method:  "POST",
           headers: {
-            Authorization:  `Bearer ${ABACATE_TOKEN}`,
+            Authorization:  `Bearer ${abacateToken}`,
             "Content-Type": "application/json"
           },
           body: JSON.stringify({

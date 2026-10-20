@@ -5,8 +5,8 @@
 // ============================================================
 
 import pool from "../config/db.js";
-import { env } from "../config/env.js";
-import crypto from "crypto";
+import { env, getAbacateToken, getWebhookSecret, isSimulatedPaymentGateway } from "../config/env.js";
+import { assinaturaWebhookValida, textoSecretoIgual } from "../services/webhookSignature.js";
 import type { Request, Response } from "express";
 import {
   BadRequestProblem,
@@ -27,7 +27,6 @@ const escapeHTML = (str: unknown) => {
     .replace(/'/g, "&#039;");
 };
 
-const ABACATE_TOKEN = process.env.ABACATE_TOKEN;
 const PORT          = env.PORT;
 
 import type { CreateBillingDTO } from "../dtos/payment/payment.dto.js";
@@ -54,7 +53,8 @@ export async function createBilling(req: Request, res: Response) {
 
   try {
     const amountInCents   = Math.round(Number(order.total) * 100);
-    const isMockToken     = !ABACATE_TOKEN || ABACATE_TOKEN.includes("your_abacatepay_token_here");
+    const abacateToken    = getAbacateToken();
+    const isMockToken     = isSimulatedPaymentGateway();
     const frontendOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `http://localhost:5173`);
     const backendProto = req.headers['x-forwarded-proto'] || req.protocol;
     const backendOrigin = `${backendProto}://${req.get("host")}`;
@@ -75,7 +75,7 @@ export async function createBilling(req: Request, res: Response) {
     const abacateResponse = await fetch("https://api.abacatepay.com/v2/billing", {
       method:  "POST",
       headers: {
-        Authorization:  `Bearer ${ABACATE_TOKEN}`,
+        Authorization:  `Bearer ${abacateToken}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -200,45 +200,59 @@ export async function getPayments(req: Request, res: Response) {
 // ─────────────────────────────────────────────────────────
 //   CONFIRMAR PAGAMENTO (webhook do AbacatePay)
 //   POST /api/payments/webhook
+//
+//   SEC-04: contrato oficial v2. Autenticação pelo segredo privado da
+//   URL E integridade por HMAC base64 do corpo cru, com chave pública.
 // ─────────────────────────────────────────────────────────
 export async function handleWebhook(req: Request, res: Response) {
-  const payload = req.body;
-  console.log("[Webhook] Payload recebido:", JSON.stringify(payload));
+  const payload = req.body as { event?: string; devMode?: boolean; data?: { checkout?: { id?: unknown; status?: unknown } } } | null;
+  const assinatura = req.headers["x-webhook-signature"];
 
-  const payloadString = JSON.stringify(req.body);
-  const signature = req.headers["x-abacatepay-signature"];
-
-  if (ABACATE_TOKEN && !ABACATE_TOKEN.includes("your_abacatepay")) {
-    if (!signature) {
-      throw new UnauthorizedProblem("Assinatura ausente");
-    }
-    const expected = crypto.createHmac("sha256", ABACATE_TOKEN).update(payloadString).digest("hex");
-    if (signature !== expected) {
-      console.warn("[Webhook] Assinatura inválida");
-      throw new UnauthorizedProblem("Assinatura inválida");
-    }
+  if (
+    !textoSecretoIgual(req.query.webhookSecret, getWebhookSecret()) ||
+    !assinaturaWebhookValida(req.rawBody, assinatura)
+  ) {
+    logger.warn(
+      {
+        traceId: req.requestId,
+        requestId: req.requestId,
+        temAssinatura: Boolean(assinatura),
+      },
+      "[Webhook] Requisição rejeitada: assinatura ausente ou inválida",
+    );
+    throw new UnauthorizedProblem("Assinatura do webhook inválida.");
   }
 
-  if (payload.event === "billing.paid" && payload.data?.id) {
-    const billingId = payload.data.id;
-
-    const { rows } = await pool.query(
-      "SELECT id FROM pedidos WHERE abacate_billing_id = $1",
-      [billingId]
-    );
-
-    if (rows.length > 0) {
-      await pool.query(
-        "UPDATE pedidos SET status = 'Queued' WHERE abacate_billing_id = $1",
-        [billingId]
-      );
-
-      await pool.query(
-        "UPDATE pagamentos SET status = 'aprovado' WHERE referencia_externa = $1",
-        [billingId]
-      );
-
-      console.log(`[Webhook] Pagamento confirmado. ${rows.length} pedidos enviados para produção.`);
+  const checkout = payload?.data?.checkout;
+  if (payload?.event === "checkout.completed" && checkout?.status === "PAID" &&
+      typeof checkout.id === "string" && checkout.id.trim() &&
+      (env.NODE_ENV !== "production" || payload.devMode === false)) {
+    const billingId = checkout.id;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Guardar a transição torna reentregas inofensivas, inclusive após entrega.
+      const { rows } = await client.query<{ id: number }>(
+        `UPDATE pedidos SET status = 'Queued'
+          WHERE abacate_billing_id = $1 AND pagamento_simulado = false
+            AND status = 'Pending Payment' RETURNING id`, [billingId]);
+      const ids = rows.map(pedido => pedido.id);
+      await client.query(
+        `UPDATE pagamentos SET status = 'aprovado'
+          WHERE referencia_externa = $1 AND pedido_id = ANY($2::int[])`, [billingId, ids]);
+      await client.query(
+        `INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa)
+         SELECT pe.id, 'pix', 'aprovado', pe.total, $1::varchar FROM pedidos pe
+          WHERE pe.id = ANY($2::int[])
+            AND NOT EXISTS (SELECT 1 FROM pagamentos pg
+                             WHERE pg.pedido_id = pe.id AND pg.referencia_externa = $1)`, [billingId, ids]);
+      await client.query("COMMIT");
+      logger.info({ traceId: req.requestId, pedidos: ids.length }, "[Webhook] Pagamento processado.");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
     }
   }
 

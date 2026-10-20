@@ -14,6 +14,7 @@ import { app } from "../setup/app.js";
 import { criarUsuario, comToken } from "../helpers/auth.js";
 import { criarPedido } from "../helpers/orders.js";
 import { especificacaoDoStudio } from "../helpers/especificacao.js";
+import { assinarWebhook, eventoCheckoutPago, SEGREDO_WEBHOOK } from "../helpers/webhook.js";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const BILLING_NOVO = /^bill-(sim|fallback)-([0-9a-f-]{36})$/i;
@@ -137,10 +138,18 @@ describe("compatibilidade com cobranças no formato antigo", () => {
 
   it("webhook localiza uma cobrança do formato antigo", async () => {
     const { pedido } = await criarCobrancaFormatoAntigo(ANTIGO);
+    await prisma.pedido.update({ where: { id: pedido.id }, data: { pagamentoSimulado: false } });
+    vi.stubEnv("WEBHOOK_SECRET", SEGREDO_WEBHOOK);
+
+    const corpo = JSON.stringify(eventoCheckoutPago(ANTIGO));
+    const assinatura = assinarWebhook(corpo);
 
     const res = await request(app)
       .post("/api/payments/webhook")
-      .send({ event: "billing.paid", data: { id: ANTIGO } });
+      .query({ webhookSecret: SEGREDO_WEBHOOK })
+      .set("Content-Type", "application/json")
+      .set("X-Webhook-Signature", assinatura)
+      .send(corpo);
 
     expect(res.status).toBe(200);
     expect(await estadoDaCobranca(pedido.id, ANTIGO)).toEqual({

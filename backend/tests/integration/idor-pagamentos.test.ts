@@ -4,14 +4,14 @@
 //   Dono do recurso: o cliente dono do pedido cobrado.
 //
 //   Este arquivo concentra as regressões IDOR/BOLA de pagamentos.
-//   As falhas ainda abertas (BOLA-03 em create-billing e SEC-04 no
-//   webhook) estão registradas com `vulnerabilidadeConhecida` (ver
-//   tests/helpers/vulneravel.ts): o comportamento seguro já está
-//   escrito, e o teste acusa quando a correção entrar.
+//   A falha ainda aberta (BOLA-03 em create-billing) está registrada
+//   com `vulnerabilidadeConhecida` (ver tests/helpers/vulneravel.ts):
+//   o comportamento seguro já está escrito, e o teste acusa quando a
+//   correção entrar.
 //
 //   SEC-01 #2 (confirmação anônima/de terceiros do pagamento simulado)
-//   já foi corrigida: os casos abaixo agora são testes normais, e não
-//   mais `vulnerabilidadeConhecida`.
+//   e SEC-04 #6 (webhook sem assinatura) já foram corrigidas: os casos
+//   abaixo agora são testes normais, e não mais `vulnerabilidadeConhecida`.
 //
 //   Os testes de caminho feliz do dono enviam o token mesmo onde a
 //   rota ainda é pública — assim continuam valendo depois que o
@@ -19,7 +19,7 @@
 // ============================================================
 
 import { createHmac } from "node:crypto";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import request from "supertest";
 import { app } from "../setup/app.js";
 import { criarUsuario, comToken } from "../helpers/auth.js";
@@ -27,15 +27,16 @@ import { criarPedido, lerPedido } from "../helpers/orders.js";
 import { criarCobranca, lerCobranca } from "../helpers/payments.js";
 import { esperarProblema, semanticaDoProblema } from "../helpers/problem.js";
 import { vulnerabilidadeConhecida } from "../helpers/vulneravel.js";
+import { assinarWebhook, eventoCheckoutPago, SEGREDO_WEBHOOK } from "../helpers/webhook.js";
 
 const PENDENTE = { pedido: "Pending_Payment", pagamento: "pendente" };
 const PAGO = { pedido: "Queued", pagamento: "aprovado" };
 
-async function cenarioDeCobranca() {
+async function cenarioDeCobranca(simulada = true) {
   const fabrica = await criarUsuario("factory");
   const dono = await criarUsuario("client");
   const pedido = await criarPedido({ dono, fabrica, status: "Pending_Payment" });
-  const cobranca = await criarCobranca(pedido);
+  const cobranca = await criarCobranca(pedido, simulada);
   return { dono, fabrica, pedido, cobranca };
 }
 
@@ -197,53 +198,85 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
   });
 
   describe("POST /api/payments/webhook", () => {
-    const eventoPago = (billingId: string) => ({ event: "billing.paid", data: { id: billingId } });
+    const eventoPago = eventoCheckoutPago;
+    const assinar = assinarWebhook;
 
-    it("[VULNERÁVEL · SEC-04 #6] webhook sem assinatura aprova o pagamento", () =>
-      vulnerabilidadeConhecida({
-        issue: "SEC-04 #6",
-        observar: async () => {
-          const { cobranca } = await cenarioDeCobranca();
-          const res = await request(app)
-            .post("/api/payments/webhook")
-            .send(eventoPago(cobranca.billingId));
-          return { res, depois: await lerCobranca(cobranca) };
-        },
-        seguro: ({ res, depois }) => {
-          esperarProblema(res, 401, "unauthorized");
-          expect(depois).toEqual(PENDENTE);
-        },
-        // Hoje: a assinatura só é verificada se ABACATE_TOKEN estiver
-        // configurado. Na configuração padrão, qualquer payload é aceito.
-        vulneravel: ({ res, depois }) => {
-          expect(res.status).toBe(200);
-          expect(depois).toEqual(PAGO);
-        },
-      }));
+    /** Envia o corpo exato (string) — o HMAC é sobre os bytes crus. */
+    function enviarWebhook(corpo: string, assinatura?: string) {
+      const req = request(app)
+        .post("/api/payments/webhook")
+        .query({ webhookSecret: SEGREDO_WEBHOOK })
+        .set("Content-Type", "application/json");
+      if (assinatura !== undefined) {
+        req.set("X-Webhook-Signature", assinatura);
+      }
+      return req.send(corpo);
+    }
 
-    it("[VULNERÁVEL · SEC-04 #6] webhook com assinatura inválida aprova o pagamento", () =>
-      vulnerabilidadeConhecida({
-        issue: "SEC-04 #6",
-        observar: async () => {
-          const { cobranca } = await cenarioDeCobranca();
-          const corpo = eventoPago(cobranca.billingId);
-          const assinaturaForjada = createHmac("sha256", "segredo-do-atacante")
-            .update(JSON.stringify(corpo))
-            .digest("hex");
-          const res = await request(app)
-            .post("/api/payments/webhook")
-            .set("x-abacatepay-signature", assinaturaForjada)
-            .send(corpo);
-          return { res, depois: await lerCobranca(cobranca) };
-        },
-        seguro: ({ res, depois }) => {
-          esperarProblema(res, 401, "unauthorized");
-          expect(depois).toEqual(PENDENTE);
-        },
-        vulneravel: ({ res, depois }) => {
-          expect(res.status).toBe(200);
-          expect(depois).toEqual(PAGO);
-        },
-      }));
+    beforeEach(() => {
+      vi.stubEnv("WEBHOOK_SECRET", SEGREDO_WEBHOOK);
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("SEC-04 #6 — sem assinatura responde 401 e não aprova o pagamento", async () => {
+      const { cobranca } = await cenarioDeCobranca(false);
+      const corpo = JSON.stringify(eventoPago(cobranca.billingId));
+
+      const res = await enviarWebhook(corpo);
+
+      esperarProblema(res, 401, "unauthorized");
+      expect(await lerCobranca(cobranca)).toEqual(PENDENTE);
+    });
+
+    it("SEC-04 #6 — assinatura inválida responde 401 e não aprova o pagamento", async () => {
+      const { cobranca } = await cenarioDeCobranca(false);
+      const corpo = JSON.stringify(eventoPago(cobranca.billingId));
+      const assinaturaForjada = createHmac("sha256", "segredo-do-atacante")
+        .update(corpo)
+        .digest("base64");
+
+      const res = await enviarWebhook(corpo, assinaturaForjada);
+
+      esperarProblema(res, 401, "unauthorized");
+      expect(await lerCobranca(cobranca)).toEqual(PENDENTE);
+    });
+
+    it("SEC-04 #6 — assinatura de outro corpo é rejeitada", async () => {
+      const { cobranca } = await cenarioDeCobranca(false);
+      const corpo = JSON.stringify(eventoPago(cobranca.billingId));
+      const assinaturaDeOutroCorpo = assinar(JSON.stringify(eventoPago("bill-outro")));
+
+      const res = await enviarWebhook(corpo, assinaturaDeOutroCorpo);
+
+      esperarProblema(res, 401, "unauthorized");
+      expect(await lerCobranca(cobranca)).toEqual(PENDENTE);
+    });
+
+    it("SEC-04 #6 — assinatura ausente e inválida respondem de forma indistinguível", async () => {
+      const { cobranca } = await cenarioDeCobranca(false);
+      const corpo = JSON.stringify(eventoPago(cobranca.billingId));
+
+      const semAssinatura = await enviarWebhook(corpo);
+      const assinaturaInvalida = await enviarWebhook(corpo, assinar(corpo, "outro-segredo"));
+
+      esperarProblema(semAssinatura, 401, "unauthorized");
+      esperarProblema(assinaturaInvalida, 401, "unauthorized");
+      expect(semanticaDoProblema(semAssinatura.body)).toEqual(
+        semanticaDoProblema(assinaturaInvalida.body),
+      );
+    });
+
+    it("SEC-04 #6 — assinatura válida aprova o pagamento", async () => {
+      const { cobranca } = await cenarioDeCobranca(false);
+      const corpo = JSON.stringify(eventoPago(cobranca.billingId));
+
+      const res = await enviarWebhook(corpo, assinar(corpo));
+
+      expect(res.status).toBe(200);
+      expect(await lerCobranca(cobranca)).toEqual(PAGO);
+    });
   });
 });

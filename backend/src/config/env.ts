@@ -27,6 +27,39 @@ function readPort(value: string | undefined): number {
   return port;
 }
 
+/**
+ * Valor de `ABACATE_TOKEN` que seleciona o gateway de pagamento simulado.
+ * É o único valor não-secreto aceito, e apenas fora de produção.
+ */
+export const ABACATE_TOKEN_PLACEHOLDER = "your_abacatepay_token_here";
+
+/** `ABACATE_TOKEN` está no modo simulado (placeholder do repositório)? */
+export function isPlaceholderAbacateToken(value: string | undefined): boolean {
+  return (value ?? "").includes("your_abacatepay");
+}
+
+/**
+ * `ABACATE_TOKEN` autentica chamadas de criação de cobrança, não webhooks. O placeholder
+ * do simulador é aceito, mas nunca em produção — lá o token tem de ser real.
+ */
+export function readAbacateToken(value: string | undefined, nodeEnv: NodeEnv): string {
+  const token = value?.trim();
+
+  if (!token) {
+    throw new Error(
+      "ABACATE_TOKEN é obrigatória. Use um token real do AbacatePay ou o placeholder de simulador (your_abacatepay_token_here).",
+    );
+  }
+
+  if (nodeEnv === "production" && isPlaceholderAbacateToken(token)) {
+    throw new Error(
+      "ABACATE_TOKEN não pode ser o placeholder de simulador em produção. Configure um token real.",
+    );
+  }
+
+  return token;
+}
+
 function readRequiredUrl(
   name: "DATABASE_URL" | "FRONTEND_URL",
   value: string | undefined,
@@ -54,8 +87,23 @@ function readRequiredUrl(
   return normalizedValue;
 }
 
+const nodeEnv = readNodeEnv(process.env.NODE_ENV);
+
+/** Segredo privado cadastrado no webhook; nunca usar o token da API aqui. */
+export function readWebhookSecret(value: string | undefined, ambiente: NodeEnv): string | undefined {
+  const secret = value?.trim();
+  if (!secret && ambiente === "production") {
+    throw new Error("WEBHOOK_SECRET é obrigatória em produção. Configure o segredo privado do webhook.");
+  }
+  return secret || undefined;
+}
+
+export function getWebhookSecret(): string | undefined {
+  return process.env.WEBHOOK_SECRET?.trim() || undefined;
+}
+
 export const env = Object.freeze({
-  NODE_ENV: readNodeEnv(process.env.NODE_ENV),
+  NODE_ENV: nodeEnv,
   PORT: readPort(process.env.PORT),
   DATABASE_URL: readRequiredUrl(
     "DATABASE_URL",
@@ -67,4 +115,27 @@ export const env = Object.freeze({
     process.env.FRONTEND_URL || "http://localhost:5173",
     ["http:", "https:"],
   ),
+  ABACATE_TOKEN: readAbacateToken(process.env.ABACATE_TOKEN, nodeEnv),
+  WEBHOOK_SECRET: readWebhookSecret(process.env.WEBHOOK_SECRET, nodeEnv),
 });
+
+/**
+ * Lê `ABACATE_TOKEN` em tempo de chamada, nunca congelado no import.
+ *
+ * O boot valida a variável (acima), mas o valor é lido a cada uso para
+ * que trocas controladas — como `vi.stubEnv` nos testes — valham sem
+ * reiniciar o processo. Usado somente para chamadas à API do gateway.
+ */
+export function getAbacateToken(): string | undefined {
+  const token = process.env.ABACATE_TOKEN?.trim();
+  return token || undefined;
+}
+
+/**
+ * O gateway está em modo simulado quando não há token real configurado.
+ * Sem token ou com o placeholder, nenhuma chamada real é feita.
+ */
+export function isSimulatedPaymentGateway(): boolean {
+  const token = getAbacateToken();
+  return !token || isPlaceholderAbacateToken(token);
+}
