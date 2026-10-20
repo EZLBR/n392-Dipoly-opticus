@@ -63,7 +63,7 @@ export async function createBilling(req: Request, res: Response) {
       const mockBillingId  = gerarBillingId("sim");
 
       await pool.query(
-        "UPDATE pedidos SET abacate_billing_id = $1, status = 'Pending Payment' WHERE id = $2",
+        "UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true, status = 'Pending Payment' WHERE id = $2",
         [mockBillingId, orderId]
       );
 
@@ -98,7 +98,7 @@ export async function createBilling(req: Request, res: Response) {
     const realCheckoutUrl = abacateData.data.url;
 
     await pool.query(
-      "UPDATE pedidos SET abacate_billing_id = $1, status = 'Pending Payment' WHERE id = $2",
+      "UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = false, status = 'Pending Payment' WHERE id = $2",
       [realBillingId, orderId]
     );
 
@@ -119,7 +119,7 @@ export async function createBilling(req: Request, res: Response) {
     const fallbackId  = gerarBillingId("fallback");
 
     await pool.query(
-      "UPDATE pedidos SET abacate_billing_id = $1, status = 'Pending Payment' WHERE id = $2",
+      "UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true, status = 'Pending Payment' WHERE id = $2",
       [fallbackId, orderId]
     );
 
@@ -299,7 +299,7 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
   }
 
   const { rows: orders } = await pool.query(
-    "SELECT * FROM pedidos WHERE abacate_billing_id = $1 AND usuario_id = $2",
+    "SELECT * FROM pedidos WHERE abacate_billing_id = $1 AND usuario_id = $2 AND pagamento_simulado = true",
     [billingId, req.user!.id]
   );
 
@@ -392,12 +392,14 @@ export async function confirmSimulatedPayment(req: Request, res: Response) {
     // ainda está em "Pending Payment". rowCount 0 agrupa inexistente,
     // de outro dono e já processado — todos respondem o mesmo 404, sem
     // oráculo de existência/estado.
-    const { rowCount } = await client.query(
+    const { rowCount, rows } = await client.query<{ id: number }>(
       `UPDATE pedidos
           SET status = 'Queued'
         WHERE abacate_billing_id = $1
           AND usuario_id = $2
-          AND status = 'Pending Payment'`,
+          AND pagamento_simulado = true
+          AND status = 'Pending Payment'
+      RETURNING id`,
       [billingId, usuarioId]
     );
 
@@ -405,24 +407,35 @@ export async function confirmSimulatedPayment(req: Request, res: Response) {
       throw new NotFoundProblem("Nenhum pedido elegível encontrado para essa cobrança.");
     }
 
-    // Pagamento filtrado pelo dono do pedido (vínculo via pedidos.usuario_id).
+    const pedidosConfirmados = rows.map(pedido => pedido.id);
+    // Apenas os pedidos efetivamente autorizados e alterados nesta transação.
     await client.query(
       `UPDATE pagamentos pg
           SET status = 'aprovado'
          FROM pedidos pe
         WHERE pg.pedido_id = pe.id
           AND pg.referencia_externa = $1
-          AND pe.usuario_id = $2`,
-      [billingId, usuarioId]
+          AND pe.id = ANY($2::int[])`,
+      [billingId, pedidosConfirmados]
+    );
+
+    // O carrinho simulado não possui necessariamente uma linha prévia.
+    await client.query(
+      `INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa)
+       SELECT pe.id, 'pix', 'aprovado', pe.total, $1::varchar FROM pedidos pe
+        WHERE pe.id = ANY($2::int[])
+          AND NOT EXISTS (SELECT 1 FROM pagamentos pg
+                           WHERE pg.pedido_id = pe.id AND pg.referencia_externa = $1)`,
+      [billingId, pedidosConfirmados]
     );
 
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK");
-    client.release();
     throw err;
+  } finally {
+    client.release();
   }
-  client.release();
 
   return res.json({ status: "confirmed", billingId });
 }

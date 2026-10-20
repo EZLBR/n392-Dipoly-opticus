@@ -302,7 +302,7 @@ export async function checkoutCart(req: Request, res: Response) {
           const realCheckoutUrl = abacateData.data.url;
 
           await pool.query(
-            "UPDATE pedidos SET abacate_billing_id = $1 WHERE abacate_billing_id = $2",
+            "UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = false WHERE abacate_billing_id = $2",
             [realBillingId, consolidatedBillingId]
           );
 
@@ -320,6 +320,10 @@ export async function checkoutCart(req: Request, res: Response) {
       }
     }
 
+    await pool.query(
+      "UPDATE pedidos SET pagamento_simulado = true WHERE abacate_billing_id = $1 AND usuario_id = $2 AND status = 'Pending Payment'",
+      [consolidatedBillingId, usuarioId]
+    );
     const simulatedCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${consolidatedBillingId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
 
     return res.json({
