@@ -59,7 +59,7 @@ it.each(["recusa", "sucesso"])("não apaga nem sobrescreve associação concorre
     return resposta(tipo === "recusa" ? 422 : 200, tipo === "sucesso");
   });
   const res = await request(app).post("/api/orders/checkout-cart").set(...comToken(dono.token)).send({ cartItems });
-  expect(res.status).toBe(503);
+  expect(res.status).toBe(tipo === "sucesso" ? 409 : 503);
   expect(res.body).not.toHaveProperty("checkoutUrl");
   expect((await pool.query("SELECT id, status, abacate_billing_id, pagamento_simulado FROM pedidos ORDER BY id")).rows).toEqual(antes);
 });

@@ -8,7 +8,7 @@ import { getAbacateToken, isSimulatedPaymentGateway } from "../config/env.js";
 import { gerarBillingId } from "../utils/billingId.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
 import type { Request, Response } from "express";
-import { ForbiddenProblem, ServiceUnavailableProblem } from "../errors/problem.js";
+import { ConflictProblem, ForbiddenProblem, ServiceUnavailableProblem } from "../errors/problem.js";
 import {
   PAGAMENTO_INDISPONIVEL,
   PAGAMENTO_NAO_CONFIRMADO,
@@ -310,7 +310,7 @@ export async function checkoutCart(req: Request, res: Response) {
             pedidoIds, usuarioId, billingIdProvisorio: consolidatedBillingId,
             resultado: { tipo: "associar", billingId: cobranca.billingId, simulado: false },
           });
-          if (!associada) throw new ServiceUnavailableProblem(PAGAMENTO_NAO_CONFIRMADO);
+          if (!associada) throw new ConflictProblem("Os pedidos mudaram enquanto a cobrança era criada. Atualize seus pedidos antes de pagar.");
         } catch (err) {
           logger.error(
             { err, traceId: req.requestId, requestId: req.requestId, billingId: cobranca.billingId, pedidoIds },
@@ -331,28 +331,19 @@ export async function checkoutCart(req: Request, res: Response) {
         "[AbacatePay] Falha ao criar cobrança no gateway",
       );
 
-      // SEC-06: em produção não há simulador para onde mandar o cliente.
-      if (cobranca.status === "incerta" || !simuladorDePagamentoAtivo) {
-        if (cobranca.status === "incerta") {
-          // Sem resposta conclusiva, a cobrança pode existir: os pedidos
-          // ficam pendentes para conciliação, e a resposta não afirma que
-          // nada foi criado.
-          throw new ServiceUnavailableProblem(PAGAMENTO_NAO_CONFIRMADO);
-        }
-
-        // O gateway confirmou que não criou a cobrança. Os pedidos desta
-        // tentativa são desfeitos, para não ficarem pendentes sem cobrança
-        // nem se acumularem a cada nova tentativa.
-        const desfeita = await concluirTentativaDeCheckout({
-          pedidoIds, usuarioId, billingIdProvisorio: consolidatedBillingId,
-          resultado: { tipo: "desfazer" },
-        });
-        if (!desfeita) {
-          logger.error({ traceId: req.requestId, pedidoIds }, "[AbacatePay] Associação alterada durante a tentativa: conciliar");
-          throw new ServiceUnavailableProblem(PAGAMENTO_NAO_CONFIRMADO);
-        }
-        throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
+      // Falha do gateway real nunca ativa simulador, em nenhum ambiente.
+      if (cobranca.status === "incerta") {
+        throw new ServiceUnavailableProblem(PAGAMENTO_NAO_CONFIRMADO);
       }
+      const desfeita = await concluirTentativaDeCheckout({
+        pedidoIds, usuarioId, billingIdProvisorio: consolidatedBillingId,
+        resultado: { tipo: "desfazer" },
+      });
+      if (!desfeita) {
+        logger.error({ traceId: req.requestId, pedidoIds }, "[AbacatePay] Associação alterada durante a tentativa: conciliar");
+        throw new ServiceUnavailableProblem(PAGAMENTO_NAO_CONFIRMADO);
+      }
+      throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
     }
 
     const simulada = await concluirTentativaDeCheckout({

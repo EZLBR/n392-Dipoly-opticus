@@ -15,8 +15,10 @@ import {
 } from "../config/pagamento.js";
 import { solicitarCobranca } from "../services/gatewayDePagamento.js";
 import type { Request, Response } from "express";
+import type { PoolClient } from "pg";
 import {
   BadRequestProblem,
+  ConflictProblem,
   ForbiddenProblem,
   NotFoundProblem,
   ServiceUnavailableProblem,
@@ -92,23 +94,7 @@ export async function createBilling(req: Request, res: Response) {
   });
 
   if (cobranca.status === "criada") {
-    // A cobrança já existe no gateway. Uma falha daqui em diante é de
-    // gravação: vai para conciliação, nunca para o simulador.
-    try {
-      await pool.query(
-        "UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = false, status = 'Pending Payment' WHERE id = $2",
-        [cobranca.billingId, orderId]
-      );
-    } catch (err) {
-      logger.error(
-        { err, traceId: req.requestId, requestId: req.requestId, billingId: cobranca.billingId, pedidoId: order.id },
-        "[AbacatePay] Cobrança criada no gateway, mas não registrada no pedido: conciliar",
-      );
-      throw err;
-    }
-
-    await _registrarPagamento(orderId, "pix", "pendente", Number(order.total), cobranca.billingId, req.requestId);
-
+    await registrarCobrancaNoPedido(req.requestId, order, cobranca.billingId);
     return res.json({ checkoutUrl: cobranca.url, isSimulated: false });
   }
 
@@ -117,48 +103,76 @@ export async function createBilling(req: Request, res: Response) {
     "[AbacatePay] Falha ao criar cobrança no gateway",
   );
 
-  // SEC-06: em produção o simulador não existe. A falha do gateway vira
-  // erro explícito, sem link para um checkout que responderia 404, e o
-  // pedido não é alterado. Resultado incerto não afirma que nada foi criado.
-  if (cobranca.status === "incerta" || !simuladorDePagamentoAtivo) {
-    throw new ServiceUnavailableProblem(
-      cobranca.status === "incerta" ? PAGAMENTO_NAO_CONFIRMADO : PAGAMENTO_INDISPONIVEL
-    );
-  }
-
-  const fallbackId  = gerarBillingId("fallback");
-
-  await pool.query(
-    "UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true, status = 'Pending Payment' WHERE id = $2",
-    [fallbackId, orderId]
+  // Com token real, a falha do gateway nunca cai no simulador, em nenhum
+  // ambiente (padrão §22). O pedido não é alterado, e resultado incerto não
+  // afirma que nada foi criado.
+  throw new ServiceUnavailableProblem(
+    cobranca.status === "incerta" ? PAGAMENTO_NAO_CONFIRMADO : PAGAMENTO_INDISPONIVEL
   );
-
-  const fallbackUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${fallbackId}&orderId=${orderId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
-
-  return res.json({ checkoutUrl: fallbackUrl, isSimulated: true, notice: "Fallback para simulador." });
 }
 
 // ─────────────────────────────────────────────────────────
 //   HELPER INTERNO: Registra pagamento na tabela pagamentos
 // ─────────────────────────────────────────────────────────
-async function _registrarPagamento(
-  pedidoId: string | number,
-  metodo: string,
-  status: string,
-  valor: number,
-  referenciaExterna: string,
-  traceId?: string,
+/**
+ * Liga a cobrança criada no gateway ao pedido e registra o pagamento
+ * pendente, numa transação só: um sem o outro deixaria o webhook sem ter
+ * como confirmar o pagamento.
+ *
+ * O pedido só é alterado se ainda estiver com o billingId lido no início da
+ * requisição. Se outra cobrança o assumiu enquanto o gateway respondia (um
+ * checkout concluído, por exemplo), nada é gravado e a resposta é 409.
+ *
+ * Qualquer falha aqui acontece com a cobrança já existente no gateway, então
+ * vai para o log de conciliação e nunca para o simulador.
+ */
+async function registrarCobrancaNoPedido(
+  traceId: string | undefined,
+  pedido: { id: number; total: string; abacate_billing_id: string | null },
+  billingId: string,
 ) {
+  let conexao: PoolClient | undefined;
   try {
-    await pool.query(
-      "INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa) VALUES ($1, $2, $3, $4, $5)",
-      [pedidoId, metodo, status, valor, referenciaExterna]
+    conexao = await pool.connect();
+    await conexao.query("BEGIN");
+    const { rowCount } = await conexao.query(
+      `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = false, status = 'Pending Payment'
+        WHERE id = $2 AND abacate_billing_id IS NOT DISTINCT FROM $3::varchar`,
+      [billingId, pedido.id, pedido.abacate_billing_id]
     );
+
+    if (rowCount !== 1) {
+      await conexao.query("ROLLBACK");
+      logger.error(
+        { traceId, requestId: traceId, billingId, pedidoId: pedido.id },
+        "[AbacatePay] Pedido mudou durante a cobrança; nada foi registrado: conciliar",
+      );
+      throw new ConflictProblem(
+        "O pedido mudou enquanto a cobrança era criada. Atualize seus pedidos antes de pagar."
+      );
+    }
+
+    // O total segue como o DECIMAL que o banco devolveu, sem passar por float.
+    await conexao.query(
+      "INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa) VALUES ($1, 'pix', 'pendente', $2, $3)",
+      [pedido.id, pedido.total, billingId]
+    );
+    await conexao.query("COMMIT");
   } catch (err) {
-    logger.error(
-      { err, traceId, requestId: traceId },
-      "Erro ao registrar pagamento",
-    );
+    if (!(err instanceof ConflictProblem)) {
+      if (conexao) {
+        await conexao.query("ROLLBACK").catch((erroDoRollback) =>
+          logger.error({ err: erroDoRollback, traceId, requestId: traceId }, "Falha no ROLLBACK do registro da cobrança")
+        );
+      }
+      logger.error(
+        { err, traceId, requestId: traceId, billingId, pedidoId: pedido.id },
+        "[AbacatePay] Cobrança criada no gateway, mas não registrada no pedido: conciliar",
+      );
+    }
+    throw err;
+  } finally {
+    conexao?.release();
   }
 }
 

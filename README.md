@@ -173,21 +173,24 @@ confirma um pagamento sem pagar no ambiente real, mesmo se o token do gateway fa
 | `test` | disponível, para os testes de integração |
 | `production` (imagem Docker e Compose) | inexistente, responde 404 |
 
-Em produção, `POST /api/orders/checkout-cart` e `POST /api/payments/create-billing` nunca
-devolvem link para o simulador. A reação depende do que o gateway respondeu:
+Com token real, `POST /api/orders/checkout-cart` e `POST /api/payments/create-billing`
+nunca usam o simulador após falha do gateway, em nenhum ambiente:
 
 | Resultado do gateway | Resposta | Pedidos |
 | --- | --- | --- |
 | `ABACATE_TOKEN` ausente no boot | inicialização recusada | nenhum é criado ou alterado |
 | Recusou a cobrança | 503 "nenhuma cobrança foi criada" | os da tentativa são desfeitos (checkout); o pedido não muda (create-billing) |
 | Sem resposta conclusiva (timeout de 10 s, rede, resposta ilegível) | 503 "não foi possível confirmar" | ficam pendentes: a cobrança pode existir |
-| Criou a cobrança, mas a gravação falhou | 500 ou 503, com registro para conciliação | preservados |
+| Criou a cobrança, mas outra cobrança assumiu pedidos | 409, sem link para pagar | preservados, para conciliação |
+| Criou a cobrança, mas a gravação falhou | 500, com registro para conciliação | preservados |
 
 Erros 5xx, 408 e 429 são incertos mesmo quando o corpo declara `success: false`.
 Resultados incertos preservam os pedidos em **todos** os ambientes, sem fallback
 para simulação. O desfazimento e a associação exigem IDs exatos, dono, estado pendente,
 origem ainda não simulada e o billingId provisório ainda vigente. Se alguma linha
-mudou, a transação inteira é revertida e retorna 503 sem link de cobrança.
+mudou, a transação inteira é revertida sem link de cobrança (409 na associação,
+503 na recusa). No `create-billing`, vínculo e registro financeiro também são
+uma transação, condicionada ao billingId lido no início da requisição.
 A classificação fica em `backend/src/services/gatewayDePagamento.ts`.
 
 ## Docker
