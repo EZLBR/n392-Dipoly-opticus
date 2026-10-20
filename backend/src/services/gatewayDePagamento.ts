@@ -6,10 +6,15 @@
 //
 //   criada    o gateway confirmou a cobrança. Uma falha depois disso
 //             é de gravação nossa: o pedido é preservado e conciliado.
-//   recusada  o gateway respondeu que não criou a cobrança. É seguro
-//             desfazer o que a tentativa criou.
+//   recusada  o gateway respondeu que não criou a cobrança (4xx, ou
+//             2xx com success:false). É seguro desfazer a tentativa.
 //   incerta   não houve resposta conclusiva (timeout, rede, resposta
-//             ilegível). A cobrança pode existir: nada é desfeito.
+//             ilegível, qualquer 5xx). A cobrança pode existir: nada é
+//             desfeito.
+//
+//   Um 5xx é incerto mesmo com success:false no corpo: o servidor do
+//   gateway falhou no meio do caminho, e o contrato do AbacatePay não
+//   garante que a cobrança deixou de existir.
 //
 //   O módulo não lê configuração: o token e o pedido vêm de quem
 //   chama, para a classificação ser testável sem banco nem ambiente.
@@ -36,6 +41,7 @@ const LIMITE_DO_MOTIVO = 300;
 const resumir = (texto: string) => texto.split("\n")[0].slice(0, LIMITE_DO_MOTIVO);
 const descrever = (erro: unknown) => resumir(erro instanceof Error ? `${erro.name}: ${erro.message}` : String(erro));
 const ehErroDoCliente = (status: number) => status >= 400 && status < 500;
+const ehErroDoServidor = (status: number) => status >= 500;
 
 export async function solicitarCobranca(token: string, pedido: PedidoDeCobranca): Promise<ResultadoDaCobranca> {
   let resposta: Response;
@@ -59,6 +65,11 @@ export async function solicitarCobranca(token: string, pedido: PedidoDeCobranca)
     return ehErroDoCliente(resposta.status)
       ? { status: "recusada", motivo: `HTTP ${resposta.status}` }
       : { status: "incerta", motivo: `HTTP ${resposta.status} com corpo ilegível` };
+  }
+
+  if (ehErroDoServidor(resposta.status)) {
+    const declarado = typeof corpo?.error === "string" && corpo.error ? `: ${corpo.error}` : "";
+    return { status: "incerta", motivo: resumir(`HTTP ${resposta.status}${declarado}`) };
   }
 
   if (resposta.ok && corpo?.success === true) {

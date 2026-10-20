@@ -172,18 +172,22 @@ confirma um pagamento sem pagar no ambiente real, mesmo se o token do gateway fa
 | `test` | disponível, para os testes de integração |
 | `production` (imagem Docker e Compose) | inexistente, responde 404 |
 
-Em produção, `POST /api/orders/checkout-cart` e `POST /api/payments/create-billing` nunca
-devolvem link para o simulador. A reação depende do que o gateway respondeu:
+O simulador só cobre a **falta** de um token real. Com `ABACATE_TOKEN` real configurado, uma
+falha do gateway **nunca** cai no simulador, em nenhum ambiente: `POST /api/orders/checkout-cart`
+e `POST /api/payments/create-billing` respondem conforme o resultado da cobrança.
 
 | Resultado do gateway | Resposta | Pedidos |
 | --- | --- | --- |
-| `ABACATE_TOKEN` ausente | 503 "nenhuma cobrança foi criada" | nenhum é criado ou alterado |
-| Recusou a cobrança | 503 "nenhuma cobrança foi criada" | os da tentativa são desfeitos (checkout); o pedido não muda (create-billing) |
-| Sem resposta conclusiva (timeout de 10 s, rede, resposta ilegível) | 503 "não foi possível confirmar" | ficam pendentes: a cobrança pode existir |
+| `ABACATE_TOKEN` ausente, em produção | 503 "nenhuma cobrança foi criada" | nenhum é criado ou alterado |
+| Recusou a cobrança (4xx) | 503 "nenhuma cobrança foi criada" | os da tentativa são desfeitos (checkout); o pedido não muda (create-billing) |
+| Sem resposta conclusiva (timeout de 10 s, rede, resposta ilegível, qualquer 5xx) | 503 "não foi possível confirmar" | ficam pendentes: a cobrança pode existir |
+| Criou a cobrança, mas outra cobrança assumiu o pedido no meio do caminho | 409 | nenhum é vinculado à cobrança nova |
 | Criou a cobrança, mas a gravação falhou | 500, com registro no log para conciliação | preservados |
 
-O desfazimento e a gravação miram os IDs dos pedidos da tentativa, nunca o billingId
-provisório. A classificação da resposta fica em `backend/src/services/gatewayDePagamento.ts`.
+O desfazimento e o vínculo só alteram pedidos da tentativa que ainda têm o billingId
+provisório dela, e o vínculo é tudo ou nada. No `create-billing`, o vínculo e o registro do
+pagamento pendente são uma transação só. A classificação da resposta fica em
+`backend/src/services/gatewayDePagamento.ts`.
 
 ## Docker
 

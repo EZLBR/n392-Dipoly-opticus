@@ -6,7 +6,7 @@
 import pool from "../config/db.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
 import type { Request, Response } from "express";
-import { ForbiddenProblem, ServiceUnavailableProblem } from "../errors/problem.js";
+import { ConflictProblem, ForbiddenProblem, ServiceUnavailableProblem } from "../errors/problem.js";
 import {
   PAGAMENTO_INDISPONIVEL,
   PAGAMENTO_NAO_CONFIRMADO,
@@ -199,6 +199,59 @@ export async function updateOrderStatus(req: Request, res: Response) {
   });
 }
 
+/**
+ * Liga a cobrança criada no gateway aos pedidos da tentativa, tudo ou nada.
+ *
+ * Só altera pedidos que ainda têm o billingId provisório da tentativa. Se
+ * algum foi ligado a outra cobrança enquanto o gateway respondia (um
+ * create-billing, por exemplo), nenhum é alterado e a resposta é 409: a
+ * cobrança nova cobriria um pedido que já tem outra.
+ *
+ * Qualquer falha aqui acontece com a cobrança já existente no gateway, então
+ * vai para o log de conciliação e nunca para o desfazimento dos pedidos.
+ */
+async function vincularCobrancaAosPedidos(
+  traceId: string | undefined,
+  billingId: string,
+  pedidoIds: number[],
+  billingIdProvisorio: string,
+) {
+  const conexao = await pool.connect();
+  try {
+    await conexao.query("BEGIN");
+    const { rowCount } = await conexao.query(
+      "UPDATE pedidos SET abacate_billing_id = $1 WHERE id = ANY($2::int[]) AND abacate_billing_id = $3",
+      [billingId, pedidoIds, billingIdProvisorio]
+    );
+
+    if (rowCount !== pedidoIds.length) {
+      await conexao.query("ROLLBACK");
+      logger.error(
+        { traceId, requestId: traceId, billingId, pedidoIds, vinculaveis: rowCount },
+        "[AbacatePay] Pedidos mudaram durante a cobrança; nenhum foi vinculado: conciliar",
+      );
+      throw new ConflictProblem(
+        "Os pedidos mudaram enquanto a cobrança era criada. Atualize seus pedidos antes de pagar."
+      );
+    }
+
+    await conexao.query("COMMIT");
+  } catch (err) {
+    if (!(err instanceof ConflictProblem)) {
+      await conexao.query("ROLLBACK").catch((erroDoRollback) =>
+        logger.error({ err: erroDoRollback, traceId, requestId: traceId }, "Falha no ROLLBACK da vinculação da cobrança")
+      );
+      logger.error(
+        { err, traceId, requestId: traceId, billingId, pedidoIds },
+        "[AbacatePay] Cobrança criada no gateway, mas não registrada nos pedidos: conciliar",
+      );
+    }
+    throw err;
+  } finally {
+    conexao.release();
+  }
+}
+
 // ─────────────────────────────────────────────────────────
 //   CHECKOUT DO CARRINHO
 //   POST /api/orders/checkout-cart
@@ -281,9 +334,10 @@ export async function checkoutCart(req: Request, res: Response) {
     const ABACATE_TOKEN = process.env.ABACATE_TOKEN;
     const isMockToken   = !ABACATE_TOKEN || ABACATE_TOKEN.includes("your_abacatepay_token_here");
 
-    // Só os pedidos criados nesta tentativa. O billingId provisório não serve
-    // de chave: é aleatório e não é único no banco.
-    const pedidoIds = createdOrders.map((pedido) => pedido.id);
+    // Os pedidos desta tentativa: os IDs criados acima, que ainda carregam o
+    // billingId provisório. As mutações abaixo exigem os dois, para não
+    // tocar num pedido que outra cobrança assumiu enquanto o gateway respondia.
+    const pedidoIds: number[] = createdOrders.map((pedido) => pedido.id);
 
     if (!isMockToken) {
       // O gateway cobra o preço unitário calculado no servidor, em centavos.
@@ -300,21 +354,7 @@ export async function checkoutCart(req: Request, res: Response) {
       });
 
       if (cobranca.status === "criada") {
-        // A cobrança já existe no gateway. Uma falha daqui em diante é de
-        // gravação: os pedidos ficam como estão e o caso vai para
-        // conciliação, nunca para o desfazimento abaixo.
-        try {
-          await pool.query(
-            "UPDATE pedidos SET abacate_billing_id = $1 WHERE id = ANY($2::int[])",
-            [cobranca.billingId, pedidoIds]
-          );
-        } catch (err) {
-          logger.error(
-            { err, traceId: req.requestId, requestId: req.requestId, billingId: cobranca.billingId, pedidoIds },
-            "[AbacatePay] Cobrança criada no gateway, mas não registrada nos pedidos: conciliar",
-          );
-          throw err;
-        }
+        await vincularCobrancaAosPedidos(req.requestId, cobranca.billingId, pedidoIds, consolidatedBillingId);
 
         return res.json({
           checkoutUrl: cobranca.url,
@@ -328,25 +368,32 @@ export async function checkoutCart(req: Request, res: Response) {
         "[AbacatePay] Falha ao criar cobrança no gateway",
       );
 
-      // SEC-06: em produção não há simulador para onde mandar o cliente.
-      if (!simuladorDePagamentoAtivo) {
-        if (cobranca.status === "incerta") {
-          // Sem resposta conclusiva, a cobrança pode existir: os pedidos
-          // ficam pendentes para conciliação, e a resposta não afirma que
-          // nada foi criado.
-          throw new ServiceUnavailableProblem(PAGAMENTO_NAO_CONFIRMADO);
-        }
-
-        // O gateway confirmou que não criou a cobrança. Os pedidos desta
-        // tentativa são desfeitos, para não ficarem pendentes sem cobrança
-        // nem se acumularem a cada nova tentativa.
-        await pool.query(
-          "DELETE FROM pedidos WHERE id = ANY($1::int[]) AND usuario_id = $2 AND status = 'Pending Payment'",
-          [pedidoIds, usuarioId]
-        );
-        throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
+      // Com token real, a falha do gateway nunca cai no simulador, em nenhum
+      // ambiente (padrão §22). Resultado incerto: a cobrança pode existir, e
+      // os pedidos ficam pendentes para conciliação.
+      if (cobranca.status === "incerta") {
+        throw new ServiceUnavailableProblem(PAGAMENTO_NAO_CONFIRMADO);
       }
+
+      // Recusada: o gateway confirmou que não criou a cobrança. Os pedidos
+      // desta tentativa são desfeitos, menos os que outra cobrança assumiu.
+      const { rowCount } = await pool.query(
+        `DELETE FROM pedidos
+          WHERE id = ANY($1::int[]) AND usuario_id = $2
+            AND status = 'Pending Payment' AND abacate_billing_id = $3`,
+        [pedidoIds, usuarioId, consolidatedBillingId]
+      );
+      if (rowCount !== pedidoIds.length) {
+        logger.warn(
+          { traceId: req.requestId, requestId: req.requestId, pedidoIds, desfeitos: rowCount },
+          "[AbacatePay] Pedidos mantidos: mudaram durante a tentativa de cobrança",
+        );
+      }
+      throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
     }
+
+    // Sem token real, o que só acontece fora de produção (o início da função
+    // já barrou a produção): o simulador cobre o desenvolvimento.
 
     const simulatedCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${consolidatedBillingId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
 
