@@ -27,15 +27,16 @@ import { criarPedido, lerPedido } from "../helpers/orders.js";
 import { criarCobranca, lerCobranca } from "../helpers/payments.js";
 import { esperarProblema, semanticaDoProblema } from "../helpers/problem.js";
 import { vulnerabilidadeConhecida } from "../helpers/vulneravel.js";
+import { assinarWebhook, eventoCheckoutPago, SEGREDO_WEBHOOK } from "../helpers/webhook.js";
 
 const PENDENTE = { pedido: "Pending_Payment", pagamento: "pendente" };
 const PAGO = { pedido: "Queued", pagamento: "aprovado" };
 
-async function cenarioDeCobranca() {
+async function cenarioDeCobranca(simulada = true) {
   const fabrica = await criarUsuario("factory");
   const dono = await criarUsuario("client");
   const pedido = await criarPedido({ dono, fabrica, status: "Pending_Payment" });
-  const cobranca = await criarCobranca(pedido);
+  const cobranca = await criarCobranca(pedido, simulada);
   return { dono, fabrica, pedido, cobranca };
 }
 
@@ -197,25 +198,23 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
   });
 
   describe("POST /api/payments/webhook", () => {
-    const TOKEN_WEBHOOK = "token-de-teste-webhook";
-    const eventoPago = (billingId: string) => ({ event: "billing.paid", data: { id: billingId } });
-
-    const assinar = (corpo: string, token = TOKEN_WEBHOOK) =>
-      createHmac("sha256", token).update(corpo).digest("hex");
+    const eventoPago = eventoCheckoutPago;
+    const assinar = assinarWebhook;
 
     /** Envia o corpo exato (string) — o HMAC é sobre os bytes crus. */
     function enviarWebhook(corpo: string, assinatura?: string) {
       const req = request(app)
         .post("/api/payments/webhook")
+        .query({ webhookSecret: SEGREDO_WEBHOOK })
         .set("Content-Type", "application/json");
       if (assinatura !== undefined) {
-        req.set("x-abacatepay-signature", assinatura);
+        req.set("X-Webhook-Signature", assinatura);
       }
       return req.send(corpo);
     }
 
     beforeEach(() => {
-      vi.stubEnv("ABACATE_TOKEN", TOKEN_WEBHOOK);
+      vi.stubEnv("WEBHOOK_SECRET", SEGREDO_WEBHOOK);
     });
 
     afterEach(() => {
@@ -223,7 +222,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
     });
 
     it("SEC-04 #6 — sem assinatura responde 401 e não aprova o pagamento", async () => {
-      const { cobranca } = await cenarioDeCobranca();
+      const { cobranca } = await cenarioDeCobranca(false);
       const corpo = JSON.stringify(eventoPago(cobranca.billingId));
 
       const res = await enviarWebhook(corpo);
@@ -233,11 +232,11 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
     });
 
     it("SEC-04 #6 — assinatura inválida responde 401 e não aprova o pagamento", async () => {
-      const { cobranca } = await cenarioDeCobranca();
+      const { cobranca } = await cenarioDeCobranca(false);
       const corpo = JSON.stringify(eventoPago(cobranca.billingId));
       const assinaturaForjada = createHmac("sha256", "segredo-do-atacante")
         .update(corpo)
-        .digest("hex");
+        .digest("base64");
 
       const res = await enviarWebhook(corpo, assinaturaForjada);
 
@@ -246,7 +245,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
     });
 
     it("SEC-04 #6 — assinatura de outro corpo é rejeitada", async () => {
-      const { cobranca } = await cenarioDeCobranca();
+      const { cobranca } = await cenarioDeCobranca(false);
       const corpo = JSON.stringify(eventoPago(cobranca.billingId));
       const assinaturaDeOutroCorpo = assinar(JSON.stringify(eventoPago("bill-outro")));
 
@@ -257,7 +256,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
     });
 
     it("SEC-04 #6 — assinatura ausente e inválida respondem de forma indistinguível", async () => {
-      const { cobranca } = await cenarioDeCobranca();
+      const { cobranca } = await cenarioDeCobranca(false);
       const corpo = JSON.stringify(eventoPago(cobranca.billingId));
 
       const semAssinatura = await enviarWebhook(corpo);
@@ -271,7 +270,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
     });
 
     it("SEC-04 #6 — assinatura válida aprova o pagamento", async () => {
-      const { cobranca } = await cenarioDeCobranca();
+      const { cobranca } = await cenarioDeCobranca(false);
       const corpo = JSON.stringify(eventoPago(cobranca.billingId));
 
       const res = await enviarWebhook(corpo, assinar(corpo));

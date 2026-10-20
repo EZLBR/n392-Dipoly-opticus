@@ -3,7 +3,7 @@
 //
 //   A variável é obrigatória em todos os ambientes; o placeholder do
 //   simulador é aceito fora de produção, mas nunca em produção. É o
-//   segredo que o webhook usa para validar a assinatura HMAC.
+//   token usado para criação de cobrança, separado do segredo do webhook.
 // ============================================================
 
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -13,10 +13,20 @@ import {
   isPlaceholderAbacateToken,
   isSimulatedPaymentGateway,
   readAbacateToken,
+  readWebhookSecret,
 } from "../../../src/config/env.js";
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+describe("WEBHOOK_SECRET", () => {
+  it("recusa produção sem segredo privado, mesmo havendo token da API", () => {
+    expect(() => readWebhookSecret(undefined, "production")).toThrow(/WEBHOOK_SECRET/);
+    expect(() => readWebhookSecret("   ", "production")).toThrow(/WEBHOOK_SECRET/);
+    expect(readWebhookSecret("privado-aleatorio", "production")).toBe("privado-aleatorio");
+    expect(readWebhookSecret(undefined, "test")).toBeUndefined();
+  });
 });
 
 describe("ABACATE_TOKEN (SEC-04)", () => {

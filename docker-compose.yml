@@ -76,6 +76,7 @@ services:
       # Obrigatória. Em produção (NODE_ENV=production na imagem) um token
       # real é exigido: o placeholder de simulador faz a API recusar subir.
       ABACATE_TOKEN: ${ABACATE_TOKEN:?Defina ABACATE_TOKEN no .env (veja .env.example)}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Defina WEBHOOK_SECRET no .env (veja .env.example)}
     ports:
       - "127.0.0.1:${API_PORT:-5000}:5000"
     depends_on:

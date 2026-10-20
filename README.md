@@ -260,7 +260,18 @@ docker run -d --name opticus-api -p 5000:5000 --env-file backend.env opticus-bac
 | `JWT_SECRET` | sim | a API não sobe sem ela |
 | `FRONTEND_URL` | não | origem liberada no CORS; padrão `http://localhost:5173` |
 | `PORT` | não | padrão `5000` |
-| `ABACATE_TOKEN` | sim | o webhook valida a assinatura HMAC com ela; use o placeholder `your_abacatepay_token_here` para o simulador (recusado em produção) |
+| `ABACATE_TOKEN` | sim | token para criar cobranças; use `your_abacatepay_token_here` somente fora de produção |
+| `WEBHOOK_SECRET` | em produção | segredo privado cadastrado no webhook; sem ele, eventos são rejeitados com 401 |
+
+O webhook usa o [contrato oficial da AbacatePay](https://docs.abacatepay.com/pages/webhooks/security):
+cadastre `https://sua-api/api/payments/webhook?webhookSecret=SEU_SEGREDO`, configure
+o mesmo valor em `WEBHOOK_SECRET` e mantenha essa URL fora de logs e prints.
+A assinatura `X-Webhook-Signature` é HMAC-SHA256/base64 do corpo original com a
+chave **pública** do provedor; o segredo privado da URL também é obrigatório.
+O evento pago v2 é `checkout.completed`, com `data.checkout.id` e status `PAID`.
+Reentregas não retrocedem pedidos já processados; pedido e pagamento são gravados
+na mesma transação. A criação de checkout ainda usa a integração legada e sua
+migração para o endpoint atual do provedor permanece uma entrega separada.
 
 **Atualização de pagamentos simulados:** aplique `npm run migrate` antes de
 iniciar a API. A origem agora é registrada em `pedidos.pagamento_simulado`.

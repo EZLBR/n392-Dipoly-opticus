@@ -5,8 +5,8 @@
 // ============================================================
 
 import pool from "../config/db.js";
-import { env, getAbacateToken, isSimulatedPaymentGateway } from "../config/env.js";
-import crypto from "crypto";
+import { env, getAbacateToken, getWebhookSecret, isSimulatedPaymentGateway } from "../config/env.js";
+import { assinaturaWebhookValida, textoSecretoIgual } from "../services/webhookSignature.js";
 import type { Request, Response } from "express";
 import {
   BadRequestProblem,
@@ -197,53 +197,20 @@ export async function getPayments(req: Request, res: Response) {
   });
 }
 
-/**
- * Compara a assinatura recebida com o HMAC-SHA256 (hex) do corpo cru.
- *
- * O corpo vem em bytes (`req.rawBody`), nunca reserializado: qualquer
- * diferença de espaço/chave mudaria o hash. A comparação é em tempo
- * constante; tamanhos diferentes já são inválidos.
- */
-function assinaturaDoWebhookValida(
-  rawBody: Buffer | undefined,
-  assinatura: string,
-  token: string,
-): boolean {
-  const corpo = rawBody ?? Buffer.from("");
-  const esperado = crypto.createHmac("sha256", token).update(corpo).digest("hex");
-
-  const a = Buffer.from(esperado, "utf8");
-  const b = Buffer.from(assinatura, "utf8");
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
-
 // ─────────────────────────────────────────────────────────
 //   CONFIRMAR PAGAMENTO (webhook do AbacatePay)
 //   POST /api/payments/webhook
 //
-//   SEC-04: a assinatura HMAC é SEMPRE validada (fail-closed). Sem
-//   token, sem assinatura ou com assinatura divergente a requisição é
-//   rejeitada com 401 — nunca processa o evento. Ausente e inválida
-//   compartilham a mesma resposta, para não virar oráculo.
-//
-//   Esquema mantido como o da integração existente: header
-//   `x-abacatepay-signature`, HMAC-SHA256 (hex) e segredo ABACATE_TOKEN
-//   sobre o corpo cru. A documentação pública v2 do AbacatePay descreve
-//   outro esquema (`X-Webhook-Signature`, base64, chave pública) e um
-//   `webhookSecret` na query; alinhar a isso é uma mudança de integração
-//   à parte, deliberadamente fora do escopo deste fix.
+//   SEC-04: contrato oficial v2. Autenticação pelo segredo privado da
+//   URL E integridade por HMAC base64 do corpo cru, com chave pública.
 // ─────────────────────────────────────────────────────────
 export async function handleWebhook(req: Request, res: Response) {
-  const payload = req.body as { event?: string; data?: { id?: string } };
-  const token = getAbacateToken();
-
-  const cabecalho = req.headers["x-abacatepay-signature"];
-  const assinatura = Array.isArray(cabecalho) ? cabecalho[0] : cabecalho;
+  const payload = req.body as { event?: string; devMode?: boolean; data?: { checkout?: { id?: unknown; status?: unknown } } } | null;
+  const assinatura = req.headers["x-webhook-signature"];
 
   if (
-    !token ||
-    !assinatura ||
-    !assinaturaDoWebhookValida(req.rawBody, assinatura, token)
+    !textoSecretoIgual(req.query.webhookSecret, getWebhookSecret()) ||
+    !assinaturaWebhookValida(req.rawBody, assinatura)
   ) {
     logger.warn(
       {
@@ -256,29 +223,36 @@ export async function handleWebhook(req: Request, res: Response) {
     throw new UnauthorizedProblem("Assinatura do webhook inválida.");
   }
 
-  if (payload.event === "billing.paid" && payload.data?.id) {
-    const billingId = payload.data.id;
-
-    const { rows } = await pool.query(
-      "SELECT id FROM pedidos WHERE abacate_billing_id = $1",
-      [billingId]
-    );
-
-    if (rows.length > 0) {
-      await pool.query(
-        "UPDATE pedidos SET status = 'Queued' WHERE abacate_billing_id = $1",
-        [billingId]
-      );
-
-      await pool.query(
-        "UPDATE pagamentos SET status = 'aprovado' WHERE referencia_externa = $1",
-        [billingId]
-      );
-
-      logger.info(
-        { traceId: req.requestId, requestId: req.requestId, pedidos: rows.length },
-        "[Webhook] Pagamento confirmado.",
-      );
+  const checkout = payload?.data?.checkout;
+  if (payload?.event === "checkout.completed" && checkout?.status === "PAID" &&
+      typeof checkout.id === "string" && checkout.id.trim() &&
+      (env.NODE_ENV !== "production" || payload.devMode === false)) {
+    const billingId = checkout.id;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Guardar a transição torna reentregas inofensivas, inclusive após entrega.
+      const { rows } = await client.query<{ id: number }>(
+        `UPDATE pedidos SET status = 'Queued'
+          WHERE abacate_billing_id = $1 AND pagamento_simulado = false
+            AND status = 'Pending Payment' RETURNING id`, [billingId]);
+      const ids = rows.map(pedido => pedido.id);
+      await client.query(
+        `UPDATE pagamentos SET status = 'aprovado'
+          WHERE referencia_externa = $1 AND pedido_id = ANY($2::int[])`, [billingId, ids]);
+      await client.query(
+        `INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa)
+         SELECT pe.id, 'pix', 'aprovado', pe.total, $1::varchar FROM pedidos pe
+          WHERE pe.id = ANY($2::int[])
+            AND NOT EXISTS (SELECT 1 FROM pagamentos pg
+                             WHERE pg.pedido_id = pe.id AND pg.referencia_externa = $1)`, [billingId, ids]);
+      await client.query("COMMIT");
+      logger.info({ traceId: req.requestId, pedidos: ids.length }, "[Webhook] Pagamento processado.");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
     }
   }
 

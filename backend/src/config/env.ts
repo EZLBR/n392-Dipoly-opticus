@@ -39,8 +39,7 @@ export function isPlaceholderAbacateToken(value: string | undefined): boolean {
 }
 
 /**
- * `ABACATE_TOKEN` é obrigatória em todos os ambientes (SEC-04): o webhook
- * só é confiável com um segredo para validar a assinatura. O placeholder
+ * `ABACATE_TOKEN` autentica chamadas de criação de cobrança, não webhooks. O placeholder
  * do simulador é aceito, mas nunca em produção — lá o token tem de ser real.
  */
 export function readAbacateToken(value: string | undefined, nodeEnv: NodeEnv): string {
@@ -90,6 +89,19 @@ function readRequiredUrl(
 
 const nodeEnv = readNodeEnv(process.env.NODE_ENV);
 
+/** Segredo privado cadastrado no webhook; nunca usar o token da API aqui. */
+export function readWebhookSecret(value: string | undefined, ambiente: NodeEnv): string | undefined {
+  const secret = value?.trim();
+  if (!secret && ambiente === "production") {
+    throw new Error("WEBHOOK_SECRET é obrigatória em produção. Configure o segredo privado do webhook.");
+  }
+  return secret || undefined;
+}
+
+export function getWebhookSecret(): string | undefined {
+  return process.env.WEBHOOK_SECRET?.trim() || undefined;
+}
+
 export const env = Object.freeze({
   NODE_ENV: nodeEnv,
   PORT: readPort(process.env.PORT),
@@ -104,6 +116,7 @@ export const env = Object.freeze({
     ["http:", "https:"],
   ),
   ABACATE_TOKEN: readAbacateToken(process.env.ABACATE_TOKEN, nodeEnv),
+  WEBHOOK_SECRET: readWebhookSecret(process.env.WEBHOOK_SECRET, nodeEnv),
 });
 
 /**
@@ -111,7 +124,7 @@ export const env = Object.freeze({
  *
  * O boot valida a variável (acima), mas o valor é lido a cada uso para
  * que trocas controladas — como `vi.stubEnv` nos testes — valham sem
- * reiniciar o processo. É a partir daqui que o webhook assina o corpo.
+ * reiniciar o processo. Usado somente para chamadas à API do gateway.
  */
 export function getAbacateToken(): string | undefined {
   const token = process.env.ABACATE_TOKEN?.trim();
