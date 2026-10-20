@@ -3,10 +3,15 @@
 //
 //   Dono do recurso: o cliente dono do pedido cobrado.
 //
-//   Este é o arquivo com mais vulnerabilidades ainda abertas. Elas
-//   estão registradas com `vulnerabilidadeConhecida` (ver
+//   Este arquivo concentra as regressões IDOR/BOLA de pagamentos.
+//   As falhas ainda abertas (BOLA-03 em create-billing e SEC-04 no
+//   webhook) estão registradas com `vulnerabilidadeConhecida` (ver
 //   tests/helpers/vulneravel.ts): o comportamento seguro já está
 //   escrito, e o teste acusa quando a correção entrar.
+//
+//   SEC-01 #2 (confirmação anônima/de terceiros do pagamento simulado)
+//   já foi corrigida: os casos abaixo agora são testes normais, e não
+//   mais `vulnerabilidadeConhecida`.
 //
 //   Os testes de caminho feliz do dono enviam o token mesmo onde a
 //   rota ainda é pública — assim continuam valendo depois que o
@@ -105,6 +110,17 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
   });
 
   describe("POST /api/payments/confirm-simulated-payment", () => {
+    it("usuário anônimo recebe 401 e o pedido continua pendente", async () => {
+      const { cobranca } = await cenarioDeCobranca();
+
+      const res = await request(app)
+        .post("/api/payments/confirm-simulated-payment")
+        .send({ billingId: cobranca.billingId });
+
+      esperarProblema(res, 401, "unauthorized");
+      expect(await lerCobranca(cobranca)).toEqual(PENDENTE);
+    });
+
     it("dono confirma o pagamento do próprio pedido", async () => {
       const { dono, cobranca } = await cenarioDeCobranca();
 
@@ -113,52 +129,60 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
         .set(...comToken(dono.token))
         .send({ billingId: cobranca.billingId });
 
-      expect(res.status).toBeLessThan(400);
+      expect(res.status).toBe(200);
       expect(await lerCobranca(cobranca)).toEqual(PAGO);
     });
 
-    it("[VULNERÁVEL · SEC-01 #2] usuário anônimo confirma pagamento", () =>
-      vulnerabilidadeConhecida({
-        issue: "SEC-01 #2",
-        observar: async () => {
-          const { cobranca } = await cenarioDeCobranca();
-          const res = await request(app)
-            .post("/api/payments/confirm-simulated-payment")
-            .send({ billingId: cobranca.billingId });
-          return { res, depois: await lerCobranca(cobranca) };
-        },
-        seguro: ({ res, depois }) => {
-          esperarProblema(res, 401, "unauthorized");
-          expect(depois).toEqual(PENDENTE);
-        },
-        // Hoje: a rota é pública, aprova o pagamento e redireciona.
-        vulneravel: ({ res, depois }) => {
-          expect(res.status).toBe(302);
-          expect(depois).toEqual(PAGO);
-        },
-      }));
+    it("não-dono recebe 404 e nada muda no banco", async () => {
+      const { cobranca } = await cenarioDeCobranca();
+      const atacante = await criarUsuario("client");
 
-    it("[VULNERÁVEL · SEC-01 #2] outro usuário confirma o pagamento de pedido alheio", () =>
-      vulnerabilidadeConhecida({
-        issue: "SEC-01 #2",
-        observar: async () => {
-          const { cobranca } = await cenarioDeCobranca();
-          const atacante = await criarUsuario("client");
-          const res = await request(app)
-            .post("/api/payments/confirm-simulated-payment")
-            .set(...comToken(atacante.token))
-            .send({ billingId: cobranca.billingId });
-          return { res, depois: await lerCobranca(cobranca) };
-        },
-        seguro: ({ res, depois }) => {
-          esperarProblema(res, 404, "not-found");
-          expect(depois).toEqual(PENDENTE);
-        },
-        vulneravel: ({ res, depois }) => {
-          expect(res.status).toBe(302);
-          expect(depois).toEqual(PAGO);
-        },
-      }));
+      const res = await request(app)
+        .post("/api/payments/confirm-simulated-payment")
+        .set(...comToken(atacante.token))
+        .send({ billingId: cobranca.billingId });
+
+      esperarProblema(res, 404, "not-found");
+      expect(await lerCobranca(cobranca)).toEqual(PENDENTE);
+    });
+
+    it("billingId inexistente responde 404 com o mesmo corpo do não-dono", async () => {
+      const { cobranca } = await cenarioDeCobranca();
+      const atacante = await criarUsuario("client");
+
+      const alheio = await request(app)
+        .post("/api/payments/confirm-simulated-payment")
+        .set(...comToken(atacante.token))
+        .send({ billingId: cobranca.billingId });
+      const inexistente = await request(app)
+        .post("/api/payments/confirm-simulated-payment")
+        .set(...comToken(atacante.token))
+        .send({ billingId: "bill-inexistente-000" });
+
+      esperarProblema(alheio, 404, "not-found");
+      esperarProblema(inexistente, 404, "not-found");
+      expect(semanticaDoProblema(alheio.body)).toEqual(semanticaDoProblema(inexistente.body));
+    });
+
+    it("confirmação repetida pelo dono responde 404 e não duplica efeito", async () => {
+      const { dono, cobranca } = await cenarioDeCobranca();
+
+      const primeira = await request(app)
+        .post("/api/payments/confirm-simulated-payment")
+        .set(...comToken(dono.token))
+        .send({ billingId: cobranca.billingId });
+      expect(primeira.status).toBe(200);
+      expect(await lerCobranca(cobranca)).toEqual(PAGO);
+
+      const segunda = await request(app)
+        .post("/api/payments/confirm-simulated-payment")
+        .set(...comToken(dono.token))
+        .send({ billingId: cobranca.billingId });
+
+      // Já saiu de "Pending Payment": mesma resposta 404 do não-dono, sem novo efeito.
+      esperarProblema(segunda, 404, "not-found");
+      expect(await lerCobranca(cobranca)).toEqual(PAGO);
+    });
   });
 
   describe("GET /api/payments/simulated-checkout", () => {

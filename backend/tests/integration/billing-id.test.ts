@@ -3,8 +3,8 @@
 //
 //   O identificador gerado pela plataforma passa a ser
 //   `bill-<origem>-<uuid v4>`. Cobranças já gravadas no formato
-//   antigo (`bill-sim-123456`) precisam continuar sendo localizadas
-//   e confirmadas — nenhuma validação nova pode rejeitá-las.
+//   antigo (`bill-sim-123456`) continuam aceitas quando a origem
+//   simulada está comprovada no banco. O prefixo sozinho não autoriza.
 // ============================================================
 
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -29,7 +29,7 @@ async function criarCobrancaFormatoAntigo(billingId: string) {
   const pedido = await criarPedido({ dono, status: "Pending_Payment" });
   await prisma.pedido.update({
     where: { publicId: pedido.publicId },
-    data: { abacateBillingId: billingId },
+    data: { abacateBillingId: billingId, pagamentoSimulado: true },
   });
   await prisma.pagamento.create({
     data: { pedidoId: pedido.id, valor: "450.00", referenciaExterna: billingId },
@@ -128,7 +128,7 @@ describe("compatibilidade com cobranças no formato antigo", () => {
       .set(...comToken(dono.token))
       .send({ billingId: ANTIGO });
 
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(200);
     expect(await estadoDaCobranca(pedido.id, ANTIGO)).toEqual({
       pedido: "Queued",
       pagamento: "aprovado",

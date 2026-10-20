@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { fetchSimulatedCheckoutHtml } from "../utils/simulated-checkout";
+import { fetchSimulatedCheckoutHtml, confirmSimulatedPayment } from "../utils/simulated-checkout";
 
 afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); });
 
@@ -17,4 +17,20 @@ it("does not send the account token to an external checkout URL", async () => {
   const fetch = vi.spyOn(globalThis, "fetch");
   await expect(fetchSimulatedCheckoutHtml("https://unrelated.invalid/api/payments/simulated-checkout?billingId=x")).rejects.toThrow();
   expect(fetch).not.toHaveBeenCalled();
+});
+
+it("confirms the simulated payment with Authorization and the billingId in the body", async () => {
+  localStorage.setItem("opticus_token", "private-token");
+  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify({ status: "confirmed" }), { headers: { "Content-Type": "application/json" } })
+  );
+
+  await confirmSimulatedPayment("bill-sim-abc");
+
+  const [url, init] = fetch.mock.calls[0];
+  expect(String(url)).toBe("http://localhost:5000/api/payments/confirm-simulated-payment");
+  expect(init?.method).toBe("POST");
+  expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer private-token");
+  expect(new Headers(init?.headers).get("Content-Type")).toBe("application/json");
+  expect(init?.body).toBe(JSON.stringify({ billingId: "bill-sim-abc" }));
 });
