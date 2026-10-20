@@ -262,6 +262,12 @@ docker run -d --name opticus-api -p 5000:5000 --env-file backend.env opticus-bac
 | `PORT` | não | padrão `5000` |
 | `ABACATE_TOKEN` | não | sem ela, o pagamento roda em modo simulado |
 
+**Atualização de pagamentos simulados:** aplique `npm run migrate` antes de
+iniciar a API. A origem agora é registrada em `pedidos.pagamento_simulado`.
+Cobranças anteriores à migration ficam não simuladas por segurança: para testar,
+recrie a cobrança no simulador. Não habilite cobranças antigas em lote pelo prefixo
+do identificador; uma eventual conciliação exige comprovação da origem.
+
 > **Banco na própria máquina:** dentro do container, `localhost` é o próprio
 > container. No Windows e no macOS, use `host.docker.internal` no lugar de
 > `localhost` na `DATABASE_URL`.
