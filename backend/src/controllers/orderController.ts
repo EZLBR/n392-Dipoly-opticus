@@ -4,6 +4,8 @@
 // ============================================================
 
 import pool from "../config/db.js";
+import { getAbacateToken, isSimulatedPaymentGateway } from "../config/env.js";
+import { gerarBillingId } from "../utils/billingId.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
 import type { Request, Response } from "express";
 import { ForbiddenProblem, ServiceUnavailableProblem } from "../errors/problem.js";
@@ -14,6 +16,7 @@ import {
   simuladorDePagamentoAtivo,
 } from "../config/pagamento.js";
 import { solicitarCobranca } from "../services/gatewayDePagamento.js";
+import { concluirTentativaDeCheckout } from "../services/checkoutAttempt.js";
 import { OrderService } from "../services/orderService.js";
 import { centavosParaDecimal, precoDoItem } from "../domain/pricing.js";
 import logger from "../utils/logger.js";
@@ -213,8 +216,8 @@ export async function checkoutCart(req: Request, res: Response) {
 
   const customerName  = req.user!.name;
   const customerEmail = req.user!.email;
-  const usuarioId     = req.user!.id;
-  const consolidatedBillingId = `bill-sim-${Math.floor(100000 + Math.random() * 900000)}`;
+  const usuarioId     = Number(req.user!.id);
+  const consolidatedBillingId = gerarBillingId("sim");
 
   const client = await pool.connect();
   let createdOrders = [];
@@ -277,8 +280,8 @@ export async function checkoutCart(req: Request, res: Response) {
     const backendProto = req.headers['x-forwarded-proto'] || req.protocol;
     const backendOrigin = `${backendProto}://${req.get("host")}`;
 
-    const ABACATE_TOKEN = process.env.ABACATE_TOKEN;
-    const isMockToken   = !ABACATE_TOKEN || ABACATE_TOKEN.includes("your_abacatepay_token_here");
+    const ABACATE_TOKEN = getAbacateToken();
+    const isMockToken   = isSimulatedPaymentGateway();
 
     // Só os pedidos criados nesta tentativa. O billingId provisório não serve
     // de chave: é aleatório e não é único no banco.
@@ -303,10 +306,11 @@ export async function checkoutCart(req: Request, res: Response) {
         // gravação: os pedidos ficam como estão e o caso vai para
         // conciliação, nunca para o desfazimento abaixo.
         try {
-          await pool.query(
-            "UPDATE pedidos SET abacate_billing_id = $1 WHERE id = ANY($2::int[])",
-            [cobranca.billingId, pedidoIds]
-          );
+          const associada = await concluirTentativaDeCheckout({
+            pedidoIds, usuarioId, billingIdProvisorio: consolidatedBillingId,
+            resultado: { tipo: "associar", billingId: cobranca.billingId, simulado: false },
+          });
+          if (!associada) throw new ServiceUnavailableProblem(PAGAMENTO_NAO_CONFIRMADO);
         } catch (err) {
           logger.error(
             { err, traceId: req.requestId, requestId: req.requestId, billingId: cobranca.billingId, pedidoIds },
@@ -328,7 +332,7 @@ export async function checkoutCart(req: Request, res: Response) {
       );
 
       // SEC-06: em produção não há simulador para onde mandar o cliente.
-      if (!simuladorDePagamentoAtivo) {
+      if (cobranca.status === "incerta" || !simuladorDePagamentoAtivo) {
         if (cobranca.status === "incerta") {
           // Sem resposta conclusiva, a cobrança pode existir: os pedidos
           // ficam pendentes para conciliação, e a resposta não afirma que
@@ -339,14 +343,23 @@ export async function checkoutCart(req: Request, res: Response) {
         // O gateway confirmou que não criou a cobrança. Os pedidos desta
         // tentativa são desfeitos, para não ficarem pendentes sem cobrança
         // nem se acumularem a cada nova tentativa.
-        await pool.query(
-          "DELETE FROM pedidos WHERE id = ANY($1::int[]) AND usuario_id = $2 AND status = 'Pending Payment'",
-          [pedidoIds, usuarioId]
-        );
+        const desfeita = await concluirTentativaDeCheckout({
+          pedidoIds, usuarioId, billingIdProvisorio: consolidatedBillingId,
+          resultado: { tipo: "desfazer" },
+        });
+        if (!desfeita) {
+          logger.error({ traceId: req.requestId, pedidoIds }, "[AbacatePay] Associação alterada durante a tentativa: conciliar");
+          throw new ServiceUnavailableProblem(PAGAMENTO_NAO_CONFIRMADO);
+        }
         throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
       }
     }
 
+    const simulada = await concluirTentativaDeCheckout({
+      pedidoIds, usuarioId, billingIdProvisorio: consolidatedBillingId,
+      resultado: { tipo: "associar", billingId: consolidatedBillingId, simulado: true },
+    });
+    if (!simulada) throw new ServiceUnavailableProblem(PAGAMENTO_NAO_CONFIRMADO);
     const simulatedCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${consolidatedBillingId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
 
     return res.json({

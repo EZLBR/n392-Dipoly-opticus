@@ -23,6 +23,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import request from "supertest";
 import type { Express } from "express";
+import type { Pool } from "pg";
 import prisma from "../../src/config/prisma.js";
 import { app as appDeTeste } from "../setup/app.js";
 import { criarUsuario, comToken, type UsuarioDeTeste } from "../helpers/auth.js";
@@ -30,6 +31,7 @@ import { criarPedido } from "../helpers/orders.js";
 import { esperarProblema } from "../helpers/problem.js";
 
 type Gateway = "ausente" | "recusando" | "fora do ar" | "expirando" | "aprovando";
+const poolsDeProducao: Pool[] = [];
 
 const NENHUMA_COBRANCA = /Nenhuma cobrança foi criada/;
 const NAO_CONFIRMADA = /Não foi possível confirmar a cobrança/;
@@ -52,12 +54,17 @@ function simularGateway(gateway: Gateway) {
 }
 
 async function appEmProducao(gateway: Gateway) {
-  vi.stubEnv("ABACATE_TOKEN", gateway === "ausente" ? "" : "token-de-teste");
+  // O boot exige configuração válida; a ausência é simulada depois do boot
+  // para exercitar também a guarda defensiva em tempo de requisição.
+  vi.stubEnv("ABACATE_TOKEN", "token-de-teste");
+  vi.stubEnv("WEBHOOK_SECRET", "segredo-privado-sintetico-producao");
   vi.stubEnv("NODE_ENV", "production");
   vi.resetModules();
   const { createApp } = await import("../../src/app.js");
   // O pool desta instância do app, para simular falha de gravação nele.
   const { default: pool } = await import("../../src/config/db.js");
+  poolsDeProducao.push(pool);
+  if (gateway === "ausente") vi.stubEnv("ABACATE_TOKEN", "");
   // Só os módulos carregados acima ficam em produção; o resto do processo
   // continua em modo de teste.
   vi.stubEnv("NODE_ENV", "test");
@@ -65,12 +72,19 @@ async function appEmProducao(gateway: Gateway) {
 }
 
 /** Faz falhar a gravação do billingId nos pedidos, deixando o resto do banco funcionar. */
-function falharGravacaoDaCobranca(pool: { query: (...args: any[]) => any }) {
+async function falharGravacaoDaCobranca(pool: Pool) {
+  const client = await pool.connect();
+  const queryDoClient = client.query.bind(client);
+  vi.spyOn(client, "query").mockImplementation(((sql: unknown, ...args: unknown[]) =>
+    String(sql).startsWith("UPDATE pedidos SET abacate_billing_id")
+      ? Promise.reject(new Error("falha de gravação simulada"))
+      : queryDoClient(sql as never, ...args as [])) as never);
+  client.release();
   const original = pool.query.bind(pool);
   vi.spyOn(pool, "query").mockImplementation(((sql: unknown, params?: unknown) =>
     String(sql).startsWith("UPDATE pedidos SET abacate_billing_id")
       ? Promise.reject(new Error("falha de gravação simulada"))
-      : original(sql, params)) as any);
+      : original(sql as string, params as unknown[])) as any);
 }
 
 // Válida antes e depois do SEC-05: `total` é ignorado quando o servidor
@@ -105,9 +119,10 @@ const pedidosDoCliente = (cliente: UsuarioDeTeste) =>
     select: { id: true, status: true, abacateBillingId: true },
   });
 
-afterEach(() => {
+afterEach(async () => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+  await Promise.all(poolsDeProducao.splice(0).map(pool => pool.end()));
 });
 
 describe("checkout-cart em produção (SEC-06)", () => {
@@ -176,7 +191,7 @@ describe("checkout-cart em produção (SEC-06)", () => {
     const cliente = await criarUsuario("client");
     simularGateway("aprovando");
     const { app, pool } = await appEmProducao("aprovando");
-    falharGravacaoDaCobranca(pool);
+    await falharGravacaoDaCobranca(pool);
 
     const res = await request(app)
       .post("/api/orders/checkout-cart")
@@ -287,7 +302,7 @@ describe("create-billing em produção (SEC-06)", () => {
     const antes = await lerPedidoPorId(pedido.id);
     simularGateway("aprovando");
     const { app, pool } = await appEmProducao("aprovando");
-    falharGravacaoDaCobranca(pool);
+    await falharGravacaoDaCobranca(pool);
 
     const res = await request(app)
       .post("/api/payments/create-billing")
@@ -318,18 +333,20 @@ describe("fora de produção, o simulador continua cobrindo a falta do gateway",
     expect(await prisma.pedido.count()).toBe(1);
   });
 
-  it("POST /api/payments/create-billing com o gateway fora do ar devolve o checkout simulado", async () => {
+  it("POST /api/payments/create-billing com resultado incerto preserva o pedido sem simulador", async () => {
     const cliente = await criarUsuario("client");
     const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
-    simularGateway("fora do ar");
+    vi.stubEnv("ABACATE_TOKEN", "token-de-teste");
+    const chamada = simularGateway("fora do ar");
 
     const res = await request(appDeTeste)
       .post("/api/payments/create-billing")
       .set(...comToken(cliente.token))
       .send({ orderId: pedido.id });
 
-    expect(res.status).toBe(200);
-    expect(res.body.isSimulated).toBe(true);
-    expect(res.body.checkoutUrl).toContain("/api/payments/simulated-checkout");
+    expect(chamada).toHaveBeenCalledOnce();
+    expect(res.status).toBe(503);
+    expect(res.body.checkoutUrl).toBeUndefined();
+    expect((await lerPedidoPorId(pedido.id)).status).toBe("Pending_Payment");
   });
 });

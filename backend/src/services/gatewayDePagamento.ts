@@ -35,7 +35,7 @@ export type ResultadoDaCobranca =
 const LIMITE_DO_MOTIVO = 300;
 const resumir = (texto: string) => texto.split("\n")[0].slice(0, LIMITE_DO_MOTIVO);
 const descrever = (erro: unknown) => resumir(erro instanceof Error ? `${erro.name}: ${erro.message}` : String(erro));
-const ehErroDoCliente = (status: number) => status >= 400 && status < 500;
+const ehErroDoCliente = (status: number) => status >= 400 && status < 500 && status !== 408 && status !== 429;
 
 export async function solicitarCobranca(token: string, pedido: PedidoDeCobranca): Promise<ResultadoDaCobranca> {
   let resposta: Response;
@@ -72,7 +72,7 @@ export async function solicitarCobranca(token: string, pedido: PedidoDeCobranca)
   }
 
   // O gateway respondeu e declarou a falha: a cobrança não foi criada.
-  if (corpo?.success === false || ehErroDoCliente(resposta.status)) {
+  if ((resposta.ok && corpo?.success === false) || ehErroDoCliente(resposta.status)) {
     const motivo = typeof corpo?.error === "string" && corpo.error ? corpo.error : `HTTP ${resposta.status}`;
     return { status: "recusada", motivo: resumir(motivo) };
   }

@@ -15,12 +15,12 @@ export interface CobrancaDeTeste {
   pedidoPublicId: string;
 }
 
-export async function criarCobranca(pedido: PedidoDeTeste): Promise<CobrancaDeTeste> {
+export async function criarCobranca(pedido: PedidoDeTeste, simulada = true): Promise<CobrancaDeTeste> {
   const billingId = `bill-teste-${randomUUID()}`;
 
   await prisma.pedido.update({
     where: { publicId: pedido.publicId },
-    data: { abacateBillingId: billingId, status: "Pending_Payment" },
+    data: { abacateBillingId: billingId, pagamentoSimulado: simulada, status: "Pending_Payment" },
   });
 
   await prisma.pagamento.create({

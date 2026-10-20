@@ -7,9 +7,9 @@
 //   a partir daqui.
 // ============================================================
 
-import { env } from "./env.js";
+import { env, getAbacateToken, isPlaceholderAbacateToken } from "./env.js";
 
-/** Fora de produção, o checkout cai no simulador quando o gateway não está disponível. */
+/** Fora de produção há simulador, mas nunca para um resultado remoto incerto. */
 export const simuladorDePagamentoAtivo = env.NODE_ENV !== "production";
 
 /** Resposta quando, em produção, o gateway confirmou que a cobrança não foi criada. */
@@ -22,6 +22,6 @@ export const PAGAMENTO_NAO_CONFIRMADO =
   "confira seus pedidos antes de tentar novamente.";
 
 /** Há um token real do AbacatePay, e não vazio nem o valor de exemplo do .env.example. */
-export function gatewayDePagamentoConfigurado(token: string | undefined = process.env.ABACATE_TOKEN): boolean {
-  return Boolean(token) && !token!.includes("your_abacatepay_token_here");
+export function gatewayDePagamentoConfigurado(token: string | undefined = getAbacateToken()): boolean {
+  return Boolean(token) && !isPlaceholderAbacateToken(token);
 }

@@ -57,7 +57,6 @@ describe("solicitarCobranca", () => {
   describe("recusada: o gateway respondeu que não criou a cobrança", () => {
     it.each<[string, Response, string]>([
       ["422 com success: false", corpo(422, { success: false, error: "CPF inválido" }), "CPF inválido"],
-      ["500 com success: false declarado", corpo(500, { success: false, error: "falha interna" }), "falha interna"],
       ["200 com success: false", corpo(200, { success: false }), "HTTP 200"],
       ["401 sem corpo legível", texto(401, "unauthorized"), "HTTP 401"],
     ])("%s", async (_caso, resposta, motivo) => {
@@ -72,6 +71,10 @@ describe("solicitarCobranca", () => {
       ["tempo limite", new DOMException("The operation was aborted due to timeout", "TimeoutError")],
       ["502 sem corpo legível", texto(502, "<html>Bad Gateway</html>")],
       ["503 com JSON sem success", corpo(503, { message: "indisponível" })],
+      ["500 com success false ainda é incerto", corpo(500, { success: false, error: "falha interna" })],
+      ["503 com success false ainda é incerto", corpo(503, { success: false })],
+      ["408 com success false ainda é incerto", corpo(408, { success: false })],
+      ["429 sem corpo legível ainda é incerto", texto(429, "limite atingido")],
       ["200 sem corpo legível", texto(200, "ok")],
       ["200 com success sem id/url", corpo(200, { success: true })],
     ])("%s", async (_caso, resposta) => {

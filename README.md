@@ -157,9 +157,10 @@ Consulte [backend/.env.example](backend/.env.example) para configurar PostgreSQL
 
 ### 5. Pagamentos e simulador
 
-Com `ABACATE_TOKEN` configurado, o checkout cria a cobrança no AbacatePay. Sem ele, o
-checkout aponta para um **simulador de pagamento** embutido na API, que confirma a
-cobrança sem dinheiro real.
+Com um token real em `ABACATE_TOKEN`, o checkout solicita a cobrança no AbacatePay.
+Fora de produção, o placeholder `your_abacatepay_token_here` seleciona o simulador
+embutido na API, que confirma a cobrança sem dinheiro real, com autenticação do dono.
+Em produção, token real e `WEBHOOK_SECRET` são obrigatórios para iniciar a API.
 
 O simulador só existe fora de produção. Com `NODE_ENV=production`, as rotas
 `GET /api/payments/simulated-checkout` e `POST /api/payments/confirm-simulated-payment`
@@ -177,13 +178,17 @@ devolvem link para o simulador. A reação depende do que o gateway respondeu:
 
 | Resultado do gateway | Resposta | Pedidos |
 | --- | --- | --- |
-| `ABACATE_TOKEN` ausente | 503 "nenhuma cobrança foi criada" | nenhum é criado ou alterado |
+| `ABACATE_TOKEN` ausente no boot | inicialização recusada | nenhum é criado ou alterado |
 | Recusou a cobrança | 503 "nenhuma cobrança foi criada" | os da tentativa são desfeitos (checkout); o pedido não muda (create-billing) |
 | Sem resposta conclusiva (timeout de 10 s, rede, resposta ilegível) | 503 "não foi possível confirmar" | ficam pendentes: a cobrança pode existir |
-| Criou a cobrança, mas a gravação falhou | 500, com registro no log para conciliação | preservados |
+| Criou a cobrança, mas a gravação falhou | 500 ou 503, com registro para conciliação | preservados |
 
-O desfazimento e a gravação miram os IDs dos pedidos da tentativa, nunca o billingId
-provisório. A classificação da resposta fica em `backend/src/services/gatewayDePagamento.ts`.
+Erros 5xx, 408 e 429 são incertos mesmo quando o corpo declara `success: false`.
+Resultados incertos preservam os pedidos em **todos** os ambientes, sem fallback
+para simulação. O desfazimento e a associação exigem IDs exatos, dono, estado pendente,
+origem ainda não simulada e o billingId provisório ainda vigente. Se alguma linha
+mudou, a transação inteira é revertida e retorna 503 sem link de cobrança.
+A classificação fica em `backend/src/services/gatewayDePagamento.ts`.
 
 ## Docker
 
@@ -228,9 +233,10 @@ rede do Compose os serviços se enxergam pelo nome — a API conecta em `db:5432
 em `localhost`.
 
 A API do Compose roda com `NODE_ENV=production`, então o simulador de pagamento não
-existe nela (veja [Pagamentos e simulador](#5-pagamentos-e-simulador)). Sem
-`ABACATE_TOKEN`, o checkout fica sem onde pagar. Para testar o fluxo de compra na sua
-máquina, defina `API_NODE_ENV=development` no `.env`. Nunca faça isso num ambiente
+existe nela (veja [Pagamentos e simulador](#5-pagamentos-e-simulador)). Sem token real
+e segredo privado do webhook, a API recusa iniciar. Para testar a compra local,
+defina `API_NODE_ENV=development`, use o placeholder do token e preencha um segredo
+local em `WEBHOOK_SECRET`. Nunca faça isso num ambiente
 acessível por outras pessoas.
 
 As portas são configuráveis no `.env` (`API_PORT`, `WEB_PORT`, `DB_PORT`) e são
@@ -296,7 +302,24 @@ docker run -d --name opticus-api -p 5000:5000 --env-file backend.env opticus-bac
 | `JWT_SECRET` | sim | a API não sobe sem ela |
 | `FRONTEND_URL` | não | origem liberada no CORS; padrão `http://localhost:5173` |
 | `PORT` | não | padrão `5000` |
-| `ABACATE_TOKEN` | não | sem ela, o pagamento roda em modo simulado |
+| `ABACATE_TOKEN` | sim | token para criar cobranças; use `your_abacatepay_token_here` somente fora de produção |
+| `WEBHOOK_SECRET` | em produção | segredo privado cadastrado no webhook; sem ele, eventos são rejeitados com 401 |
+
+O webhook usa o [contrato oficial da AbacatePay](https://docs.abacatepay.com/pages/webhooks/security):
+cadastre `https://sua-api/api/payments/webhook?webhookSecret=SEU_SEGREDO`, configure
+o mesmo valor em `WEBHOOK_SECRET` e mantenha essa URL fora de logs e prints.
+A assinatura `X-Webhook-Signature` é HMAC-SHA256/base64 do corpo original com a
+chave **pública** do provedor; o segredo privado da URL também é obrigatório.
+O evento pago v2 é `checkout.completed`, com `data.checkout.id` e status `PAID`.
+Reentregas não retrocedem pedidos já processados; pedido e pagamento são gravados
+na mesma transação. A criação de checkout ainda usa a integração legada e sua
+migração para o endpoint atual do provedor permanece uma entrega separada.
+
+**Atualização de pagamentos simulados:** aplique `npm run migrate` antes de
+iniciar a API. A origem agora é registrada em `pedidos.pagamento_simulado`.
+Cobranças anteriores à migration ficam não simuladas por segurança: para testar,
+recrie a cobrança no simulador. Não habilite cobranças antigas em lote pelo prefixo
+do identificador; uma eventual conciliação exige comprovação da origem.
 
 > **Banco na própria máquina:** dentro do container, `localhost` é o próprio
 > container. No Windows e no macOS, use `host.docker.internal` no lugar de

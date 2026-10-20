@@ -11,6 +11,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import request from "supertest";
 import prisma from "../../src/config/prisma.js";
 import { app } from "../setup/app.js";
+import { pool } from "../setup/db.js";
 import { criarUsuario, comToken } from "../helpers/auth.js";
 import { esperarProblema } from "../helpers/problem.js";
 import { especificacaoDoStudio, PRECO_DA_ESPECIFICACAO_PADRAO } from "../helpers/especificacao.js";
@@ -194,6 +195,13 @@ describe("POST /api/orders/checkout-cart — total calculado no servidor (SEC-05
       expect.objectContaining({ quantity: 3, price: 21_000 }),
     ]);
     expect((await pedidosGravados()).map((p) => p.total)).toEqual(["630.00"]);
+    const persistido = await pool.query("SELECT pagamento_simulado FROM pedidos WHERE abacate_billing_id = $1", ["bill_gateway"]);
+    expect(persistido.rows).toEqual([{ pagamento_simulado: false }]);
+    const simulada = await request(app).post("/api/payments/confirm-simulated-payment")
+      .set(...comToken(cliente.token)).send({ billingId: "bill_gateway" });
+    expect(simulada.status).toBe(404);
+    expect((await pool.query("SELECT status FROM pedidos WHERE abacate_billing_id = $1", ["bill_gateway"])).rows)
+      .toEqual([{ status: "Pending Payment" }]);
   });
 
   describe("especificação fora do catálogo responde 400 e não cria pedido", () => {

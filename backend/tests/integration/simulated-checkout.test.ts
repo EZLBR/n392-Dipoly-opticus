@@ -8,7 +8,7 @@ import { criarPedido } from "../helpers/orders.js";
 async function billing() {
   const owner = await criarUsuario();
   const order = await criarPedido({ dono: owner, status: "Pending_Payment" });
-  await pool.query("UPDATE pedidos SET abacate_billing_id = $1 WHERE id = $2", ["private-bill", order.id]);
+  await pool.query("UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true WHERE id = $2", ["private-bill", order.id]);
   return owner;
 }
 
@@ -33,7 +33,7 @@ describe("SEC-03 — simulated checkout is private", () => {
     const owner = await billing();
     const stranger = await criarUsuario();
     const otherOrder = await criarPedido({ dono: stranger });
-    await pool.query("UPDATE pedidos SET abacate_billing_id = $1, product_name = $2 WHERE id = $3", ["private-bill", "OTHER-ACCOUNT-ITEM", otherOrder.id]);
+    await pool.query("UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true, product_name = $2 WHERE id = $3", ["private-bill", "OTHER-ACCOUNT-ITEM", otherOrder.id]);
     const response = await request(app).get("/api/payments/simulated-checkout?billingId=private-bill").set(...comToken(owner.token));
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toContain("text/html");
@@ -41,5 +41,8 @@ describe("SEC-03 — simulated checkout is private", () => {
     expect(response.text).not.toContain("OTHER-ACCOUNT-ITEM");
     expect(response.text).not.toContain(stranger.email);
     expect(response.text).not.toContain(owner.token);
+    // A confirmação deve passar pelo botão autenticado da loja, não por
+    // um formulário que não envia Authorization e é bloqueado no iframe.
+    expect(response.text).not.toContain("<form");
   });
 });

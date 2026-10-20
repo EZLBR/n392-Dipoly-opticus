@@ -90,12 +90,22 @@ export function createApp(options: AppOptions = {}) {
     );
   }
 
-  app.use(express.json({ limit: "1mb" }));
+  app.use(
+    express.json({
+      limit: "1mb",
+      // Guarda os bytes crus do corpo: a assinatura HMAC do webhook
+      // (SEC-04) é calculada sobre o corpo exato recebido, não sobre a
+      // reserialização de `req.body`.
+      verify: (req, _res, buf) => {
+        (req as { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+      },
+    }),
+  );
   app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
   if (requestLogging) {
     app.use((req, _res, next) => {
-      logger.info(`${req.method} ${req.url}`);
+      logger.info(`${req.method} ${req.path}`);
       next();
     });
   }
@@ -114,8 +124,8 @@ export function createApp(options: AppOptions = {}) {
 
   // Rota não encontrada → problema de negócio no mesmo padrão Problem Details.
   app.use((req, _res, next) => {
-    logger.info(`[404] Route Not Found: ${req.method} ${req.originalUrl}`);
-    next(new NotFoundProblem(`Rota não encontrada: ${req.method} ${req.originalUrl}`));
+    logger.info(`[404] Route Not Found: ${req.method} ${req.path}`);
+    next(new NotFoundProblem(`Rota não encontrada: ${req.method} ${req.path}`));
   });
 
   app.use(problemErrorHandler);

@@ -19,6 +19,8 @@ import { esperarProblema } from "../helpers/problem.js";
 
 async function criarAppEmProducao(): Promise<Express> {
   vi.stubEnv("NODE_ENV", "production");
+  vi.stubEnv("ABACATE_TOKEN", "token-local-producao-sintetico");
+  vi.stubEnv("WEBHOOK_SECRET", "segredo-local-producao-sintetico");
   vi.resetModules();
   try {
     const { createApp } = await import("../../src/app.js");
@@ -89,14 +91,14 @@ describe("simulador de pagamento (SEC-06)", () => {
     });
 
     it("POST /api/payments/confirm-simulated-payment confirma a cobrança", async () => {
-      const { cobranca } = await cobrancaPendente();
+      const { cliente, cobranca } = await cobrancaPendente();
 
       const res = await request(appDeTeste)
         .post("/api/payments/confirm-simulated-payment")
-        .type("form")
+        .set(...comToken(cliente.token))
         .send({ billingId: cobranca.billingId });
 
-      expect(res.status).toBe(302);
+      expect(res.status).toBe(200);
       expect(await lerCobranca(cobranca)).toEqual({ pedido: "Queued", pagamento: "aprovado" });
     });
   });
