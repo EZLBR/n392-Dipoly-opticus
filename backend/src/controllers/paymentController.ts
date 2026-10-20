@@ -22,6 +22,7 @@ import {
   UnauthorizedProblem,
 } from "../errors/problem.js";
 import logger from "../utils/logger.js";
+import { gerarBillingId } from "../utils/billingId.js";
 
 // Security Helper
 const escapeHTML = (str: unknown) => {
@@ -71,7 +72,7 @@ export async function createBilling(req: Request, res: Response) {
       throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
     }
 
-    const mockBillingId  = `bill-sim-${Math.floor(100000 + Math.random() * 900000)}`;
+    const mockBillingId  = gerarBillingId("sim");
 
     await pool.query(
       "UPDATE pedidos SET abacate_billing_id = $1, status = 'Pending Payment' WHERE id = $2",
@@ -125,7 +126,7 @@ export async function createBilling(req: Request, res: Response) {
     );
   }
 
-  const fallbackId  = `bill-fallback-${Math.floor(100000 + Math.random() * 900000)}`;
+  const fallbackId  = gerarBillingId("fallback");
 
   await pool.query(
     "UPDATE pedidos SET abacate_billing_id = $1, status = 'Pending Payment' WHERE id = $2",

@@ -17,6 +17,7 @@ import { solicitarCobranca } from "../services/gatewayDePagamento.js";
 import { OrderService } from "../services/orderService.js";
 import { centavosParaDecimal, precoDoItem } from "../domain/pricing.js";
 import logger from "../utils/logger.js";
+import { gerarBillingId } from "../utils/billingId.js";
 import type {
   CreateOrderDTO,
   UpdateOrderStatusDTO,
@@ -214,7 +215,7 @@ export async function checkoutCart(req: Request, res: Response) {
   const customerName  = req.user!.name;
   const customerEmail = req.user!.email;
   const usuarioId     = req.user!.id;
-  const consolidatedBillingId = `bill-sim-${Math.floor(100000 + Math.random() * 900000)}`;
+  const consolidatedBillingId = gerarBillingId("sim");
 
   const client = await pool.connect();
   let createdOrders = [];
