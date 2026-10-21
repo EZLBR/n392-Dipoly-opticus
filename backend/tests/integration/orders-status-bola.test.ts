@@ -15,6 +15,7 @@ import request from "supertest";
 import { app } from "../setup/app.js";
 import { criarUsuario, comToken } from "../helpers/auth.js";
 import { criarPedido, lerPedido } from "../helpers/orders.js";
+import { esperarProblema, semanticaDoProblema } from "../helpers/problem.js";
 
 const rota = (publicId: string) => `/api/orders/${publicId}/status`;
 
@@ -72,17 +73,10 @@ describe("PUT /api/orders/:publicId/status — autorização de objeto", () => {
       .set(...comToken(fabricaB.token))
       .send({ status: "Delivered" });
 
-    // Qualquer diferença aqui é oráculo de enumeração. Como as respostas são
-    // Problem Details, instance/timestamp (correlação) são sempre distintos
-    // entre requisições — compara-se apenas a parte semântica.
-    expect(alheio.status).toBe(inexistente.status);
-    const semCorrelacao = (corpo: { type?: string; title?: string; status?: number; detail?: string }) => ({
-      type: corpo.type,
-      title: corpo.title,
-      status: corpo.status,
-      detail: corpo.detail,
-    });
-    expect(semCorrelacao(alheio.body)).toEqual(semCorrelacao(inexistente.body));
+    esperarProblema(alheio, 404, "not-found");
+    esperarProblema(inexistente, 404, "not-found");
+    expect(alheio.headers["content-type"]).toBe(inexistente.headers["content-type"]);
+    expect(semanticaDoProblema(alheio.body)).toEqual(semanticaDoProblema(inexistente.body));
   });
 
   it("usuário anônimo recebe 401", async () => {
@@ -98,7 +92,7 @@ describe("PUT /api/orders/:publicId/status — autorização de objeto", () => {
     expect(depois?.status).toBe("Queued");
   });
 
-  it("papel sem permissão recebe 403, não 404", async () => {
+  it("papel sem permissão recebe o mesmo 403 para pedido existente e inexistente", async () => {
     const cliente = await criarUsuario("client");
     const fabrica = await criarUsuario("factory");
     const pedido = await criarPedido({ dono: cliente, fabrica });
@@ -108,8 +102,15 @@ describe("PUT /api/orders/:publicId/status — autorização de objeto", () => {
       .set(...comToken(cliente.token))
       .send({ status: "Delivered" });
 
-    // 403 é falta de papel. 404 é falta de posse. Não se confundem.
-    expect(res.status).toBe(403);
+    const inexistente = await request(app)
+      .put(rota("00000000-0000-4000-8000-000000000000"))
+      .set(...comToken(cliente.token))
+      .send({ status: "Delivered" });
+
+    esperarProblema(res, 403, "forbidden");
+    esperarProblema(inexistente, 403, "forbidden");
+    expect(res.headers["content-type"]).toBe(inexistente.headers["content-type"]);
+    expect(semanticaDoProblema(res.body)).toEqual(semanticaDoProblema(inexistente.body));
 
     const depois = await lerPedido(pedido.publicId);
     expect(depois?.status).toBe("Queued");
