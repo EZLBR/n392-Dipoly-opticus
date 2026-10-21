@@ -155,6 +155,44 @@ npx prisma db seed
 
 Consulte [backend/.env.example](backend/.env.example) para configurar PostgreSQL, JWT, CORS e integrações.
 
+### 5. Pagamentos e simulador
+
+Com um token real em `ABACATE_TOKEN`, o checkout solicita a cobrança no AbacatePay.
+Fora de produção, o placeholder `your_abacatepay_token_here` seleciona o simulador
+embutido na API, que confirma a cobrança sem dinheiro real, com autenticação do dono.
+Em produção, token real e `WEBHOOK_SECRET` são obrigatórios para iniciar a API.
+
+O simulador só existe fora de produção. Com `NODE_ENV=production`, as rotas
+`GET /api/payments/simulated-checkout` e `POST /api/payments/confirm-simulated-payment`
+**não são registradas** e respondem 404, igual a qualquer rota inexistente. Assim, ninguém
+confirma um pagamento sem pagar no ambiente real, mesmo se o token do gateway faltar.
+
+| `NODE_ENV` | Simulador |
+| --- | --- |
+| `development` (padrão do `npm run dev`) | disponível |
+| `test` | disponível, para os testes de integração |
+| `production` (imagem Docker e Compose) | inexistente, responde 404 |
+
+Com token real, `POST /api/orders/checkout-cart` e `POST /api/payments/create-billing`
+nunca usam o simulador após falha do gateway, em nenhum ambiente:
+
+| Resultado do gateway | Resposta | Pedidos |
+| --- | --- | --- |
+| `ABACATE_TOKEN` ausente no boot | inicialização recusada | nenhum é criado ou alterado |
+| Recusou a cobrança | 503 "nenhuma cobrança foi criada" | os da tentativa são desfeitos (checkout); o pedido não muda (create-billing) |
+| Sem resposta conclusiva (timeout de 10 s, rede, resposta ilegível) | 503 "não foi possível confirmar" | ficam pendentes: a cobrança pode existir |
+| Criou a cobrança, mas outra cobrança assumiu pedidos | 409, sem link para pagar | preservados, para conciliação |
+| Criou a cobrança, mas a gravação falhou | 500, com registro para conciliação | preservados |
+
+Erros 5xx, 408 e 429 são incertos mesmo quando o corpo declara `success: false`.
+Resultados incertos preservam os pedidos em **todos** os ambientes, sem fallback
+para simulação. O desfazimento e a associação exigem IDs exatos, dono, estado pendente,
+origem ainda não simulada e o billingId provisório ainda vigente. Se alguma linha
+mudou, a transação inteira é revertida sem link de cobrança (409 na associação,
+503 na recusa). No `create-billing`, vínculo e registro financeiro também são
+uma transação, condicionada ao billingId lido no início da requisição.
+A classificação fica em `backend/src/services/gatewayDePagamento.ts`.
+
 ## Docker
 
 Imagens de produção para o backend e o frontend. Para subir a stack completa, com o
@@ -196,6 +234,13 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 Ordem de subida: `db` saudável → `migrate` conclui → `api` saudável → `web`. Dentro da
 rede do Compose os serviços se enxergam pelo nome — a API conecta em `db:5432`, nunca
 em `localhost`.
+
+A API do Compose roda com `NODE_ENV=production`, então o simulador de pagamento não
+existe nela (veja [Pagamentos e simulador](#5-pagamentos-e-simulador)). Sem token real
+e segredo privado do webhook, a API recusa iniciar. Para testar a compra local,
+defina `API_NODE_ENV=development`, use o placeholder do token e preencha um segredo
+local em `WEBHOOK_SECRET`. Nunca faça isso num ambiente
+acessível por outras pessoas.
 
 As portas são configuráveis no `.env` (`API_PORT`, `WEB_PORT`, `DB_PORT`) e são
 publicadas só em `127.0.0.1`. O banco usa a **5433** para não colidir com um PostgreSQL

@@ -6,16 +6,25 @@
 
 import pool from "../config/db.js";
 import { env, getAbacateToken, getWebhookSecret, isSimulatedPaymentGateway } from "../config/env.js";
+import { gerarBillingId } from "../utils/billingId.js";
 import { assinaturaWebhookValida, textoSecretoIgual } from "../services/webhookSignature.js";
+import {
+  PAGAMENTO_INDISPONIVEL,
+  PAGAMENTO_NAO_CONFIRMADO,
+  simuladorDePagamentoAtivo,
+} from "../config/pagamento.js";
+import { solicitarCobranca } from "../services/gatewayDePagamento.js";
 import type { Request, Response } from "express";
+import type { PoolClient } from "pg";
 import {
   BadRequestProblem,
+  ConflictProblem,
   ForbiddenProblem,
   NotFoundProblem,
+  ServiceUnavailableProblem,
   UnauthorizedProblem,
 } from "../errors/problem.js";
 import logger from "../utils/logger.js";
-import { gerarBillingId } from "../utils/billingId.js";
 
 // Security Helper
 const escapeHTML = (str: unknown) => {
@@ -51,108 +60,119 @@ export async function createBilling(req: Request, res: Response) {
     throw new ForbiddenProblem("Acesso negado: Este pedido pertence a outro usuário.");
   }
 
-  try {
-    const amountInCents   = Math.round(Number(order.total) * 100);
-    const abacateToken    = getAbacateToken();
-    const isMockToken     = isSimulatedPaymentGateway();
-    const frontendOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `http://localhost:5173`);
-    const backendProto = req.headers['x-forwarded-proto'] || req.protocol;
-    const backendOrigin = `${backendProto}://${req.get("host")}`;
+  const ABACATE_TOKEN = getAbacateToken();
+  const amountInCents   = Math.round(Number(order.total) * 100);
+  const isMockToken     = isSimulatedPaymentGateway();
+  const frontendOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `http://localhost:5173`);
+  const backendProto = req.headers['x-forwarded-proto'] || req.protocol;
+  const backendOrigin = `${backendProto}://${req.get("host")}`;
 
-    if (isMockToken) {
-      const mockBillingId  = gerarBillingId("sim");
-
-      await pool.query(
-        "UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true, status = 'Pending Payment' WHERE id = $2",
-        [mockBillingId, orderId]
-      );
-
-      const mockCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${mockBillingId}&orderId=${orderId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
-
-      return res.json({ checkoutUrl: mockCheckoutUrl, isSimulated: true });
+  if (isMockToken) {
+    // SEC-06: em produção não há simulador. Sem gateway, não existe
+    // cobrança possível, e o pedido não é alterado.
+    if (!simuladorDePagamentoAtivo) {
+      throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
     }
 
-    const abacateResponse = await fetch("https://api.abacatepay.com/v2/billing", {
-      method:  "POST",
-      headers: {
-        Authorization:  `Bearer ${abacateToken}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        frequency:     "ONE_TIME",
-        methods:       ["PIX"],
-        products:      [{ externalId: String(order.id), name: order.product_name, quantity: 1, price: amountInCents }],
-        returnUrl:     `${frontendOrigin}/`,
-        completionUrl: `${frontendOrigin}/`,
-        customer:      { name: order.customer_name, email: order.customer_email, taxId: "00000000000" }
-      })
-    });
-
-    const abacateData = await abacateResponse.json();
-
-    if (!abacateResponse.ok || !abacateData.success) {
-      throw new Error(abacateData.error || `HTTP ${abacateResponse.status}`);
-    }
-
-    const realBillingId   = abacateData.data.id;
-    const realCheckoutUrl = abacateData.data.url;
-
-    await pool.query(
-      "UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = false, status = 'Pending Payment' WHERE id = $2",
-      [realBillingId, orderId]
-    );
-
-    await _registrarPagamento(orderId, "pix", "pendente", Number(order.total), realBillingId, req.requestId);
-
-    return res.json({ checkoutUrl: realCheckoutUrl, isSimulated: false });
-
-  } catch (err) {
-    if (err instanceof NotFoundProblem || err instanceof ForbiddenProblem) {
-      throw err;
-    }
-
-    logger.error(
-      { err, traceId: req.requestId, requestId: req.requestId },
-      "[AbacatePay] Falha na cobrança; caindo para o simulador",
-    );
-
-    const fallbackId  = gerarBillingId("fallback");
+    const mockBillingId  = gerarBillingId("sim");
 
     await pool.query(
       "UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true, status = 'Pending Payment' WHERE id = $2",
-      [fallbackId, orderId]
+      [mockBillingId, orderId]
     );
 
-    const frontendOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `http://localhost:5173`);
-    const backendProto = req.headers['x-forwarded-proto'] || req.protocol;
-    const backendOrigin = `${backendProto}://${req.get("host")}`;
-    const fallbackUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${fallbackId}&orderId=${orderId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
+    const mockCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${mockBillingId}&orderId=${orderId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
 
-    return res.json({ checkoutUrl: fallbackUrl, isSimulated: true, notice: "Fallback para simulador." });
+    return res.json({ checkoutUrl: mockCheckoutUrl, isSimulated: true });
   }
+
+  const cobranca = await solicitarCobranca(ABACATE_TOKEN!, {
+    products:      [{ externalId: String(order.id), name: order.product_name, quantity: 1, price: amountInCents }],
+    returnUrl:     `${frontendOrigin}/`,
+    completionUrl: `${frontendOrigin}/`,
+    customer:      { name: order.customer_name, email: order.customer_email, taxId: "00000000000" }
+  });
+
+  if (cobranca.status === "criada") {
+    await registrarCobrancaNoPedido(req.requestId, order, cobranca.billingId);
+    return res.json({ checkoutUrl: cobranca.url, isSimulated: false });
+  }
+
+  logger.error(
+    { traceId: req.requestId, requestId: req.requestId, resultado: cobranca.status, motivo: cobranca.motivo, pedidoId: order.id },
+    "[AbacatePay] Falha ao criar cobrança no gateway",
+  );
+
+  // Com token real, a falha do gateway nunca cai no simulador, em nenhum
+  // ambiente (padrão §22). O pedido não é alterado, e resultado incerto não
+  // afirma que nada foi criado.
+  throw new ServiceUnavailableProblem(
+    cobranca.status === "incerta" ? PAGAMENTO_NAO_CONFIRMADO : PAGAMENTO_INDISPONIVEL
+  );
 }
 
 // ─────────────────────────────────────────────────────────
 //   HELPER INTERNO: Registra pagamento na tabela pagamentos
 // ─────────────────────────────────────────────────────────
-async function _registrarPagamento(
-  pedidoId: string | number,
-  metodo: string,
-  status: string,
-  valor: number,
-  referenciaExterna: string,
-  traceId?: string,
+/**
+ * Liga a cobrança criada no gateway ao pedido e registra o pagamento
+ * pendente, numa transação só: um sem o outro deixaria o webhook sem ter
+ * como confirmar o pagamento.
+ *
+ * O pedido só é alterado se ainda estiver com o billingId lido no início da
+ * requisição. Se outra cobrança o assumiu enquanto o gateway respondia (um
+ * checkout concluído, por exemplo), nada é gravado e a resposta é 409.
+ *
+ * Qualquer falha aqui acontece com a cobrança já existente no gateway, então
+ * vai para o log de conciliação e nunca para o simulador.
+ */
+async function registrarCobrancaNoPedido(
+  traceId: string | undefined,
+  pedido: { id: number; total: string; abacate_billing_id: string | null },
+  billingId: string,
 ) {
+  let conexao: PoolClient | undefined;
   try {
-    await pool.query(
-      "INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa) VALUES ($1, $2, $3, $4, $5)",
-      [pedidoId, metodo, status, valor, referenciaExterna]
+    conexao = await pool.connect();
+    await conexao.query("BEGIN");
+    const { rowCount } = await conexao.query(
+      `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = false, status = 'Pending Payment'
+        WHERE id = $2 AND abacate_billing_id IS NOT DISTINCT FROM $3::varchar`,
+      [billingId, pedido.id, pedido.abacate_billing_id]
     );
+
+    if (rowCount !== 1) {
+      await conexao.query("ROLLBACK");
+      logger.error(
+        { traceId, requestId: traceId, billingId, pedidoId: pedido.id },
+        "[AbacatePay] Pedido mudou durante a cobrança; nada foi registrado: conciliar",
+      );
+      throw new ConflictProblem(
+        "O pedido mudou enquanto a cobrança era criada. Atualize seus pedidos antes de pagar."
+      );
+    }
+
+    // O total segue como o DECIMAL que o banco devolveu, sem passar por float.
+    await conexao.query(
+      "INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa) VALUES ($1, 'pix', 'pendente', $2, $3)",
+      [pedido.id, pedido.total, billingId]
+    );
+    await conexao.query("COMMIT");
   } catch (err) {
-    logger.error(
-      { err, traceId, requestId: traceId },
-      "Erro ao registrar pagamento",
-    );
+    if (!(err instanceof ConflictProblem)) {
+      if (conexao) {
+        await conexao.query("ROLLBACK").catch((erroDoRollback) =>
+          logger.error({ err: erroDoRollback, traceId, requestId: traceId }, "Falha no ROLLBACK do registro da cobrança")
+        );
+      }
+      logger.error(
+        { err, traceId, requestId: traceId, billingId, pedidoId: pedido.id },
+        "[AbacatePay] Cobrança criada no gateway, mas não registrada no pedido: conciliar",
+      );
+    }
+    throw err;
+  } finally {
+    conexao?.release();
   }
 }
 
@@ -345,8 +365,7 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
 //
 //   SEC-01: exige autenticação (protect) e autorização de dono na
 //   própria escrita. O usuário vem exclusivamente do token; nunca do
-//   corpo. As duas mutações (pedido → "Queued" e pagamento →
-//   "aprovado") acontecem na mesma transação.
+//   corpo. Pedido e pagamento são alterados na mesma transação.
 // ─────────────────────────────────────────────────────────
 export async function confirmSimulatedPayment(req: Request, res: Response) {
   const { billingId } = req.body as { billingId?: unknown };

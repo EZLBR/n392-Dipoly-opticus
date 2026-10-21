@@ -4,6 +4,7 @@
 // ============================================================
 
 import express from "express";
+import { simuladorDePagamentoAtivo } from "../config/pagamento.js";
 import {
   createBilling,
   getSimulatedCheckoutPage,
@@ -22,9 +23,11 @@ const router = express.Router();
 router.post("/webhook", handleWebhook);
 
 // A página contém dados pessoais: somente o dono autenticado pode consultá-la.
-router.get( "/simulated-checkout", routerGuard(), getSimulatedCheckoutPage);
-// A confirmação aprova o pagamento: exige o dono autenticado (SEC-01).
-router.post("/confirm-simulated-payment", protect, confirmSimulatedPayment);
+if (simuladorDePagamentoAtivo) {
+  router.get( "/simulated-checkout", routerGuard(), getSimulatedCheckoutPage);
+  // A confirmação aprova o pagamento: exige o dono autenticado (SEC-01).
+  router.post("/confirm-simulated-payment", protect, confirmSimulatedPayment);
+}
 
 // Criar cobrança (usuário autenticado)
 router.post("/create-billing", routerGuard(), validateBody(createBillingSchema), createBilling);

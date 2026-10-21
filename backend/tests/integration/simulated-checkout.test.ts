@@ -41,5 +41,8 @@ describe("SEC-03 — simulated checkout is private", () => {
     expect(response.text).not.toContain("OTHER-ACCOUNT-ITEM");
     expect(response.text).not.toContain(stranger.email);
     expect(response.text).not.toContain(owner.token);
+    // A confirmação deve passar pelo botão autenticado da loja, não por
+    // um formulário que não envia Authorization e é bloqueado no iframe.
+    expect(response.text).not.toContain("<form");
   });
 });
