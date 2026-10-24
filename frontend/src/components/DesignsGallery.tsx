@@ -12,7 +12,7 @@ import { hasArtwork } from "../eyewear/artwork";
 import { ProblemError } from "../api/client";
 
 export default function DesignsGallery({ setView }) {
-  const { session, designs, deleteBackendDesign } = useAuth();
+  const { session, designs, deleteDesign } = useAuth();
   const { addToCart } = useCart();
   const { t, language } = useTranslation();
   const [deleteError, setDeleteError] = useState("");
@@ -30,21 +30,7 @@ export default function DesignsGallery({ setView }) {
     const design = designs[index];
     setDeleteError("");
     try {
-      if (design.syncStatus !== "local") {
-        await deleteBackendDesign(design.id);
-      } else {
-        // Only explicitly local drafts may be deleted without server confirmation.
-        const next = designs.filter((_, idx) => idx !== index);
-        localStorage.setItem("opticus_designs", JSON.stringify(next));
-        window.location.reload();
-      }
-
-      // Clear active design only after deletion was accepted.
-      const activeIndex = localStorage.getItem("opticus_active_design");
-      if (activeIndex !== null && Number(activeIndex) === index) {
-        localStorage.removeItem("opticus_active_design");
-        localStorage.removeItem("opticus_active_design_id");
-      }
+      await deleteDesign(design.id);
     } catch (error) {
       setDeleteError(error instanceof ProblemError ? error.detail || error.title || error.message
         : language === "pt" ? "Não foi possível excluir o design. Verifique sua conexão e tente novamente."

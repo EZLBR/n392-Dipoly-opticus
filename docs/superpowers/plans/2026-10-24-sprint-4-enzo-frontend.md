@@ -10,7 +10,7 @@
 
 **Spec:** [#35 FE-06](https://github.com/EZLBR/n392-Dipoly-opticus/issues/35), [#38 FE-04](https://github.com/EZLBR/n392-Dipoly-opticus/issues/38) e [#34 FE-03](https://github.com/EZLBR/n392-Dipoly-opticus/issues/34), consultadas em 24/10/2026.
 
-**Execução:** aprovada em 24/10/2026, diretamente nesta conversa. Tasks 1–3 implementadas com regressões RED→GREEN; 106 testes frontend, typecheck e build aprovados. Revisão independente e decisão de integração pendentes. A escolha de volume privado para #84 foi aprovada separadamente, sem incluir sua implementação neste plano.
+**Execução:** aprovada em 24/10/2026, diretamente nesta conversa. Tasks 1–3 implementadas com regressões RED→GREEN; revisão independente encontrou três problemas na exclusão, corrigidos em uma rodada com quatro regressões RED→GREEN. Verificação final: 110 testes frontend, typecheck e build aprovados; somente o aviso preexistente de chunks grandes. Decisão de integração pendente. A escolha de volume privado para #84 foi aprovada separadamente, sem incluir sua implementação neste plano.
 
 ## Global Constraints
 
