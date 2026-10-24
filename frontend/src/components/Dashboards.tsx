@@ -124,14 +124,14 @@ export function FactoryDashboard() {
   const { orders, fetchBackendOrders, updateOrderStatus } = useOrder();
   const { t } = useTranslation();
 
-  if (!session || session.role !== "factory") {
-    return <p>Access denied.</p>;
-  }
-
   const [timeRange, setTimeRange] = useState("total");
   const [currency, setCurrency] = useState("USD");
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
+
+  if (!session || session.role !== "factory") {
+    return <p>Access denied.</p>;
+  }
 
   const { rate, symbol } = CURRENCY_RATES[currency] || CURRENCY_RATES.USD;
 
@@ -354,14 +354,14 @@ export function StaffDashboard() {
   const { session, users } = useAuth();
   const { orders: allStaffOrders, updateOrderStatus } = useOrder();
 
-  if (!session || session.role !== "staff") {
-    return <p>Access denied.</p>;
-  }
-
   const [timeRange, setTimeRange] = useState("total");
   const [currency, setCurrency] = useState("USD");
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
+
+  if (!session || session.role !== "staff") {
+    return <p>Access denied.</p>;
+  }
 
   const { rate, symbol } = CURRENCY_RATES[currency] || CURRENCY_RATES.USD;
 
