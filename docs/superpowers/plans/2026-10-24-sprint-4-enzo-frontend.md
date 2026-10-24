@@ -10,6 +10,8 @@
 
 **Spec:** [#35 FE-06](https://github.com/EZLBR/n392-Dipoly-opticus/issues/35), [#38 FE-04](https://github.com/EZLBR/n392-Dipoly-opticus/issues/38) e [#34 FE-03](https://github.com/EZLBR/n392-Dipoly-opticus/issues/34), consultadas em 24/10/2026.
 
+**Execução:** aprovada em 24/10/2026, diretamente nesta conversa. Tasks 1–3 implementadas com regressões RED→GREEN; 106 testes frontend, typecheck e build aprovados. Revisão independente e decisão de integração pendentes. A escolha de volume privado para #84 foi aprovada separadamente, sem incluir sua implementação neste plano.
+
 ## Global Constraints
 
 - Trabalhar sobre origin/dev 883fff772dc54a775749e4e2f53ab6cb8d5853a4, na branch fix/sprint-4-enzo-frontend, em checkout isolado já existente.

@@ -179,13 +179,20 @@ export function AuthProvider({ children }) {
     }
     let finalId = designData.id || `design-${Date.now()}`;
     let syncStatus = "local";
-    if (isBackendConnected && token) {
+    if (token) {
       try {
         const data = await apiClient.post<any>("/designs", { ...designData, id: finalId }, comToken(token));
-        finalId = data.id || data.design?.id || finalId;
+        const remoteId = data?.id ?? data?.design?.id;
+        if (typeof remoteId !== "string" || !remoteId.trim()) {
+          throw new Error("Resposta inválida ao salvar o design. Não foi possível confirmar o salvamento.");
+        }
+        finalId = remoteId;
         syncStatus = "synced";
       } catch (e) {
-        console.error("Backend design save failed, shifting to local cache:", e);
+        // A server rejection (including 5xx) is never an offline draft.
+        // Only fetch's transport failure permits the explicitly unsynced copy.
+        if (!(e instanceof TypeError)) throw e;
+        console.warn("Sem conexão com o servidor; o design ficará apenas neste dispositivo.");
       }
     }
 
@@ -212,15 +219,11 @@ export function AuthProvider({ children }) {
   };
 
   const deleteBackendDesign = async (designId) => {
-    const token = localStorage.getItem("opticus_token");
-    if (isBackendConnected && token) {
-      try {
-        await apiClient.delete(`/designs/${designId}`, comToken(token));
-        fetchBackendDesigns(token);
-      } catch (e) {
-        console.error("Failed to delete backend design:", e);
-      }
-    }
+    const token = authTokenRef.current;
+    if (!token || !isCurrentStudioSession()) throw new Error("Entre na sua conta novamente para excluir o design.");
+    await apiClient.delete(`/designs/${designId}`, comToken(token));
+    if (token !== authTokenRef.current || !isCurrentStudioSession()) throw new Error("A sessão mudou durante a exclusão. Atualize a página.");
+    await fetchBackendDesigns(token);
   };
 
   const updateUser = async (userId, dataToUpdate) => {

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { useTranslation } from "../contexts/LanguageContext";
@@ -9,11 +9,13 @@ import { calculateBasePrice } from "../utils/pricing";
 import ThreePreview from "./ThreePreview";
 import { normalizeConfig, label } from "../eyewear/config";
 import { hasArtwork } from "../eyewear/artwork";
+import { ProblemError } from "../api/client";
 
 export default function DesignsGallery({ setView }) {
-  const { session, designs, deleteBackendDesign, isBackendConnected } = useAuth();
+  const { session, designs, deleteBackendDesign } = useAuth();
   const { addToCart } = useCart();
   const { t, language } = useTranslation();
+  const [deleteError, setDeleteError] = useState("");
   // Guest-created local drafts remain usable; authenticated remote designs keep the login gate.
   const visibleDesigns = session ? designs : designs.filter(design => design.syncStatus === "local");
 
@@ -26,20 +28,27 @@ export default function DesignsGallery({ setView }) {
 
   const handleDelete = async (index) => {
     const design = designs[index];
-    if (isBackendConnected && design.id) {
-      await deleteBackendDesign(design.id);
-    } else {
-      // Fallback local delete
-      const next = designs.filter((_, idx) => idx !== index);
-      localStorage.setItem("opticus_designs", JSON.stringify(next));
-      window.location.reload(); // Quick refresh for fallback state
-    }
+    setDeleteError("");
+    try {
+      if (design.syncStatus !== "local") {
+        await deleteBackendDesign(design.id);
+      } else {
+        // Only explicitly local drafts may be deleted without server confirmation.
+        const next = designs.filter((_, idx) => idx !== index);
+        localStorage.setItem("opticus_designs", JSON.stringify(next));
+        window.location.reload();
+      }
 
-    // Clear active design if it was the one deleted
-    const activeIndex = localStorage.getItem("opticus_active_design");
-    if (activeIndex !== null && Number(activeIndex) === index) {
-      localStorage.removeItem("opticus_active_design");
-      localStorage.removeItem("opticus_active_design_id");
+      // Clear active design only after deletion was accepted.
+      const activeIndex = localStorage.getItem("opticus_active_design");
+      if (activeIndex !== null && Number(activeIndex) === index) {
+        localStorage.removeItem("opticus_active_design");
+        localStorage.removeItem("opticus_active_design_id");
+      }
+    } catch (error) {
+      setDeleteError(error instanceof ProblemError ? error.detail || error.title || error.message
+        : language === "pt" ? "Não foi possível excluir o design. Verifique sua conexão e tente novamente."
+          : "Unable to delete the design. Check your connection and try again.");
     }
   };
 
@@ -84,6 +93,7 @@ export default function DesignsGallery({ setView }) {
   return (
     <div className="page-marketplace">
       <div className="page-wrapper">
+        {deleteError && <p role="alert">{deleteError}</p>}
         <section className="hero hero-marketplace" style={{ minHeight: "30vh", paddingBottom: "40px" }}>
           <div className="hero-copy">
             <span className="eyebrow">My Collection</span>

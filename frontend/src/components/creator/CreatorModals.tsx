@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useCreatorStudio } from "../../contexts/CreatorStudioContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTranslation } from "../../contexts/LanguageContext";
+import { ProblemError } from "../../api/client";
 
 export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
   const { config, designId, designName, setDesignName, markSaved, showToast } =
@@ -52,11 +53,12 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
       );
       onClose();
       onOpenDesigns?.();
-    } catch {
+    } catch (error) {
       setError(
-        pt
-          ? "Não foi possível salvar. Verifique o armazenamento do navegador e tente novamente."
-          : "Unable to save. Check browser storage and try again.",
+        error instanceof ProblemError ? error.detail || error.title || error.message
+          : pt
+          ? "Não foi possível confirmar o salvamento. Tente novamente."
+          : "Unable to confirm the save. Please try again.",
       );
     } finally {
       setBusy(false);
