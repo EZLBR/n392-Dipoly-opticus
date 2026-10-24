@@ -8,8 +8,17 @@ export function OrderProvider({ children }) {
   const { session, isBackendConnected } = useAuth();
 
   const [orders, setOrders] = useState(() => {
-    const localOrders = localStorage.getItem("opticus_orders");
-    return localOrders ? JSON.parse(localOrders) : [];
+    try {
+      const localOrders = localStorage.getItem("opticus_orders");
+      if (localOrders === null) return [];
+      const parsed = JSON.parse(localOrders);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // Invalid JSON or unavailable browser storage: never fail during render.
+    }
+    console.warn("Cache de pedidos inválido ou indisponível; iniciando com lista vazia.");
+    try { localStorage.removeItem("opticus_orders"); } catch { /* Storage may be blocked. */ }
+    return [];
   });
 
   const fetchBackendOrders = async (_token?: string) => {
@@ -24,6 +33,7 @@ export function OrderProvider({ children }) {
   };
 
   useEffect(() => {
+    if (!isBackendConnected) return;
     const token = localStorage.getItem("opticus_token");
     if (token && isBackendConnected) {
       fetchBackendOrders(token);
