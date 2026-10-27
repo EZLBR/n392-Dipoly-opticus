@@ -231,6 +231,11 @@ function montarCorpo(problem: HttpProblem, traceId: string): ProblemResponseBody
   }
   if (base.invalidParams !== undefined) {
     corpo.invalidParams = base.invalidParams as InvalidParam[];
+  } else if (base.errors !== undefined) {
+    corpo.invalidParams = (base.errors as ValidationFieldError[]).map((e) => ({
+      name: e.field,
+      reason: e.message,
+    }));
   }
   return corpo;
 }
