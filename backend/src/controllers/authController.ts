@@ -1,5 +1,7 @@
 import type { Request, Response } from "express";
 import { AuthService } from "../services/authService.js";
+import { BadRequestProblem } from "../errors/problem.js";
+import { parsePagination } from "../utils/pagination.js";
 
 export async function register(req: Request, res: Response) {
   const result = await AuthService.register(req.body);
@@ -17,8 +19,11 @@ export async function getMe(req: Request, res: Response) {
 }
 
 export async function getUsers(req: Request, res: Response) {
-  const page = parseInt(req.query.page as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 20;
+  const pagination = parsePagination(req.query);
+  if (!pagination.isValid) {
+    throw new BadRequestProblem(pagination.error);
+  }
+  const { page, limit } = pagination;
   const result = await AuthService.getUsers(page, limit);
   return res.json(result);
 }

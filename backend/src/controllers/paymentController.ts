@@ -23,6 +23,7 @@ import {
   ServiceUnavailableProblem,
   UnauthorizedProblem,
 } from "../errors/problem.js";
+import { parsePagination } from "../utils/pagination.js";
 import logger from "../utils/logger.js";
 
 // Security Helper
@@ -181,9 +182,11 @@ async function registrarCobrancaNoPedido(
 //   GET /api/payments  (apenas staff)
 // ─────────────────────────────────────────────────────────
 export async function getPayments(req: Request, res: Response) {
-  const page = parseInt(String(req.query.page || "")) || 1;
-  const limit = parseInt(String(req.query.limit || "")) || 20;
-  const offset = (page - 1) * limit;
+  const pagination = parsePagination(req.query);
+  if (!pagination.isValid) {
+    throw new BadRequestProblem(pagination.error);
+  }
+  const { page, limit, offset } = pagination;
 
   const countRes = await pool.query(`SELECT COUNT(*) FROM pagamentos`);
   const totalCount = parseInt(countRes.rows[0].count);

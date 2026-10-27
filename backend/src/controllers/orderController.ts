@@ -8,7 +8,8 @@ import { getAbacateToken, isSimulatedPaymentGateway } from "../config/env.js";
 import { gerarBillingId } from "../utils/billingId.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
 import type { Request, Response } from "express";
-import { ConflictProblem, ForbiddenProblem, ServiceUnavailableProblem } from "../errors/problem.js";
+import { BadRequestProblem, ConflictProblem, ForbiddenProblem, ServiceUnavailableProblem } from "../errors/problem.js";
+import { parsePagination } from "../utils/pagination.js";
 import {
   PAGAMENTO_INDISPONIVEL,
   PAGAMENTO_NAO_CONFIRMADO,
@@ -115,9 +116,11 @@ export async function getOrders(req: Request, res: Response) {
     DATE(atualizado_em) AS "updatedAt"
   `;
 
-  const page = parseInt(String(req.query.page || "")) || 1;
-  const limit = parseInt(String(req.query.limit || "")) || 20;
-  const offset = (page - 1) * limit;
+  const pagination = parsePagination(req.query);
+  if (!pagination.isValid) {
+    throw new BadRequestProblem(pagination.error);
+  }
+  const { page, limit, offset } = pagination;
 
   let rows;
   let totalCount = 0;
