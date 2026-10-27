@@ -33,7 +33,7 @@ model Usuario {
   factoryName String?   @map("factory_name") @db.VarChar(255)
   criadoEm    DateTime? @default(now()) @map("criado_em")
 
-  publicId String @unique @default(uuid())
+  publicId String @unique @default(dbgenerated("gen_random_uuid()"))
 
   pedidos        Pedido[]      @relation("UsuarioPedidos")
   pedidosFabrica Pedido[]      @relation("FactoryPedidos")
@@ -52,7 +52,7 @@ model Produto {
   ativo       Boolean?  @default(true)
   criadoEm    DateTime? @default(now()) @map("criado_em")
 
-  publicId String @unique @default(uuid())
+  publicId String @unique @default(dbgenerated("gen_random_uuid()"))
 
   categoria Categoria?   @relation(fields: [categoriaId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   itens     PedidoItem[]
@@ -87,7 +87,7 @@ model Pedido {
   atualizadoEm     DateTime?     @default(now()) @map("atualizado_em")
 
   version  Int    @default(0)
-  publicId String @unique @default(uuid())
+  publicId String @unique @default(dbgenerated("gen_random_uuid()"))
 
   usuario    Usuario      @relation("UsuarioPedidos", fields: [usuarioId], references: [id], onDelete: Cascade)
   fabrica    Usuario?     @relation("FactoryPedidos", fields: [factoryId], references: [id], onDelete: SetNull)
@@ -177,7 +177,7 @@ model SavedDesign {
   updatedAt      DateTime? @default(now()) @map("updated_at")
   studioConfig   Json?     @map("studio_config") @db.JsonB
 
-  publicId String @unique @default(uuid())
+  publicId String @unique @default(dbgenerated("gen_random_uuid()"))
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
