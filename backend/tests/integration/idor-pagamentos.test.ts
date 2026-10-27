@@ -4,10 +4,8 @@
 //   Dono do recurso: o cliente dono do pedido cobrado.
 //
 //   Este arquivo concentra as regressões IDOR/BOLA de pagamentos.
-//   A falha ainda aberta (BOLA-03 em create-billing) está registrada
-//   com `vulnerabilidadeConhecida` (ver tests/helpers/vulneravel.ts):
-//   o comportamento seguro já está escrito, e o teste acusa quando a
-//   correção entrar.
+//   BOLA-02: pedido alheio e inexistente retornam o mesmo 404,
+//   sem confirmar a existência de recursos fora do escopo.
 //
 //   SEC-01 #2 (confirmação anônima/de terceiros do pagamento simulado)
 //   e SEC-04 #6 (webhook sem assinatura) já foram corrigidas: os casos
@@ -23,10 +21,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import request from "supertest";
 import { app } from "../setup/app.js";
 import { criarUsuario, comToken } from "../helpers/auth.js";
-import { criarPedido, lerPedido } from "../helpers/orders.js";
+import { criarPedido } from "../helpers/orders.js";
 import { criarCobranca, lerCobranca } from "../helpers/payments.js";
 import { esperarProblema, semanticaDoProblema } from "../helpers/problem.js";
-import { vulnerabilidadeConhecida } from "../helpers/vulneravel.js";
+import prisma from "../../src/config/prisma.js";
 import { assinarWebhook, eventoCheckoutPago, SEGREDO_WEBHOOK } from "../helpers/webhook.js";
 
 const PENDENTE = { pedido: "Pending_Payment", pagamento: "pendente" };
@@ -67,47 +65,55 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
       const vitima = await criarUsuario("client");
       const atacante = await criarUsuario("client");
       const pedido = await criarPedido({ dono: vitima });
-      const antes = await lerPedido(pedido.publicId);
+      const antes = await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } });
 
       const res = await request(app)
         .post("/api/payments/create-billing")
         .set(...comToken(atacante.token))
         .send({ orderId: pedido.id });
 
-      expect(res.status).toBeGreaterThanOrEqual(400);
-      expect(await lerPedido(pedido.publicId)).toEqual(antes);
+      esperarProblema(res, 404, "not-found");
+      expect(await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })).toEqual(antes);
+      expect(await prisma.pagamento.count()).toBe(0);
     });
 
-    it("[VULNERÁVEL · BOLA-03] pedido alheio e pedido inexistente respondem de forma distinguível", () =>
-      vulnerabilidadeConhecida({
-        issue: "BOLA-03",
-        observar: async () => {
-          const vitima = await criarUsuario("client");
-          const atacante = await criarUsuario("client");
-          const pedido = await criarPedido({ dono: vitima });
+    it.each(["client", "factory"] as const)(
+      "[BOLA-02] %s recebe respostas indistinguíveis para pedido alheio e inexistente",
+      async (papel) => {
+        const vitima = await criarUsuario("client");
+        const atacante = await criarUsuario(papel);
+        const pedido = await criarPedido({ dono: vitima });
 
-          const alheio = await request(app)
-            .post("/api/payments/create-billing")
-            .set(...comToken(atacante.token))
-            .send({ orderId: pedido.id });
-          const inexistente = await request(app)
-            .post("/api/payments/create-billing")
-            .set(...comToken(atacante.token))
-            .send({ orderId: 999_999 });
+        const alheio = await request(app)
+          .post("/api/payments/create-billing")
+          .set(...comToken(atacante.token))
+          .send({ orderId: pedido.id });
+        const inexistente = await request(app)
+          .post("/api/payments/create-billing")
+          .set(...comToken(atacante.token))
+          .send({ orderId: 999_999 });
 
-          return { alheio, inexistente };
-        },
-        seguro: ({ alheio, inexistente }) => {
-          esperarProblema(alheio, 404, "not-found");
-          expect(semanticaDoProblema(alheio.body)).toEqual(semanticaDoProblema(inexistente.body));
-        },
-        // Hoje: lê o pedido sem escopo e decide em memória — responde 403
-        // "pertence a outro usuário", confirmando que o pedido existe.
-        vulneravel: ({ alheio, inexistente }) => {
-          esperarProblema(alheio, 403, "forbidden");
-          esperarProblema(inexistente, 404, "not-found");
-        },
-      }));
+        esperarProblema(alheio, 404, "not-found");
+        esperarProblema(inexistente, 404, "not-found");
+        expect(alheio.headers["content-type"]).toBe(inexistente.headers["content-type"]);
+        expect(semanticaDoProblema(alheio.body)).toEqual(semanticaDoProblema(inexistente.body));
+        expect(alheio.body.detail).toBe("Pedido não encontrado.");
+      },
+    );
+
+    it("staff continua criando cobrança para pedido de outro usuário", async () => {
+      const cliente = await criarUsuario("client");
+      const staff = await criarUsuario("staff");
+      const pedido = await criarPedido({ dono: cliente });
+
+      const res = await request(app)
+        .post("/api/payments/create-billing")
+        .set(...comToken(staff.token))
+        .send({ orderId: pedido.id });
+
+      expect(res.status).toBe(200);
+      expect(res.body.checkoutUrl).toEqual(expect.any(String));
+    });
   });
 
   describe("POST /api/payments/confirm-simulated-payment", () => {

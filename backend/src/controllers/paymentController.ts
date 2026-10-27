@@ -19,7 +19,6 @@ import type { PoolClient } from "pg";
 import {
   BadRequestProblem,
   ConflictProblem,
-  ForbiddenProblem,
   NotFoundProblem,
   ServiceUnavailableProblem,
   UnauthorizedProblem,
@@ -55,9 +54,10 @@ export async function createBilling(req: Request, res: Response) {
 
   const order = rows[0];
 
-  // Security Fix: Verificar ownership
+  // BOLA-02: falta de posse usa o mesmo 404 do pedido inexistente.
+  // 403 fica reservado à falta de papel RBAC, sem revelar a existência.
   if (order.usuario_id !== req.user!.id && req.user!.role !== "staff") {
-    throw new ForbiddenProblem("Acesso negado: Este pedido pertence a outro usuário.");
+    throw new NotFoundProblem("Pedido não encontrado.");
   }
 
   const ABACATE_TOKEN = getAbacateToken();
