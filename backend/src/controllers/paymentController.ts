@@ -15,7 +15,6 @@ import {
 } from "../config/pagamento.js";
 import { solicitarCobranca } from "../services/gatewayDePagamento.js";
 import type { Request, Response } from "express";
-import type { PoolClient } from "pg";
 import {
   BadRequestProblem,
   ConflictProblem,
@@ -24,6 +23,7 @@ import {
   UnauthorizedProblem,
 } from "../errors/problem.js";
 import logger from "../utils/logger.js";
+import { emTransacao } from "../config/transacao.js";
 
 // Security Helper
 const escapeHTML = (str: unknown) => {
@@ -131,48 +131,41 @@ async function registrarCobrancaNoPedido(
   pedido: { id: number; total: string; abacate_billing_id: string | null },
   billingId: string,
 ) {
-  let conexao: PoolClient | undefined;
   try {
-    conexao = await pool.connect();
-    await conexao.query("BEGIN");
-    const { rowCount } = await conexao.query(
-      `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = false, status = 'Pending Payment'
-        WHERE id = $2 AND abacate_billing_id IS NOT DISTINCT FROM $3::varchar`,
-      [billingId, pedido.id, pedido.abacate_billing_id]
-    );
-
-    if (rowCount !== 1) {
-      await conexao.query("ROLLBACK");
-      logger.error(
-        { traceId, requestId: traceId, billingId, pedidoId: pedido.id },
-        "[AbacatePay] Pedido mudou durante a cobrança; nada foi registrado: conciliar",
+    await emTransacao(async (conexao) => {
+      const { rowCount } = await conexao.query(
+        `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = false, status = 'Pending Payment'
+          WHERE id = $2 AND abacate_billing_id IS NOT DISTINCT FROM $3::varchar`,
+        [billingId, pedido.id, pedido.abacate_billing_id]
       );
-      throw new ConflictProblem(
-        "O pedido mudou enquanto a cobrança era criada. Atualize seus pedidos antes de pagar."
-      );
-    }
 
-    // O total segue como o DECIMAL que o banco devolveu, sem passar por float.
-    await conexao.query(
-      "INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa) VALUES ($1, 'pix', 'pendente', $2, $3)",
-      [pedido.id, pedido.total, billingId]
-    );
-    await conexao.query("COMMIT");
-  } catch (err) {
-    if (!(err instanceof ConflictProblem)) {
-      if (conexao) {
-        await conexao.query("ROLLBACK").catch((erroDoRollback) =>
-          logger.error({ err: erroDoRollback, traceId, requestId: traceId }, "Falha no ROLLBACK do registro da cobrança")
+      if (rowCount !== 1) {
+        logger.error(
+          { traceId, requestId: traceId, billingId, pedidoId: pedido.id },
+          "[AbacatePay] Pedido mudou durante a cobrança; nada foi registrado: conciliar",
+        );
+        throw new ConflictProblem(
+          "O pedido mudou enquanto a cobrança era criada. Atualize seus pedidos antes de pagar."
         );
       }
+
+      // O total segue como o DECIMAL que o banco devolveu, sem passar por float.
+      await conexao.query(
+        "INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa) VALUES ($1, 'pix', 'pendente', $2, $3)",
+        [pedido.id, pedido.total, billingId]
+      );
+    }, { traceId });
+  } catch (err) {
+    // O ROLLBACK, e o descarte da conexão se ele falhar, ficam com emTransacao.
+    // Aqui só se registra o que a conciliação precisa, inclusive quando nem a
+    // conexão foi obtida.
+    if (!(err instanceof ConflictProblem)) {
       logger.error(
         { err, traceId, requestId: traceId, billingId, pedidoId: pedido.id },
         "[AbacatePay] Cobrança criada no gateway, mas não registrada no pedido: conciliar",
       );
     }
     throw err;
-  } finally {
-    conexao?.release();
   }
 }
 
@@ -248,9 +241,7 @@ export async function handleWebhook(req: Request, res: Response) {
       typeof checkout.id === "string" && checkout.id.trim() &&
       (env.NODE_ENV !== "production" || payload.devMode === false)) {
     const billingId = checkout.id;
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
+    const processados = await emTransacao(async (client) => {
       // Guardar a transição torna reentregas inofensivas, inclusive após entrega.
       const { rows } = await client.query<{ id: number }>(
         `UPDATE pedidos SET status = 'Queued'
@@ -266,14 +257,9 @@ export async function handleWebhook(req: Request, res: Response) {
           WHERE pe.id = ANY($2::int[])
             AND NOT EXISTS (SELECT 1 FROM pagamentos pg
                              WHERE pg.pedido_id = pe.id AND pg.referencia_externa = $1)`, [billingId, ids]);
-      await client.query("COMMIT");
-      logger.info({ traceId: req.requestId, pedidos: ids.length }, "[Webhook] Pagamento processado.");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+      return ids.length;
+    }, { traceId: req.requestId });
+    logger.info({ traceId: req.requestId, pedidos: processados }, "[Webhook] Pagamento processado.");
   }
 
   return res.status(200).json({ received: true });
@@ -377,10 +363,7 @@ export async function confirmSimulatedPayment(req: Request, res: Response) {
   // A identidade vem exclusivamente do token validado por `protect`.
   const usuarioId = req.user!.id;
 
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
+  await emTransacao(async (client) => {
     // Autorização na cláusula WHERE: só o dono, e só enquanto o pedido
     // ainda está em "Pending Payment". rowCount 0 agrupa inexistente,
     // de outro dono e já processado — todos respondem o mesmo 404, sem
@@ -421,14 +404,7 @@ export async function confirmSimulatedPayment(req: Request, res: Response) {
                            WHERE pg.pedido_id = pe.id AND pg.referencia_externa = $1)`,
       [billingId, pedidosConfirmados]
     );
-
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  } finally {
-    client.release();
-  }
+  }, { traceId: req.requestId });
 
   return res.json({ status: "confirmed", billingId });
 }
