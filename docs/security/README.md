@@ -12,6 +12,32 @@ Cobertura mínima de testes para cada recurso:
 - troca do identificador na URL, no corpo ou em relações aninhadas não amplia acesso;
 - papéis privilegiados exercem somente as ações previstas.
 
+### Respostas sem oráculo de enumeração (BOLA-02)
+
+Um recurso inexistente e um recurso fora do escopo do usuário autenticado devem
+retornar a mesma resposta **404**, sem informar que o objeto pertence a outra
+pessoa ou fábrica. O status, o `Content-Type` (`application/problem+json`) e todos
+os campos do Problem Details devem ser iguais nos dois casos, inclusive `type`,
+`title`, `status`, `detail`, `error` e eventuais extensões. Somente `instance`,
+`timestamp` e `traceId` variam por requisição para correlação, assim como o
+cabeçalho `X-Request-Id`; esses valores não carregam dados do recurso.
+
+O **403** é reservado à falta de papel RBAC e deve independer da existência do
+objeto. Requisições sem autenticação válida recebem **401** antes do acesso ao
+recurso. Tentativas negadas não devem alterar pedidos nem criar cobranças.
+
+- `PUT /api/orders/:publicId/status`: fábricas recebem o mesmo 404 para pedido
+  de outra fábrica e pedido inexistente; clientes recebem 403 em ambos os casos,
+  pois não têm papel para mudar status. Staff pode atualizar qualquer pedido.
+- `POST /api/payments/create-billing`: quem não é dono nem staff recebe
+  `404` com `detail: "Pedido não encontrado."`, igual ao pedido inexistente.
+  O dono continua criando cobranças, e a exceção de staff é explícita.
+
+Os testes em `backend/tests/integration/orders-status-bola.test.ts` e
+`backend/tests/integration/idor-pagamentos.test.ts` comparam o contrato completo,
+excluindo apenas os três campos de correlação, e verificam os acessos permitidos
+e a ausência de efeitos no banco nas tentativas negadas.
+
 ## Preço calculado no servidor
 
 O valor de um pedido nunca vem do navegador. `POST /api/orders` e `POST /api/orders/checkout-cart` descartam qualquer `total` enviado e calculam o preço a partir das especificações do óculos, com a regra de `backend/src/domain/pricing.ts`, em centavos inteiros.
