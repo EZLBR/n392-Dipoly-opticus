@@ -1,6 +1,8 @@
 # STUDIO-03 (#84) — imagens privadas na armação
 
-Status: proposta técnica para aprovação. Não há implementação de upload nesta branch ainda.
+Status: aprovada pelo Enzo em 05/11/2026, incluindo login, seis camadas e cota de 20 imagens/100 MiB. Execução direta e decisões de detalhe delegadas; consultar apenas mudanças de escopo, segurança ou custo. Upload ainda não implementado nesta aprovação.
+
+Restrição de 05/11: manter #13/#14 com João Pedro e avançar no que não depende delas. O PR #99 já foi integrado; branch atualizada com origin/dev (`f8a4fe8`) por merge local `5879333`. A referência ao PR aberto abaixo registra o contexto de 24/10, não o estado atual.
 
 ## Intenção
 
