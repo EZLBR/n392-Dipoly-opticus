@@ -35,6 +35,12 @@ const customSpecsSchema = z.looseObject({
   });
   if (hasUnapprovedArtwork) context.addIssue({ code: "custom", path: ["artwork"],
     message: "A compra de designs com arte aguarda validação da fábrica. Salve sua criação no Studio." });
+  const hasUnapprovedPattern = [documento, documento.config].some(document => {
+    const pattern = document?.surfacePattern;
+    return pattern != null && (pattern.version !== 1 || pattern.style !== "none");
+  });
+  if (hasUnapprovedPattern) context.addIssue({ code: "custom", path: ["surfacePattern"],
+    message: "A compra de estampas aguarda validação da fábrica. Salve sua criação no Studio." });
 });
 
 // Quantidade cobrada e gravada no pedido, nos dois endpoints. Uma

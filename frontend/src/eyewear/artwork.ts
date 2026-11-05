@@ -46,3 +46,5 @@ export function normalizeArtwork(input: unknown): Artwork {
 }
 
 export const hasArtwork = (config: { artwork?: Artwork }) => Boolean(config.artwork?.layers.length);
+export const hasUnapprovedCustomization = (config: { artwork?: Artwork; surfacePattern?: { style?: string } }) =>
+  hasArtwork(config) || Boolean(config.surfacePattern?.style && config.surfacePattern.style !== "none");

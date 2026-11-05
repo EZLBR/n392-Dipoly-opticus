@@ -7,7 +7,7 @@ import {
 import { useCart } from "../contexts/CartContext";
 import { calculateBasePrice } from "../utils/pricing";
 import { dimensions, label } from "../eyewear/config";
-import { hasArtwork } from "../eyewear/artwork";
+import { hasUnapprovedCustomization } from "../eyewear/artwork";
 import ThreePreview from "./creator/ThreePreview";
 import TryOnViewport from "./creator/TryOnViewport";
 import CustomizationPanel from "./creator/CustomizationPanel";
@@ -30,14 +30,14 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
     setAutoRotate,
     draftStatus,
   } = useCreatorStudio();
-  const { language } = useTranslation();
+  const { language, t } = useTranslation();
   const pt = language === "pt";
   const { addToCart } = useCart();
   const [showSaveModal, setShowSaveModal] = useState(false);
   const d = dimensions[config.frontModel];
   function add() {
-    if (hasArtwork(config)) {
-      showToast(pt ? "Salve sua criação. A compra com arte aguarda validação da fábrica." : "Save your creation. Artwork purchasing awaits factory approval.");
+    if (hasUnapprovedCustomization(config)) {
+      showToast(t("decoration-preview"));
       return;
     }
     addToCart({
