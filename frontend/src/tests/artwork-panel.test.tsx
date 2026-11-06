@@ -32,7 +32,32 @@ it("limits the editor to six text layers", () => {
   mount();
   for (let i = 0; i < 6; i++) fireEvent.click(screen.getByRole("button", { name: "Adicionar texto" }));
   expect(screen.getByRole("button", { name: "Adicionar texto" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Adicionar desenho" })).toBeDisabled();
   expect(JSON.parse(localStorage.getItem("opticus_creator_draft")!).config.artwork.layers).toHaveLength(6);
+});
+
+it("adds, undoes, redoes and removes a drawing through coordinate controls", () => {
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+  mount();
+  fireEvent.click(screen.getByRole("button", { name: "Adicionar texto" }));
+  fireEvent.click(screen.getByRole("button", { name: "Adicionar desenho" }));
+  fireEvent.change(screen.getByLabelText("Região da armação"), { target: { value: "front-left" } });
+  fireEvent.change(screen.getByLabelText("Espessura do traço"), { target: { value: "9" } });
+  fireEvent.click(screen.getByText("Traço por coordenadas"));
+  fireEvent.click(screen.getByRole("button", { name: "Adicionar traço reto" }));
+  const artwork = () => JSON.parse(localStorage.getItem("opticus_creator_draft")!).config.artwork;
+  expect(artwork()).toMatchObject({ version: 2, layers: [
+    { text: "Seu nome" },
+    { kind: "drawing", zone: "front-left", strokes: [{ width: 9, points: [[200, 500], [800, 500]] }] },
+  ] });
+  fireEvent.click(screen.getByRole("button", { name: "Desfazer traço" }));
+  expect(artwork().layers[1].strokes).toEqual([]);
+  fireEvent.click(screen.getByRole("button", { name: /Seu nome/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^02\s*Desenho$/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Refazer traço" }));
+  expect(artwork().layers[1].strokes).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Remover desenho" }));
+  expect(artwork()).toMatchObject({ version: 2, layers: [{ text: "Seu nome" }] });
 });
 
 it("does not allow saving a layer whose text is blank", () => {

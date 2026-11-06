@@ -12,8 +12,41 @@ const config = {
   artwork: { version: 1, layers: [layer] },
 };
 const design = { id: "text-design", name: "Meu óculos", model: "wayfarer_front_round_temples", color: "#382016" };
+const drawing = {
+  id: "drawing-1", kind: "drawing", zone: "temple-left",
+  strokes: [{ color: "#00aabb", width: 5, points: [[10, 40], [980, 960]] }],
+};
 
 describe("STUDIO-02 — saved configuration", () => {
+  it("round trips mixed art, retains drawings on older clients and allows explicit removal", async () => {
+    const owner = await criarUsuario();
+    const authorization = comToken(owner.token);
+    const artwork = { version: 2, layers: [layer, drawing] };
+    const save = (config: unknown) => request(app).post("/api/designs").set(...authorization).send({ ...design, config });
+    const read = async () => (await request(app).get("/api/designs").set(...authorization)).body.designs[0].config.artwork;
+    expect((await save({ ...config, artwork })).status).toBe(201);
+    expect(await read()).toEqual(artwork);
+    expect((await save({ ...config, color: "#abcdef", artwork: { version: 1, layers: [] } })).status).toBe(200);
+    expect(await read()).toEqual(artwork);
+    const edited = { ...layer, text: "Texto editado" };
+    expect((await save({ ...config, artwork: { version: 1, layers: [edited] } })).status).toBe(200);
+    expect(await read()).toEqual({ version: 2, layers: [edited, drawing] });
+    expect((await save({ ...config, artwork: { version: 2, layers: [edited] } })).status).toBe(200);
+    expect(await read()).toEqual({ version: 2, layers: [edited] });
+  });
+
+  it.each([
+    { ...drawing, zone: "lens-left" },
+    { ...drawing, strokes: [{ ...drawing.strokes[0], width: 21 }] },
+    { ...drawing, strokes: [{ ...drawing.strokes[0], points: [[1001, 20]] }] },
+    { ...drawing, strokes: [{ ...drawing.strokes[0], points: Array.from({ length: 129 }, () => [50, 50]) }] },
+  ])("rejects out-of-bounds drawing data", async invalid => {
+    const owner = await criarUsuario();
+    const response = await request(app).post("/api/designs").set(...comToken(owner.token)).send({
+      ...design, config: { ...config, artwork: { version: 2, layers: [invalid] } },
+    });
+    expect(response.status).toBe(400);
+  });
   it("returns the complete artwork to a fresh authenticated client and preserves edits", async () => {
     const owner = await criarUsuario();
     const saved = await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, config });
