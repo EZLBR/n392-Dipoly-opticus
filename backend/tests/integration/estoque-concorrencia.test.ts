@@ -70,6 +70,24 @@ describe("PUT /api/stock/product/:produtoId — escrita atômica (CONC-01)", () 
       expect((await lerEstoque(produtoId)).quantidade).toBe(0);
     });
 
+    // TEST-05: entradas e baixas chegando juntas, como no dia a dia. Com 20
+    // de partida, nem a pior ordem (todas as baixas primeiro) zera abaixo de
+    // 0, então o resultado é determinístico: 20 + 10 × 3 − 10 × 2 = 30.
+    it("10 entradas de 3 e 10 baixas de 2 simultâneas sobre 20 terminam em 30", async () => {
+      const staff = await criarUsuario("staff");
+      const { produtoId } = await criarProdutoComEstoque({ quantidade: 20 });
+
+      const operacoes = Array.from({ length: 20 }, (_, i) =>
+        i % 2 === 0
+          ? atualizar(staff, produtoId, { quantidade: 3, operacao: "add" })
+          : atualizar(staff, produtoId, { quantidade: 2, operacao: "subtract" }),
+      );
+      const respostas = await Promise.all(operacoes);
+
+      expect(respostas.map((r) => r.status)).toEqual(Array(20).fill(200));
+      expect((await lerEstoque(produtoId)).quantidade).toBe(30);
+    });
+
     it("20 entradas simultâneas de 1 sobre 10 terminam em 30: nenhuma se perde", async () => {
       const staff = await criarUsuario("staff");
       const { produtoId } = await criarProdutoComEstoque({ quantidade: 10 });
