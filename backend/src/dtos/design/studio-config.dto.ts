@@ -2,6 +2,13 @@ import { z } from "zod";
 
 const shape = z.enum(["wayfarer", "aviator", "cateye", "round"]);
 const color = z.string().regex(/^#[\da-f]{6}$/i, "Use uma cor hexadecimal de seis dígitos.");
+export const surfacePatternSchema = z.object({
+  version: z.literal(1),
+  style: z.enum(["none", "stripes", "dots", "checker"]),
+  scale: z.number().min(1).max(6),
+  rotation: z.number().min(-180).max(180),
+  ink: color,
+}).strict();
 export const textLayerSchema = z.object({
   id: z.string().min(1).max(64),
   text: z.string().trim().min(1).max(48)
@@ -31,6 +38,7 @@ export const studioConfigSchema = z.object({
   templeTipMaterial: z.enum(["acetate", "silicone", "rubber"]),
   hingeMaterial: z.enum(["stainless_steel", "titanium", "gold"]),
   templeOpen: z.number().min(-0.05).max(1.35),
+  surfacePattern: surfacePatternSchema.optional(),
   artwork: z.object({
     version: z.literal(1),
     layers: z.array(textLayerSchema).max(6)

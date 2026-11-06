@@ -33,3 +33,13 @@ it("rejects artwork at the shared cart entry point while accepting a normal desi
   fireEvent.click(screen.getByText("Add art"));
   expect(screen.getByLabelText("cart-count")).toHaveTextContent("1");
 });
+
+function PatternCartControls() {
+  const { cart, addToCart } = useCart();
+  return <><output aria-label="cart-count">{cart.length}</output><button onClick={() => addToCart({ id: "pattern", customSpecs: normalizeConfig({ surfacePattern: { version: 1, style: "checker" } }) })}>Add pattern</button></>;
+}
+it("does not add a visual-only pattern to the shared cart", () => {
+  render(<AuthProvider><CartProvider><PatternCartControls /></CartProvider></AuthProvider>);
+  fireEvent.click(screen.getByText("Add pattern"));
+  expect(screen.getByLabelText("cart-count")).toHaveTextContent("0");
+});

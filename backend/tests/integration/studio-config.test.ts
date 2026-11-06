@@ -63,4 +63,36 @@ describe("STUDIO-02 — saved configuration", () => {
     const response = await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, config: { ...config, artwork: { version: 1, layers: Array.from({ length: 7 }, (_, i) => ({ ...layer, id: `layer-${i}` })) } } });
     expect(response.status).toBe(400);
   });
+
+  it("persists a frame pattern and preserves it through legacy edits", async () => {
+    const owner = await criarUsuario();
+    const surfacePattern = { version: 1, style: "checker", scale: 3, rotation: 45, ink: "#aabbcc" };
+    const saved = await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, config: { ...config, surfacePattern } });
+    expect(saved.status).toBe(201);
+    expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config.surfacePattern).toEqual(surfacePattern);
+    const edited = await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, color: "#abcdef" });
+    expect(edited.status).toBe(200);
+    expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config.surfacePattern).toEqual(surfacePattern);
+    const legacyConfig = { ...config, color: "#fedcba" };
+    expect((await request(app).post("/api/designs").set(...comToken(owner.token))
+      .send({ ...design, color: legacyConfig.color, config: legacyConfig })).status).toBe(200);
+    expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config)
+      .toMatchObject({ color: legacyConfig.color, surfacePattern });
+    const disabled = { ...surfacePattern, style: "none" };
+    expect((await request(app).post("/api/designs").set(...comToken(owner.token))
+      .send({ ...design, config: { ...config, surfacePattern: disabled } })).status).toBe(200);
+    expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config.surfacePattern).toEqual(disabled);
+  });
+
+  it.each([
+    { version: 1, style: "unknown", scale: 2, rotation: 0, ink: "#ffffff" },
+    { version: 1, style: "checker", scale: 7, rotation: 0, ink: "#ffffff" },
+    { version: 1, style: "checker", scale: 2, rotation: 181, ink: "#ffffff" },
+    { version: 1, style: "checker", scale: 2, rotation: 0, ink: "red" },
+    { version: 99, style: "checker", scale: 2, rotation: 0, ink: "#ffffff" },
+  ])("rejects invalid surface pattern %j", async surfacePattern => {
+    const owner = await criarUsuario();
+    expect((await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, config: { ...config, surfacePattern } })).status).toBe(400);
+    expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs).toEqual([]);
+  });
 });

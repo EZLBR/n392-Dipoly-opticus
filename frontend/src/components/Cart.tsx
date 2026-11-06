@@ -8,7 +8,7 @@ import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, Info, AlertCircle } from 
 import ThreePreview from "./ThreePreview";
 import { fetchSimulatedCheckoutHtml, confirmSimulatedPayment } from "../utils/simulated-checkout";
 import { ProblemError } from "../api/client";
-import { hasArtwork } from "../eyewear/artwork";
+import { hasUnapprovedCustomization } from "../eyewear/artwork";
 import { normalizeConfig } from "../eyewear/config";
 
 export default function Cart({ setView }) {
@@ -19,7 +19,7 @@ export default function Cart({ setView }) {
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [simulatedCheckout, setSimulatedCheckout] = useState<{ html: string; owner: string; billingId: string } | null>(null);
-  const containsArtwork = cart.some(item => hasArtwork(normalizeConfig(item.customSpecs)));
+  const containsArtwork = cart.some(item => hasUnapprovedCustomization(normalizeConfig(item.customSpecs)));
 
   const showToast = (msg) => {
     setToastMessage(msg);

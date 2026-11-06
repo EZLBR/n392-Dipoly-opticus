@@ -77,6 +77,32 @@ describe("canonical eyewear configuration", () => {
 });
 
 describe("procedural construction", () => {
+  it("uses physical pattern coordinates along and around the temples", () => {
+    const config = normalizeConfig({ surfacePattern: { version: 1, style: "dots" } });
+    const surfaces = createMaterials();
+    surfaces.update(config);
+    const model = buildEyewear(config, surfaces.materials);
+    expect(surfaces.materials.frame.map?.channel).toBe(1);
+    model.group.traverse(object => {
+      if (object instanceof THREE.Mesh && object.material === surfaces.materials.frame) {
+        expect(object.geometry.getAttribute("uv1").count).toBe(object.geometry.getAttribute("position").count);
+      }
+    });
+    for (const temple of model.temples) {
+      const { geometry } = temple.getObjectByName("temple") as THREE.Mesh;
+      const position = geometry.getAttribute("position");
+      const uv = geometry.getAttribute("uv");
+      const pattern = geometry.getAttribute("uv1");
+      const distance = (a: number, b: number) => new THREE.Vector3().fromBufferAttribute(position, a)
+        .distanceTo(new THREE.Vector3().fromBufferAttribute(position, b));
+      expect(uv.getY(1)).toBeCloseTo(1 / 12);
+      expect(uv.getX(12)).toBeCloseTo(3 / 56);
+      expect((pattern.getX(12) - pattern.getX(0)) * 45).toBeCloseTo(distance(0, 12), 1);
+      expect((pattern.getY(1) - pattern.getY(0)) * 45).toBeCloseTo(distance(0, 1), 3);
+    }
+    model.dispose();
+    surfaces.dispose();
+  });
   for (const frontModel of silhouettes)
     it(
       frontModel +

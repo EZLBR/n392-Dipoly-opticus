@@ -2,6 +2,18 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 
 const translations = {
   en: {
+    "pattern-title": "Frame patterns",
+    "pattern-camera-note": "Approximate frontal preview · See the pattern in the 3D model.",
+    "pattern-style": "Frame pattern",
+    "pattern-none": "None",
+    "pattern-stripes": "Stripes",
+    "pattern-dots": "Dots",
+    "pattern-checker": "Checkerboard",
+    "pattern-scale": "Pattern scale",
+    "pattern-rotation": "Pattern orientation",
+    "pattern-ink": "Pattern color",
+    "pattern-preview": "Visual preview only. This pattern still requires factory approval. You can save and edit it, but purchasing is unavailable.",
+    "decoration-preview": "Artwork and patterns are visual previews awaiting factory approval. You can save and continue editing your design.",
     "nav-explore": "EXPLORE",
     "nav-studio": "STUDIO",
     "nav-import": "IMPORT",
@@ -90,6 +102,18 @@ const translations = {
     "toast-offline-checkout": "Offline Mode: Simulated order created locally."
   },
   pt: {
+    "pattern-title": "Estampas da armação",
+    "pattern-camera-note": "Prévia frontal aproximada · Veja a estampa no modelo 3D.",
+    "pattern-style": "Estampa da armação",
+    "pattern-none": "Nenhuma",
+    "pattern-stripes": "Listras",
+    "pattern-dots": "Pontos",
+    "pattern-checker": "Xadrez",
+    "pattern-scale": "Escala da estampa",
+    "pattern-rotation": "Orientação da estampa",
+    "pattern-ink": "Cor da estampa",
+    "pattern-preview": "Prévia apenas visual. Esta estampa ainda precisa de aprovação da fábrica. Você pode salvar e editar; a compra não está disponível.",
+    "decoration-preview": "Artes e estampas são prévias visuais aguardando validação da fábrica. Você pode salvar e continuar editando seu design.",
     "nav-explore": "EXPLORAR",
     "nav-studio": "ESTÚDIO",
     "nav-import": "IMPORTAR",

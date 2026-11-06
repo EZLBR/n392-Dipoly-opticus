@@ -2,9 +2,14 @@ import type { SaveDesignDTO } from "../dtos/design/design.dto.js";
 import { studioConfigSchema } from "../dtos/design/studio-config.dto.js";
 import { BadRequestProblem } from "../errors/problem.js";
 
-/** Keep legacy updates visible to modern clients without discarding their artwork. */
+/** Keep legacy updates visible to modern clients without discarding their customizations. */
 export function resolveStudioConfig(payload: SaveDesignDTO, previous: unknown) {
-  if (payload.config) return payload.config;
+  if (payload.config) {
+    if (!previous || payload.config.surfacePattern) return payload.config;
+    const existing = studioConfigSchema.safeParse(previous);
+    const surfacePattern = existing.success ? existing.data.surfacePattern : undefined;
+    return surfacePattern ? { ...payload.config, surfacePattern } : payload.config;
+  }
   if (!previous) return null;
   const existing = studioConfigSchema.safeParse(previous);
   if (!existing.success) throw new BadRequestProblem("Atualize o Studio para editar esta versão do design.");

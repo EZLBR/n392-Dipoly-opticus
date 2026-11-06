@@ -72,6 +72,7 @@ export function proportions(c: EyewearConfig) {
 }
 // Face wrap: all front components share this surface, so their joints remain aligned.
 export const frontZ = (x: number) => -0.00115 * x * x;
+const PATTERN_TILE_MM = 45;
 
 function curveTube(points: THREE.Vector3[], radius: number) {
   return new THREE.TubeGeometry(
@@ -134,9 +135,12 @@ function templeGeometry(
 ) {
   const p: number[] = [],
     uv: number[] = [],
+    patternUv: number[] = [],
     ix: number[] = [];
   const steps = 56,
     sides = 12;
+  let previousCenter = curve.getPoint(from);
+  let length = 0;
   for (let j = 0; j <= steps; j++) {
     const t = from + ((to - from) * j) / steps,
       center = curve.getPoint(t),
@@ -146,6 +150,9 @@ function templeGeometry(
       .normalize();
     const up = new THREE.Vector3().crossVectors(across, tangent).normalize();
     const taper = 1 - 0.43 * Math.sin((Math.min(1, t * 1.25) * Math.PI) / 2);
+    const ring: THREE.Vector3[] = [];
+    length += center.distanceTo(previousCenter);
+    previousCenter = center;
     for (let k = 0; k < sides; k++) {
       const a = (k * 2 * Math.PI) / sides;
       const x =
@@ -164,12 +171,23 @@ function templeGeometry(
         .addScaledVector(across, x)
         .addScaledVector(up, y);
       p.push(v.x, v.y, v.z);
+      ring.push(v);
       uv.push(t * 3, k / sides);
       if (j < steps) {
         const a0 = j * sides + k,
           b = j * sides + ((k + 1) % sides);
         ix.push(a0, b, a0 + sides, b, b + sides, a0 + sides);
       }
+    }
+    // Unwrap by distance along the arm and around each ring, with the seam underneath.
+    const seam = sides * 3 / 4;
+    let perimeter = 0;
+    for (let k = 0; k < sides; k++) {
+      const index = (k + seam) % sides;
+      if (k > 0) perimeter += ring[index].distanceTo(ring[(index - 1 + sides) % sides]);
+      const offset = (j * sides + index) * 2;
+      patternUv[offset] = length / PATTERN_TILE_MM;
+      patternUv[offset + 1] = perimeter / PATTERN_TILE_MM;
     }
   }
   for (let k = 1; k < sides - 1; k++) {
@@ -183,6 +201,7 @@ function templeGeometry(
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(p, 3));
   g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute("uv1", new THREE.Float32BufferAttribute(patternUv, 2));
   g.setIndex(ix);
   g.computeVertexNormals();
   return g;
@@ -214,6 +233,18 @@ export function buildEyewear(
     parent: THREE.Group = group,
     name: string = material,
   ) {
+    if (material === "frame" && !g.hasAttribute("uv1")) {
+      if (name === "rim") {
+        g.setAttribute("uv1", g.getAttribute("uv"));
+      } else {
+        const position = g.getAttribute("position");
+        const patternUv = new THREE.BufferAttribute(new Float32Array(position.count * 2), 2);
+        for (let i = 0; i < position.count; i++) {
+          patternUv.setXY(i, position.getX(i) / PATTERN_TILE_MM, position.getY(i) / PATTERN_TILE_MM);
+        }
+        g.setAttribute("uv1", patternUv);
+      }
+    }
     geometries.add(g);
     const mesh = new THREE.Mesh(g, mats[material]);
     mesh.name = name;
@@ -274,7 +305,7 @@ export function buildEyewear(
     const rp = rim.getAttribute("position"),
       ru = rim.getAttribute("uv");
     for (let i = 0; i < ru.count; i++)
-      ru.setXY(i, rp.getX(i) / 45 + 0.5, rp.getY(i) / 45 + 0.5);
+      ru.setXY(i, rp.getX(i) / PATTERN_TILE_MM + 0.5, rp.getY(i) / PATTERN_TILE_MM + 0.5);
     add(warp(rim, side), "frame", group, "rim");
     let contour = lensShape(
       c.frontModel,
