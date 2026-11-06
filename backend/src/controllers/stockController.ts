@@ -5,7 +5,8 @@
 
 import pool from "../config/db.js";
 import type { Request, Response } from "express";
-import { ConflictProblem, NotFoundProblem } from "../errors/problem.js";
+import { BadRequestProblem, ConflictProblem, NotFoundProblem } from "../errors/problem.js";
+import { parsePagination } from "../utils/pagination.js";
 import { LIMITE_QUANTIDADE_ESTOQUE, type UpdateStockDTO } from "../dtos/stock/stock.dto.js";
 
 // ─────────────────────────────────────────────────────────
@@ -13,9 +14,11 @@ import { LIMITE_QUANTIDADE_ESTOQUE, type UpdateStockDTO } from "../dtos/stock/st
 //   GET /api/stock
 // ─────────────────────────────────────────────────────────
 export async function getAllStock(req: Request, res: Response) {
-  const page = parseInt(String(req.query.page || "")) || 1;
-  const limit = parseInt(String(req.query.limit || "")) || 20;
-  const offset = (page - 1) * limit;
+  const pagination = parsePagination(req.query);
+  if (!pagination.isValid) {
+    throw new BadRequestProblem(pagination.error);
+  }
+  const { page, limit, offset } = pagination;
 
   const countRes = await pool.query(`SELECT COUNT(*) FROM estoque e INNER JOIN produtos p ON p.id = e.produto_id WHERE p.ativo = TRUE`);
   const totalCount = parseInt(countRes.rows[0].count);
