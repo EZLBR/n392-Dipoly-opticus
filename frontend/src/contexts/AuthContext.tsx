@@ -16,6 +16,7 @@ export function AuthProvider({ children }) {
   const [designs, setDesigns] = useState([]);
   const [users, setUsers] = useState([]);
   const [session, setSession] = useState(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
   const [authWarning, setAuthWarning] = useState<string | null>(null);
   const [studioOwner, setStudioOwner] = useState<string | undefined>();
@@ -123,7 +124,7 @@ export function AuthProvider({ children }) {
       changeStudioOwner(ANONYMOUS_STUDIO_OWNER);
     }
 
-    initSession();
+    void initSession().finally(() => setSessionLoading(false));
   }, []);
 
   useEffect(() => {
@@ -293,6 +294,8 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       session,
+      sessionLoading,
+      sessionToken: authTokenRef.current,
       studioOwner,
       studioSessionChanged,
       setSession,
