@@ -93,7 +93,8 @@ export function AuthProvider({ children }) {
     try {
       const data = await apiClient.get<any>("/designs", comToken(token));
       if (owner === ownerRef.current && isCurrentStudioSession() && token === authTokenRef.current) {
-        const merged = mergeSavedDesigns(data.designs || data, readJSON(localStorage, "opticus_designs", []));
+        const remote = (data.designs || data).map(design => ({ ...design, remoteId: String(design.id) }));
+        const merged = mergeSavedDesigns(remote, readJSON(localStorage, "opticus_designs", []));
         setDesigns(merged);
         localStorage.setItem("opticus_designs", JSON.stringify(merged));
       }
@@ -179,13 +180,20 @@ export function AuthProvider({ children }) {
     }
     let finalId = designData.id || `design-${Date.now()}`;
     let syncStatus = "local";
-    if (isBackendConnected && token) {
+    if (token) {
       try {
         const data = await apiClient.post<any>("/designs", { ...designData, id: finalId }, comToken(token));
-        finalId = data.id || data.design?.id || finalId;
+        const remoteId = data?.id ?? data?.design?.id;
+        if (typeof remoteId !== "string" || !remoteId.trim()) {
+          throw new Error("Resposta inválida ao salvar o design. Não foi possível confirmar o salvamento.");
+        }
+        finalId = remoteId;
         syncStatus = "synced";
       } catch (e) {
-        console.error("Backend design save failed, shifting to local cache:", e);
+        // A server rejection (including 5xx) is never an offline draft.
+        // Only fetch's transport failure permits the explicitly unsynced copy.
+        if (!(e instanceof TypeError)) throw e;
+        console.warn("Sem conexão com o servidor; o design ficará apenas neste dispositivo.");
       }
     }
 
@@ -200,6 +208,7 @@ export function AuthProvider({ children }) {
       ...designData,
       id: finalId,
       syncStatus,
+      ...(syncStatus === "synced" ? { remoteId: finalId } : {}),
       createdAt: previousDesign.createdAt || previousDesign.created_at || designData.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -211,15 +220,41 @@ export function AuthProvider({ children }) {
     return newDesign;
   };
 
-  const deleteBackendDesign = async (designId) => {
-    const token = localStorage.getItem("opticus_token");
-    if (isBackendConnected && token) {
-      try {
-        await apiClient.delete(`/designs/${designId}`, comToken(token));
-        fetchBackendDesigns(token);
-      } catch (e) {
-        console.error("Failed to delete backend design:", e);
+  const deleteDesign = async (designId) => {
+    const token = authTokenRef.current;
+    const owner = ownerRef.current;
+    const checkSession = () => {
+      if (!owner || owner !== ownerRef.current || token !== authTokenRef.current || !isCurrentStudioSession()) {
+        throw new Error("A sessão mudou durante a exclusão. Atualize a página.");
       }
+    };
+    checkSession();
+    const cached = readJSON(localStorage, "opticus_designs", []);
+    const originalIndex = cached.findIndex(item => String(item.id) === String(designId));
+    const design = cached[originalIndex];
+    if (!design) throw new Error("Design não encontrado neste dispositivo. Atualize a página.");
+    // Offline edits keep their proven remote identity; only never-synced drafts are local-only.
+    if (design.remoteId || design.syncStatus !== "local") {
+      if (!token) throw new Error("Entre na sua conta novamente para excluir o design.");
+      await apiClient.delete(`/designs/${designId}`, comToken(token));
+      checkSession();
+      await fetchBackendDesigns(token);
+      checkSession();
+    }
+    // Reread after awaits: do not overwrite newer edits from the same account.
+    const next = readJSON(localStorage, "opticus_designs", []).filter(item => String(item.id) !== String(designId));
+    localStorage.setItem("opticus_designs", JSON.stringify(next));
+    setDesigns(next);
+    const activeId = localStorage.getItem("opticus_active_design_id");
+    const activeIndex = localStorage.getItem("opticus_active_design");
+    if (activeId === String(designId) || (!activeId && activeIndex !== null && Number(activeIndex) === originalIndex)) {
+      localStorage.removeItem("opticus_active_design");
+      localStorage.removeItem("opticus_active_design_id");
+    } else if (activeId) {
+      const index = next.findIndex(item => String(item.id) === activeId);
+      if (index >= 0) localStorage.setItem("opticus_active_design", String(index));
+    } else if (activeIndex !== null && Number(activeIndex) > originalIndex) {
+      localStorage.setItem("opticus_active_design", String(Number(activeIndex) - 1));
     }
   };
 
@@ -271,7 +306,8 @@ export function AuthProvider({ children }) {
       signup,
       logout,
       saveDesign,
-      deleteBackendDesign,
+      deleteDesign,
+      deleteBackendDesign: deleteDesign,
       updateUser,
       deleteUser
     }}>

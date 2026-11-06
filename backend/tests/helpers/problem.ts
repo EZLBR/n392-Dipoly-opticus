@@ -38,16 +38,11 @@ export function esperarProblema(res: RespostaHttp, status: number, slug: SlugDeP
 /**
  * Parte semântica do problema, sem os campos de correlação.
  *
- * `instance`, `timestamp` e `traceId` mudam a cada requisição por
- * definição. Para provar que dois casos são indistinguíveis — recurso
- * inexistente e recurso de outra pessoa — compara-se só o que o
- * cliente poderia usar como oráculo.
+ * Apenas `instance`, `timestamp` e `traceId` variam por requisição.
+ * Todos os demais campos, inclusive `error` e extensões futuras, devem
+ * ser iguais para não revelar a existência de um recurso fora do escopo.
  */
 export function semanticaDoProblema(body: Record<string, unknown>) {
-  return {
-    type: body["type"],
-    title: body["title"],
-    status: body["status"],
-    detail: body["detail"],
-  };
+  const { instance, timestamp, traceId, ...semCorrelacao } = body;
+  return semCorrelacao;
 }

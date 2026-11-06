@@ -41,7 +41,7 @@ function mockApi(designsForA?: Promise<Response>) {
       return json({ success: true, token: `token-${id}`, user: { id, email, name: id, role: "client" } });
     }
     if (String(url).endsWith("/designs")) {
-      if (options?.method === "POST") throw new Error("Offline");
+      if (options?.method === "POST") throw new TypeError("Failed to fetch");
       if (new Headers(options?.headers).get("Authorization") === "Bearer token-A" && designsForA) return designsForA;
       return json({ success: true, designs: [] });
     }

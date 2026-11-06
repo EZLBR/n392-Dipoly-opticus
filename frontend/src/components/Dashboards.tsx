@@ -121,25 +121,28 @@ const OrderDetailsModal = ({ order, onClose }) => {
 
 export function FactoryDashboard() {
   const { session } = useAuth();
-  const { orders, fetchBackendOrders, updateOrderStatus } = useOrder();
+  const { orders, updateOrderStatus } = useOrder();
   const { t } = useTranslation();
-
-  if (!session || session.role !== "factory") {
-    return <p>Access denied.</p>;
-  }
 
   const [timeRange, setTimeRange] = useState("total");
   const [currency, setCurrency] = useState("USD");
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
+  const [orderError, setOrderError] = useState("");
+
+  if (!session || session.role !== "factory") {
+    return <p>Access denied.</p>;
+  }
 
   const { rate, symbol } = CURRENCY_RATES[currency] || CURRENCY_RATES.USD;
 
   const allFactoryOrders = orders.filter((o) => String(o.factoryId) === String(session.id));
   const factoryOrders = filterOrdersByTime(allFactoryOrders, timeRange);
 
-  const handleStatusChange = (orderId, newStatus) => {
-    updateOrderStatus(orderId, newStatus);
+  const handleStatusChange = async (orderId, newStatus) => {
+    setOrderError("");
+    const result = await updateOrderStatus(orderId, newStatus);
+    if (!result.ok) setOrderError(result.error);
   };
 
   const handleContextMenu = (e, order) => {
@@ -177,6 +180,7 @@ export function FactoryDashboard() {
 
   return (
     <div className="factory-dashboard-container" style={{ padding: "40px 20px", maxWidth: "1200px", margin: "0 auto" }}>
+      {orderError && <p role="alert">{orderError}</p>}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginBottom: "10px" }}>
         <select value={timeRange} onChange={(e) => setTimeRange(e.target.value)} className="premium-select" style={{ padding: "8px 12px", borderRadius: "6px" }}>
           <option value="total">Período: Total</option>
@@ -354,21 +358,24 @@ export function StaffDashboard() {
   const { session, users } = useAuth();
   const { orders: allStaffOrders, updateOrderStatus } = useOrder();
 
-  if (!session || session.role !== "staff") {
-    return <p>Access denied.</p>;
-  }
-
   const [timeRange, setTimeRange] = useState("total");
   const [currency, setCurrency] = useState("USD");
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
+  const [orderError, setOrderError] = useState("");
+
+  if (!session || session.role !== "staff") {
+    return <p>Access denied.</p>;
+  }
 
   const { rate, symbol } = CURRENCY_RATES[currency] || CURRENCY_RATES.USD;
 
   const orders = filterOrdersByTime(allStaffOrders, timeRange);
 
-  const handleStatusChange = (orderId, newStatus) => {
-    updateOrderStatus(orderId, newStatus);
+  const handleStatusChange = async (orderId, newStatus) => {
+    setOrderError("");
+    const result = await updateOrderStatus(orderId, newStatus);
+    if (!result.ok) setOrderError(result.error);
   };
 
   const handleContextMenu = (e, order) => {
@@ -406,6 +413,7 @@ export function StaffDashboard() {
 
   return (
     <div className="staff-dashboard-container" style={{ padding: "40px 20px", maxWidth: "1200px", margin: "0 auto" }}>
+      {orderError && <p role="alert">{orderError}</p>}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginBottom: "10px" }}>
         <select value={timeRange} onChange={(e) => setTimeRange(e.target.value)} className="premium-select" style={{ padding: "8px 12px", borderRadius: "6px" }}>
           <option value="total">Período: Total</option>
