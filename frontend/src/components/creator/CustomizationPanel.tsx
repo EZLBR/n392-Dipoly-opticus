@@ -101,7 +101,7 @@ export default function CustomizationPanel({
                 pt
                   ? "Personalize cada ponto de contato."
                   : "Personalize every point of contact.",
-                pt ? "Escreva na armação e veja sua ideia tomar forma." : "Write on the frame and see your idea take shape.",
+                t("artwork-step-intro"),
                 pt
                   ? "Confira sua criação antes de continuar."
                   : "Check your creation before continuing.",

@@ -40,3 +40,13 @@ describe("versioned Studio artwork", () => {
     expect(result[0].syncStatus).toBe("local");
   });
 });
+it("restores normalized freehand strokes without accepting lenses or invalid coordinates", () => {
+  const stroke = { color: "#55aa00", width: 5, points: [[0, 0], [1000, 1000]] };
+  const layer = { id: "drawing", kind: "drawing", zone: "front-left", strokes: [stroke] };
+  const config = normalizeConfig({ artwork: { version: 2, layers: [
+    { ...layer, strokes: [stroke, { ...stroke, points: [[1001, 0]] }] },
+    { ...layer, id: "lens", zone: "lens-left" },
+  ] } });
+  expect(config.artwork).toEqual({ version: 2, layers: [layer] });
+  expect(normalizeConfig(JSON.parse(JSON.stringify(config))).artwork).toEqual(config.artwork);
+});
