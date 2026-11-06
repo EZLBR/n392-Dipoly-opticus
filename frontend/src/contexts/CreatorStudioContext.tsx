@@ -8,6 +8,7 @@ import React, {
 import { normalizeConfig, type EyewearConfig } from "../eyewear/config";
 import { restoreStudio, STUDIO_OWNER_KEY } from "../eyewear/storage";
 import { useAuth } from "./AuthContext";
+import { translate } from "./LanguageContext";
 import type { CameraView } from "../eyewear/EyewearViewer";
 
 function useStudioState(owner: string) {
@@ -100,10 +101,10 @@ export function CreatorStudioProvider({
 }) {
   const { studioOwner, studioSessionChanged } = useAuth();
   if (studioSessionChanged) return <div className="page-wrapper" role="alert">
-    <p>A sessão mudou em outra aba. Atualize a página para continuar.</p>
-    <button className="btn" onClick={() => window.location.reload()}>Atualizar página</button>
+    <p>{translate("studio-session-changed")}</p>
+    <button className="btn" onClick={() => window.location.reload()}>{translate("studio-refresh")}</button>
   </div>;
-  if (!studioOwner) return <p role="status">Carregando Studio…</p>;
+  if (!studioOwner) return <p role="status">{translate("studio-loading")}</p>;
   return <StudioWorkspace key={studioOwner} owner={studioOwner}>{children}</StudioWorkspace>;
 }
 function StudioWorkspace({ children, owner }: { children: React.ReactNode; owner: string }) {

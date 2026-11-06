@@ -272,6 +272,29 @@ export async function handleWebhook(req: Request, res: Response) {
 //   PÁGINA DE CHECKOUT SIMULADO (visual Pix)
 //   GET /api/payments/simulated-checkout
 // ─────────────────────────────────────────────────────────
+const simulatedCheckoutCopy = {
+  pt: {
+    language: "pt-BR",
+    title: "Simulador AbacatePay | Opticus",
+    simulator: "SIMULADOR",
+    hint: "Confirme o pagamento simulado pela loja.",
+    items: "Itens",
+    billing: "Cobrança",
+    customer: "Cliente",
+    error: "Falha ao carregar checkout.",
+  },
+  en: {
+    language: "en",
+    title: "AbacatePay Simulator | Opticus",
+    simulator: "SIMULATOR",
+    hint: "Confirm the simulated payment in the store.",
+    items: "Items",
+    billing: "Billing",
+    customer: "Customer",
+    error: "Couldn't load checkout.",
+  },
+};
+
 export async function getSimulatedCheckoutPage(req: Request, res: Response) {
   const { billingId } = req.query;
   res.set("Cache-Control", "private, no-store");
@@ -290,17 +313,20 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
     throw new NotFoundProblem("Nenhum pedido encontrado para essa cobrança.");
   }
 
+  const copy = req.acceptsLanguages("pt", "en") === "en" ? simulatedCheckoutCopy.en : simulatedCheckoutCopy.pt;
+  res.vary("Accept-Language");
   try {
 
     const totalAmount    = orders.reduce((sum, o) => sum + Number(o.total), 0);
     const customerName   = orders[0].customer_name;
     const customerEmail  = orders[0].customer_email;
+    const money = new Intl.NumberFormat(copy.language, { style: "currency", currency: "BRL" });
 
     const html = `<!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="${copy.language}">
 <head>
   <meta charset="UTF-8">
-  <title>AbacatePay Simulator | Opticus</title>
+  <title>${copy.title}</title>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
   <style>
     :root { --bg:#0d1117; --card:rgba(22,27,34,.7); --border:rgba(240,246,252,.1); --green:#22c55e; --text:#f0f6fc; --gray:#8b949e; }
@@ -320,31 +346,31 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
 </head>
 <body>
   <div class="box">
-    <div class="logo">ABACATEPAY <span style="font-weight:300;color:#22c55e">SIMULATOR</span></div>
+    <div class="logo">ABACATEPAY <span style="font-weight:300;color:#22c55e">${copy.simulator}</span></div>
     <h2 style="margin:0 0 5px">Opticus Eyewear</h2>
-    <div class="amount">R$ ${Number(totalAmount).toFixed(2)}</div>
+    <div class="amount">${money.format(totalAmount)}</div>
     <div class="qr-box"><div class="qr"></div></div>
-    <p class="hint">Aponte o celular para o QR Code ou confirme o pagamento simulado pela loja.</p>
+    <p class="hint">${copy.hint}</p>
     <div class="order-details">
-      <h4 style="margin:0 0 10px;font-size:13px;text-transform:uppercase;color:#22c55e">Itens:</h4>
+      <h4 style="margin:0 0 10px;font-size:13px;text-transform:uppercase;color:#22c55e">${copy.items}:</h4>
       ${orders.map(o => `
         <div class="detail-row">
           <span>${escapeHTML(o.product_name)}:</span>
-          <strong>R$ ${Number(o.total).toFixed(2)}</strong>
+          <strong>${money.format(Number(o.total))}</strong>
         </div>
       `).join("")}
-      <div class="detail-row"><span>Cobrança:</span><strong style="font-size:11px;color:#8b949e">${escapeHTML(billingId)}</strong></div>
-      <div class="detail-row"><span>Cliente:</span><strong>${escapeHTML(customerName)} (${escapeHTML(customerEmail)})</strong></div>
+      <div class="detail-row"><span>${copy.billing}:</span><strong style="font-size:11px;color:#8b949e">${escapeHTML(billingId)}</strong></div>
+      <div class="detail-row"><span>${copy.customer}:</span><strong>${escapeHTML(customerName)} (${escapeHTML(customerEmail)})</strong></div>
     </div>
   </div>
 </body>
 </html>`;
 
-    return res.send(html);
+    return res.set("Content-Language", copy.language).send(html);
 
   } catch (err) {
     logger.error({ err, traceId: req.requestId, requestId: req.requestId }, "Erro no checkout simulado");
-    return res.status(500).send("<h3>Falha ao carregar checkout.</h3>");
+    return res.status(500).set("Content-Language", copy.language).send(`<h3>${copy.error}</h3>`);
   }
 }
 

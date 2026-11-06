@@ -6,6 +6,7 @@ import { geometryKey, type EyewearConfig } from "./config";
 import { buildEyewear, type EyewearModel } from "./geometry";
 import { createMaterials } from "./materials";
 import { createArtworkRenderer } from "./artwork-renderer";
+import { translate } from "../contexts/LanguageContext";
 
 export type CameraView = "perspective" | "front" | "side" | "left-side";
 interface Props {
@@ -25,6 +26,7 @@ export default function EyewearViewer({
   view = "perspective",
   language = "pt",
 }: Props) {
+  const t = (key: string) => translate(key, language === "pt" ? "pt" : "en");
   const host = useRef<HTMLDivElement>(null),
     live = useRef({ config, environment, autoRotate });
   live.current = { config, environment, autoRotate };
@@ -269,9 +271,7 @@ export default function EyewearViewer({
           }
         }}
         aria-label={
-          language === "pt"
-            ? "Modelo 3D do óculos personalizado. Use setas para girar, mais e menos para zoom."
-            : "3D model of your customized eyewear. Use arrows to orbit, plus and minus to zoom."
+          t("viewer-3d-model-of-your-customized-eyewear")
         }
         style={{ width: "100%", height: "100%" }}
       />
@@ -288,21 +288,13 @@ export default function EyewearViewer({
             padding: 24,
           }}
         >
-          {status === "loading" ? (
-            language === "pt" ? (
-              "Preparando seu óculos…"
-            ) : (
-              "Preparing your eyewear…"
-            )
-          ) : (
+          {status === "loading" ? t("viewer-loading") : (
             <>
               <p>
-                {language === "pt"
-                  ? "Não foi possível iniciar o 3D. Verifique se a aceleração gráfica está habilitada."
-                  : "Unable to start 3D. Check that hardware acceleration is enabled."}
+                {t("viewer-unable-to-start-3d-check-that")}
               </p>
               <button onClick={() => setAttempt((n) => n + 1)}>
-                {language === "pt" ? "Tentar novamente" : "Try again"}
+                {t("try-on-try-again")}
               </button>
             </>
           )}

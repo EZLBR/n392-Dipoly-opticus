@@ -59,7 +59,13 @@ describe("server rejection is not local success (#34)", () => {
     await act(async () => { response = await result.current.order.updateOrderStatus("order-a", "Delivered"); });
     expect(result.current.order.orders).toEqual([order]);
     expect(localStorage.getItem("opticus_orders")).toBe(cached);
-    expect(response).toMatchObject({ ok: false, error: "Você não pode alterar este recurso." });
+    const localized = {
+      401: "Entre na sua conta e tente novamente.",
+      403: "Você não tem permissão para esta ação.",
+      422: "Revise os campos e tente novamente.",
+      500: "O servidor não conseguiu concluir a solicitação. Tente novamente.",
+    };
+    expect(response).toMatchObject({ ok: false, error: localized[status] });
   });
 
   it("does not simulate an order mutation during a transport failure", async () => {
@@ -189,9 +195,9 @@ describe("server rejection is not local success (#34)", () => {
       render(<Providers><Component /></Providers>);
       const row = (await screen.findByText("Frame A")).closest("tr")!;
       fireEvent.contextMenu(row);
-      fireEvent.click(screen.getByRole("button", { name: "Delivered" }));
-      expect(await screen.findByRole("alert")).toHaveTextContent("Você não pode alterar este recurso.");
-      expect(row).toHaveTextContent("Queued");
+      fireEvent.click(screen.getByRole("button", { name: "Entregue" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Você não tem permissão para esta ação.");
+      expect(row).toHaveTextContent("Na fila");
     });
 
   it("keeps the save modal open and shows the server rejection", async () => {
@@ -204,7 +210,7 @@ describe("server rejection is not local success (#34)", () => {
     const input = await screen.findByLabelText("Nome do design");
     fireEvent.change(input, { target: { value: "Rejected design" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar design" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Você não pode alterar este recurso.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Você não tem permissão para esta ação.");
     expect(closed).not.toHaveBeenCalled();
     expect(document.querySelector("dialog")).toHaveAttribute("open");
   });
@@ -215,8 +221,8 @@ describe("server rejection is not local success (#34)", () => {
     await screen.findByText("Original design");
     localStorage.setItem("opticus_active_design", "0");
     localStorage.setItem("opticus_active_design_id", "design-a");
-    fireEvent.click(screen.getByTitle("Delete Design"));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Você não pode alterar este recurso.");
+    fireEvent.click(screen.getByTitle("Excluir design"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Você não tem permissão para esta ação.");
     expect(localStorage.getItem("opticus_active_design_id")).toBe("design-a");
     expect(screen.getByText("Original design")).toBeInTheDocument();
   });

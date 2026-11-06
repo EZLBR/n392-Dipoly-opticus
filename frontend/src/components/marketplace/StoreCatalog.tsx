@@ -8,8 +8,10 @@ import {
   X,
 } from "lucide-react";
 import { fetchStorePage, type StorePage, type StoreProduct } from "./catalog";
+import { translate } from "../../contexts/LanguageContext";
 
 function ProductImage({ product, pt }: { product: StoreProduct; pt: boolean }) {
+  const t = (key: string) => translate(key, pt ? "pt" : "en");
   const [failed, setFailed] = useState(false);
   return product.image && !failed ? (
     <img
@@ -24,12 +26,13 @@ function ProductImage({ product, pt }: { product: StoreProduct; pt: boolean }) {
   ) : (
     <div className="market-image-placeholder">
       <Glasses size={44} strokeWidth={1} />
-      <span>{pt ? "Imagem indisponível" : "Image unavailable"}</span>
+      <span>{t("store-image-unavailable")}</span>
     </div>
   );
 }
 
 export default function StoreCatalog({ pt }: { pt: boolean }) {
+  const t = (key: string) => translate(key, pt ? "pt" : "en");
   const [search, setSearch] = useState("");
   const [request, setRequest] = useState({ page: 1, query: "", revision: 0 });
   const [data, setData] = useState<StorePage>({
@@ -76,9 +79,7 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
   return (
     <div className="market-store">
       <p className="market-catalog-intro">
-        {pt
-          ? "Produtos cadastrados pela loja. Para criar sua própria armação, explore os modelos do Studio."
-          : "Products listed by the store. To create your own frame, explore the Studio models."}
+        {t("store-products-listed-by-the-store-to")}
       </p>
       <form
         className="market-toolbar"
@@ -94,28 +95,26 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
         <label className="market-search">
           <Search size={17} />
           <span className="market-sr-only">
-            {pt ? "Buscar no catálogo da loja" : "Search the store catalog"}
+            {t("store-search-the-store-catalog")}
           </span>
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={
-              pt
-                ? "Buscar por nome ou descrição..."
-                : "Search by name or description..."
+              t("store-search-by-name-or-description")
             }
           />
         </label>
         <button className="market-button secondary" type="submit">
-          {pt ? "Buscar" : "Search"}
+          {t("store-search")}
           <ArrowRight size={16} />
         </button>
       </form>
       {status === "loading" && (
         <div role="status" className="market-loading">
           <p>
-            {pt ? "Carregando catálogo da loja..." : "Loading store catalog..."}
+            {t("store-loading-store-catalog")}
           </p>
           <div className="market-grid" aria-hidden="true">
             {[0, 1, 2, 3].map((i) => (
@@ -128,14 +127,10 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
         <div className="market-state" role="alert">
           <Glasses size={30} />
           <h3>
-            {pt
-              ? "Não foi possível carregar o catálogo"
-              : "The catalog could not be loaded"}
+            {t("store-the-catalog-could-not-be-loaded")}
           </h3>
           <p>
-            {pt
-              ? "Tente novamente. Os modelos do Studio continuam disponíveis na outra aba."
-              : "Please try again. Studio models are still available in the other tab."}
+            {t("store-please-try-again-studio-models-are")}
           </p>
           <button
             className="market-button secondary"
@@ -144,35 +139,27 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
             }
           >
             <RotateCw size={15} />
-            {pt ? "Tentar novamente" : "Try again"}
+            {t("try-on-try-again")}
           </button>
         </div>
       )}
       {status === "ready" && (
         <>
           <p className="market-store-count" role="status">
-            {data.total} {pt ? "produtos encontrados" : "products found"}
+            {data.total} {t("store-products-found")}
           </p>
           {data.products.length === 0 ? (
             <div className="market-state">
               <Glasses size={30} />
               <h3>
                 {request.query
-                  ? pt
-                    ? "Nenhum produto encontrado"
-                    : "No products found"
-                  : pt
-                    ? "A coleção está chegando"
-                    : "The collection is on its way"}
+                  ? t("store-no-products-found")
+                  : t("store-the-collection-is-on-its-way")}
               </h3>
               <p>
                 {request.query
-                  ? pt
-                    ? "Tente buscar por outro nome ou descrição."
-                    : "Try another name or description."
-                  : pt
-                    ? "A loja ainda não publicou produtos. Você já pode explorar os modelos do Studio."
-                    : "The store has not published products yet. You can already explore the Studio models."}
+                  ? t("store-try-another-name-or-description")
+                  : t("store-the-store-has-not-published-products")}
               </p>
               {request.query && (
                 <button
@@ -186,7 +173,7 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
                     });
                   }}
                 >
-                  {pt ? "Limpar busca" : "Clear search"}
+                  {t("store-clear-search")}
                 </button>
               )}
             </div>
@@ -204,7 +191,7 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
                   <div className="market-card-info">
                     <p>
                       {product.category ||
-                        (pt ? "Coleção da loja" : "Store collection")}
+                        (t("store-store-collection"))}
                     </p>
                     <div>
                       <h3>{product.name}</h3>
@@ -212,10 +199,10 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
                     </div>
                     <button
                       className="market-text-link"
-                      aria-label={`${pt ? "Ver detalhes" : "View details"} ${product.name}`}
+                      aria-label={`${t("store-view-details")} ${product.name}`}
                       onClick={() => setSelected(product)}
                     >
-                      {pt ? "Ver detalhes" : "View details"}
+                      {t("store-view-details")}
                       <ArrowRight size={15} />
                       <span className="market-sr-only"> {product.name}</span>
                     </button>
@@ -227,7 +214,7 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
           {data.totalPages > 1 && (
             <nav
               className="market-pagination"
-              aria-label={pt ? "Paginação do catálogo" : "Catalog pagination"}
+              aria-label={t("store-catalog-pagination")}
             >
               <button
                 className="market-button secondary"
@@ -237,10 +224,10 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
                 }
               >
                 <ArrowLeft size={15} />
-                {pt ? "Anterior" : "Previous"}
+                {t("store-previous")}
               </button>
               <span>
-                {pt ? "Página" : "Page"} {request.page} / {data.totalPages}
+                {t("store-page")} {request.page} / {data.totalPages}
               </span>
               <button
                 className="market-button secondary"
@@ -249,15 +236,13 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
                   setRequest({ ...request, page: request.page + 1 })
                 }
               >
-                {pt ? "Próxima" : "Next"}
+                {t("store-next")}
                 <ArrowRight size={15} />
               </button>
             </nav>
           )}
           <p className="market-price-note">
-            {pt
-              ? "Valores em dólares (USD), conforme o catálogo da loja."
-              : "Prices in US dollars (USD), as listed by the store."}
+            {t("store-prices-in-us-dollars-usd-as")}
           </p>
         </>
       )}
@@ -273,7 +258,7 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
             autoFocus
             className="market-dialog-close"
             onClick={() => dialog.current?.close()}
-            aria-label={pt ? "Fechar detalhes" : "Close details"}
+            aria-label={t("store-close-details")}
           >
             <X size={20} />
           </button>
@@ -285,19 +270,13 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
           <p className="market-detail-price">{money(selected.price)}</p>
           <p>
             {selected.description ||
-              (pt
-                ? "A loja ainda não adicionou uma descrição para este produto."
-                : "The store has not added a description for this product yet.")}
+              (t("store-the-store-has-not-added-a"))}
           </p>
           {Number.isFinite(selected.stock) && (
             <p>
               {selected.stock! > 0
-                ? pt
-                  ? "Em estoque"
-                  : "In stock"
-                : pt
-                  ? "Indisponível no momento"
-                  : "Currently unavailable"}
+                ? t("store-in-stock")
+                : t("store-currently-unavailable")}
             </p>
           )}
         </dialog>

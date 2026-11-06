@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
-import { useTranslation } from "../contexts/LanguageContext";
+import { localizeProblem, useTranslation } from "../contexts/LanguageContext";
 import { Sparkles, Trash2, Edit, ShoppingCart } from "lucide-react";
 import * as THREE from "three";
 import { calculateBasePrice } from "../utils/pricing";
@@ -32,9 +32,8 @@ export default function DesignsGallery({ setView }) {
     try {
       await deleteDesign(design.id);
     } catch (error) {
-      setDeleteError(error instanceof ProblemError ? error.detail || error.title || error.message
-        : language === "pt" ? "Não foi possível excluir o design. Verifique sua conexão e tente novamente."
-          : "Unable to delete the design. Check your connection and try again.");
+      setDeleteError(error instanceof ProblemError ? localizeProblem(error.problem, language)
+        : t("designs-unable-to-delete-the-design-check"));
     }
   };
 
@@ -45,7 +44,7 @@ export default function DesignsGallery({ setView }) {
 
     const cartItem = {
       id: design.id || `design-${Date.now()}`,
-      productName: design.name || "Custom Design",
+      productName: design.name || t("designs-custom"),
       factoryId: "factory-demo",
       factoryName: "Demo Factory",
       total: price,
@@ -61,16 +60,16 @@ export default function DesignsGallery({ setView }) {
     };
 
     addToCart(cartItem);
-    alert(t("cart-item-added") || "Added to cart!");
+    alert(t("cart-item-added"));
   };
 
   if (!session && visibleDesigns.length === 0) {
     return (
       <div className="page-wrapper" style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "80vh" }}>
         <div className="empty-state" style={{ textAlign: "center" }}>
-          <h2>Authentication Required</h2>
-          <p>Please log in to view your saved designs.</p>
-          <button className="btn primary" onClick={() => setView("login")} style={{ marginTop: "20px" }}>Log In</button>
+          <h2>{t("designs-auth-title")}</h2>
+          <p>{t("designs-auth-intro")}</p>
+          <button className="btn primary" onClick={() => setView("login")} style={{ marginTop: "20px" }}>{t("designs-sign-in")}</button>
         </div>
       </div>
     );
@@ -82,13 +81,13 @@ export default function DesignsGallery({ setView }) {
         {deleteError && <p role="alert">{deleteError}</p>}
         <section className="hero hero-marketplace" style={{ minHeight: "30vh", paddingBottom: "40px" }}>
           <div className="hero-copy">
-            <span className="eyebrow">My Collection</span>
-            <h1>YOUR DESIGNS</h1>
-            <p>Access, edit, and order the custom eyewear you have crafted in the Opticus Studio.</p>
+            <span className="eyebrow">{t("designs-collection")}</span>
+            <h1>{t("designs-title")}</h1>
+            <p>{t("designs-intro")}</p>
             <div className="hero-actions">
               <button className="btn primary hero-btn" onClick={() => { localStorage.removeItem("opticus_active_design"); localStorage.removeItem("opticus_active_design_id"); localStorage.removeItem("opticus_active_product"); localStorage.removeItem("opticus_creator_draft"); setView("create"); }}>
                 <Sparkles size={16} style={{ marginRight: "6px", verticalAlign: "middle" }} />
-                CREATE NEW
+                {t("designs-create")}
               </button>
             </div>
           </div>
@@ -97,8 +96,8 @@ export default function DesignsGallery({ setView }) {
         <section className="products" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "30px", marginTop: "40px" }}>
           {(visibleDesigns.length === 0) ? (
             <div className="empty-state" style={{ gridColumn: "1/-1", textAlign: "center", padding: "100px 0", background: "rgba(255,255,255,0.02)", borderRadius: "12px", border: "1px dashed rgba(255,255,255,0.1)" }}>
-              <h3 style={{ marginBottom: "10px" }}>No designs saved yet</h3>
-              <p style={{ color: "var(--color-hint)" }}>Open the Studio to start crafting your perfect frame.</p>
+              <h3 style={{ marginBottom: "10px" }}>{t("designs-empty")}</h3>
+              <p style={{ color: "var(--color-hint)" }}>{t("designs-empty-intro")}</p>
             </div>
           ) : (
             visibleDesigns.map((design) => {
@@ -111,13 +110,13 @@ export default function DesignsGallery({ setView }) {
               return (
                 <article key={design.id || index} className="product-card" style={{ display: "flex", flexDirection: "column" }}>
                   <div className="product-badge" style={{ left: "12px", right: "auto", background: "var(--primary-accent)", color: "#fff" }}>
-                    {design.published ? "Published" : "Private"}
+                    {t(design.published ? "designs-published" : "designs-private")}
                   </div>
 
                   <button
                     onClick={() => handleDelete(index)}
                     style={{ position: "absolute", top: "12px", right: "12px", background: "rgba(255,0,0,0.2)", color: "#ff4444", border: "none", borderRadius: "50%", width: "32px", height: "32px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 10 }}
-                    title="Delete Design"
+                    title={t("designs-delete")}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -126,22 +125,22 @@ export default function DesignsGallery({ setView }) {
 
                   <div className="product-meta" style={{ padding: "20px", flex: 1, display: "flex", flexDirection: "column" }}>
                     <div className="product-topline" style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", textTransform: "uppercase", color: "var(--color-hint)", marginBottom: "8px" }}>
-                      <span>{dateObj.toLocaleDateString()}</span>
+                      <span>{dateObj.toLocaleDateString(language === "pt" ? "pt-BR" : "en-US")}</span>
                       <span>{shape} / {material}</span>
                     </div>
 
-                    <h3 style={{ fontSize: "18px", margin: "0 0 16px 0" }}>{design.name || `Custom Design #${index + 1}`}</h3>
-                    {design.syncStatus === "local" && <p style={{ fontSize: 12 }}>{language === "pt" ? "Salvo neste dispositivo • não sincronizado" : "Saved on this device • not synced"}</p>}
+                    <h3 style={{ fontSize: "18px", margin: "0 0 16px 0" }}>{design.name || `${t("designs-custom")} #${index + 1}`}</h3>
+                    {design.syncStatus === "local" && <p style={{ fontSize: 12 }}>{t("designs-saved-on-this-device-not-synced")}</p>}
 
                     <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "10px" }}>
                       <button className="btn" style={{ width: "100%", justifyContent: "center" }} onClick={() => handleOpenDesign(index)}>
-                        <Edit size={14} style={{ marginRight: "6px" }} /> EDIT IN STUDIO
+                        <Edit size={14} style={{ marginRight: "6px" }} /> {t("designs-edit")}
                       </button>
                       {hasArtwork(config) && <p style={{ fontSize: 12 }}>
-                        {language === "pt" ? "Compra com arte em validação pela fábrica. Você pode continuar editando." : "Artwork purchasing awaits factory approval. You can keep editing."}
+                        {t("designs-artwork-purchasing-awaits-factory-approval-you")}
                       </p>}
                       <button className="btn primary" disabled={hasArtwork(config)} style={{ width: "100%", justifyContent: "center" }} onClick={() => handleAddToCart(design)}>
-                        <ShoppingCart size={14} style={{ marginRight: "6px" }} /> ADD TO CART
+                        <ShoppingCart size={14} style={{ marginRight: "6px" }} /> {t("designs-add-cart")}
                       </button>
                     </div>
                   </div>

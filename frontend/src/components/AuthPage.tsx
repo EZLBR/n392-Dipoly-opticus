@@ -42,11 +42,11 @@ export default function AuthPage({ setView }) {
         else if (result.role === "factory") setView("factory-dashboard");
         else if (result.role === "staff") setView("staff-dashboard");
       } else {
-        setLoginError(result.message || "Invalid credentials.");
+        setLoginError(result.message || t("auth-login-invalid"));
       }
     } catch (err) {
       setLoginLoading(false);
-      setLoginError("An unexpected error occurred.");
+      setLoginError(t("auth-login-unexpected"));
     }
   };
 
@@ -56,12 +56,12 @@ export default function AuthPage({ setView }) {
     setSignupSuccess("");
 
     if (!signupName.trim() || !signupEmail.trim() || signupPassword.length < 8) {
-      setSignupError("Fill all required fields. Password must be at least 8 characters.");
+      setSignupError(t("auth-signup-invalid"));
       return;
     }
 
     if (signupPassword !== signupConfirm) {
-      setSignupError("Passwords do not match.");
+      setSignupError(t("auth-password-mismatch"));
       return;
     }
 
@@ -75,7 +75,7 @@ export default function AuthPage({ setView }) {
       });
 
       if (result.ok) {
-        setSignupSuccess("Account created. Opening your workspace...");
+        setSignupSuccess(t("auth-signup-created"));
         setTimeout(() => {
           const redirect = localStorage.getItem("opticus_redirect_after_login");
           if (redirect) {
@@ -89,10 +89,10 @@ export default function AuthPage({ setView }) {
           else if (result.role === "staff") setView("staff-dashboard");
         }, 500);
       } else {
-        setSignupError(result.message || "Signup failed.");
+        setSignupError(result.message || t("auth-signup-unexpected"));
       }
     } catch (err) {
-      setSignupError("An unexpected error occurred during signup.");
+      setSignupError(t("auth-signup-unexpected"));
     }
   };
 
@@ -101,15 +101,13 @@ export default function AuthPage({ setView }) {
       <section className="auth-card premium-glass-card" style={{ padding: "30px", borderRadius: "12px" }}>
         <div className="auth-header" style={{ marginBottom: "24px", textAlign: "center" }}>
           <span className="eyebrow" style={{ fontSize: "12px", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--primary-accent)" }}>
-            {activeTab === "login" ? "Welcome back" : "Create account"}
+            {t(activeTab === "login" ? "auth-welcome-back" : "auth-create-account")}
           </span>
           <h2 style={{ fontSize: "24px", margin: "8px 0" }}>
-            {activeTab === "login" ? "Access your Opticus account" : "Join Opticus"}
+            {t(activeTab === "login" ? "auth-access-title" : "auth-join-title")}
           </h2>
           <p style={{ fontSize: "14px", color: "var(--color-hint)", lineHeight: "1.4" }}>
-            {activeTab === "login"
-              ? "Use your email and password to log in. We'll open the right workspace automatically."
-              : "Create a client or factory account and continue into your workspace."}
+            {t(activeTab === "login" ? "auth-access-intro" : "auth-join-intro")}
           </p>
         </div>
 
@@ -123,7 +121,7 @@ export default function AuthPage({ setView }) {
             style={{ flex: 1, background: "none", border: "none", color: activeTab === "login" ? "var(--text-dark)" : "var(--color-hint)", borderBottom: activeTab === "login" ? "2px solid var(--primary-accent)" : "none", padding: "10px", cursor: "pointer", fontWeight: "600" }}
             onClick={() => setActiveTab("login")}
           >
-            LOGIN
+            {t("auth-tab-login")}
           </button>
           <button
             type="button"
@@ -134,14 +132,14 @@ export default function AuthPage({ setView }) {
             style={{ flex: 1, background: "none", border: "none", color: activeTab === "signup" ? "var(--text-dark)" : "var(--color-hint)", borderBottom: activeTab === "signup" ? "2px solid var(--primary-accent)" : "none", padding: "10px", cursor: "pointer", fontWeight: "600" }}
             onClick={() => setActiveTab("signup")}
           >
-            SIGNUP
+            {t("auth-tab-signup")}
           </button>
         </div>
 
         {activeTab === "login" ? (
           <form onSubmit={handleLoginSubmit} role="tabpanel" id="login-panel">
             <div className="form-group" style={{ marginBottom: "16px" }}>
-              <label htmlFor="loginEmail" style={{ display: "block", marginBottom: "6px", fontSize: "12px", textTransform: "uppercase", fontWeight: "600" }}>Email Address</label>
+              <label htmlFor="loginEmail" style={{ display: "block", marginBottom: "6px", fontSize: "12px", textTransform: "uppercase", fontWeight: "600" }}>{t("auth-email")}</label>
               <input
                 type="email"
                 id="loginEmail"
@@ -154,7 +152,7 @@ export default function AuthPage({ setView }) {
             </div>
 
             <div className="form-group" style={{ marginBottom: "20px" }}>
-              <label htmlFor="loginPassword" style={{ display: "block", marginBottom: "6px", fontSize: "12px", textTransform: "uppercase", fontWeight: "600" }}>Password</label>
+              <label htmlFor="loginPassword" style={{ display: "block", marginBottom: "6px", fontSize: "12px", textTransform: "uppercase", fontWeight: "600" }}>{t("auth-password")}</label>
               <input
                 type="password"
                 id="loginPassword"
@@ -174,19 +172,19 @@ export default function AuthPage({ setView }) {
               style={{ width: "100%", padding: "12px", fontSize: "14px", fontWeight: "600", marginBottom: "16px" }}
               disabled={loginLoading}
             >
-              {loginLoading ? "ENTERING..." : "ENTER OPTICUS"}
+              {t(loginLoading ? "auth-entering" : "auth-enter")}
             </button>
 
             <div style={{ display: "flex", alignItems: "center", margin: "16px 0", color: "var(--color-hint)", fontSize: "12px" }}>
               <div style={{ flex: 1, height: "1px", background: "var(--border-light)" }}></div>
-              <span style={{ padding: "0 10px" }}>OR</span>
+              <span style={{ padding: "0 10px" }}>{t("auth-or")}</span>
               <div style={{ flex: 1, height: "1px", background: "var(--border-light)" }}></div>
             </div>
 
             <button
               type="button"
               className="btn"
-              onClick={() => alert("Google Login would open here.")}
+              onClick={() => alert(t("auth-google-unavailable"))}
               style={{ width: "100%", padding: "12px", fontSize: "14px", fontWeight: "600", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", background: "#fff", color: "#000", borderRadius: "6px" }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -195,13 +193,13 @@ export default function AuthPage({ setView }) {
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
               </svg>
-              Continue with Google
+              {t("auth-google")}
             </button>
           </form>
         ) : (
           <form onSubmit={handleSignupSubmit}>
             <div className="form-group" style={{ marginBottom: "12px" }}>
-              <label htmlFor="signupName" style={{ display: "block", marginBottom: "6px", fontSize: "12px", textTransform: "uppercase", fontWeight: "600" }}>Full Name</label>
+              <label htmlFor="signupName" style={{ display: "block", marginBottom: "6px", fontSize: "12px", textTransform: "uppercase", fontWeight: "600" }}>{t("auth-full-name")}</label>
               <input
                 type="text"
                 id="signupName"
@@ -216,7 +214,7 @@ export default function AuthPage({ setView }) {
 
 
             <div className="form-group" style={{ marginBottom: "12px" }}>
-              <label htmlFor="signupEmail" style={{ display: "block", marginBottom: "6px", fontSize: "12px", textTransform: "uppercase", fontWeight: "600" }}>Email Address</label>
+              <label htmlFor="signupEmail" style={{ display: "block", marginBottom: "6px", fontSize: "12px", textTransform: "uppercase", fontWeight: "600" }}>{t("auth-email")}</label>
               <input
                 type="email"
                 id="signupEmail"
@@ -229,7 +227,7 @@ export default function AuthPage({ setView }) {
             </div>
 
             <div className="form-group" style={{ marginBottom: "12px" }}>
-              <label htmlFor="signupPassword" style={{ display: "block", marginBottom: "6px", fontSize: "12px", textTransform: "uppercase", fontWeight: "600" }}>Password (8+ chars)</label>
+              <label htmlFor="signupPassword" style={{ display: "block", marginBottom: "6px", fontSize: "12px", textTransform: "uppercase", fontWeight: "600" }}>{t("auth-password-min")}</label>
               <input
                 type="password"
                 id="signupPassword"
@@ -242,7 +240,7 @@ export default function AuthPage({ setView }) {
             </div>
 
             <div className="form-group" style={{ marginBottom: "20px" }}>
-              <label htmlFor="signupConfirm" style={{ display: "block", marginBottom: "6px", fontSize: "12px", textTransform: "uppercase", fontWeight: "600" }}>Confirm Password</label>
+              <label htmlFor="signupConfirm" style={{ display: "block", marginBottom: "6px", fontSize: "12px", textTransform: "uppercase", fontWeight: "600" }}>{t("auth-confirm-password")}</label>
               <input
                 type="password"
                 id="signupConfirm"
@@ -262,23 +260,23 @@ export default function AuthPage({ setView }) {
               className="save-btn"
               style={{ width: "100%", padding: "12px", fontSize: "14px", fontWeight: "600" }}
             >
-              CREATE ACCOUNT
+              {t("auth-submit-signup")}
             </button>
           </form>
         )}
 
         <div style={{ marginTop: "40px", padding: "24px", background: "rgba(22, 163, 74, 0.05)", borderRadius: "12px", border: "1px dashed rgba(34, 197, 94, 0.3)", textAlign: "center" }}>
-          <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px", color: "var(--primary-accent)" }}>Be a Partner Factory</h3>
+          <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px", color: "var(--primary-accent)" }}>{t("auth-partner-title")}</h3>
           <p style={{ fontSize: "13px", color: "var(--color-hint)", lineHeight: "1.5", marginBottom: "16px" }}>
-            Do you own a CNC factory or 3D printing facility? Join our distributed network of manufacturers and receive automatic CAD orders straight from our clients.
+            {t("auth-partner-intro")}
           </p>
           <button
             type="button"
             className="btn"
-            onClick={() => alert("Redirecting to Partner Application...")}
+            onClick={() => alert(t("auth-partner-unavailable"))}
             style={{ padding: "10px 24px", fontSize: "13px", fontWeight: "600", border: "1px solid var(--primary-accent)", color: "var(--primary-accent)", background: "transparent", borderRadius: "6px", cursor: "pointer" }}
           >
-            APPLY TO BE A PARTNER
+            {t("auth-partner-apply")}
           </button>
         </div>
       </section>
