@@ -4,6 +4,7 @@
 // ============================================================
 
 import pool from "../config/db.js";
+import { emTransacao } from "../config/transacao.js";
 import { getAbacateToken, isSimulatedPaymentGateway } from "../config/env.js";
 import { gerarBillingId } from "../utils/billingId.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
@@ -222,10 +223,8 @@ export async function checkoutCart(req: Request, res: Response) {
   const usuarioId     = Number(req.user!.id);
   const consolidatedBillingId = gerarBillingId("sim");
 
-  const client = await pool.connect();
-  let createdOrders = [];
-  try {
-    await client.query("BEGIN");
+  const createdOrders = await emTransacao(async (client) => {
+    const criados = [];
     let finalFactoryIdCache = null;
 
     for (const item of cartItems) {
@@ -262,7 +261,7 @@ export async function checkoutCart(req: Request, res: Response) {
         ]
       );
 
-      createdOrders.push({
+      criados.push({
         id: result[0].id,
         productName,
         quantity,
@@ -271,13 +270,8 @@ export async function checkoutCart(req: Request, res: Response) {
         factoryName
       });
     }
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    client.release();
-    throw err;
-  }
-  client.release();
+    return criados;
+  }, { traceId: req.requestId });
 
     const frontendOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `http://localhost:5173`);
     const backendProto = req.headers['x-forwarded-proto'] || req.protocol;
