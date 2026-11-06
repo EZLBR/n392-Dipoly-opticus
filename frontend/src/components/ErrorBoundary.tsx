@@ -1,5 +1,6 @@
 import React from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { translate } from "../contexts/LanguageContext";
 
 type ErrorBoundaryProps = React.PropsWithChildren;
 
@@ -48,9 +49,9 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
             boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
           }}>
             <AlertTriangle size={48} color="var(--primary-accent, #3b82f6)" style={{ marginBottom: '20px' }} />
-            <h1 style={{ fontSize: '24px', marginBottom: '16px' }}>Ops! Algo deu errado.</h1>
+            <h1 style={{ fontSize: '24px', marginBottom: '16px' }}>{translate("error-boundary-title")}</h1>
             <p style={{ color: 'var(--color-hint, #8b949e)', marginBottom: '24px', lineHeight: '1.5' }}>
-              Ocorreu um erro inesperado na interface. Não se preocupe, seus dados estão seguros.
+              {translate("error-boundary-body")}
             </p>
             {import.meta.env.DEV && this.state.error && (
               <pre style={{
@@ -84,7 +85,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
                 width: '100%'
               }}
             >
-              <RefreshCw size={16} /> VOLTAR AO INÍCIO
+              <RefreshCw size={16} /> {translate("error-boundary-home")}
             </button>
           </div>
         </div>

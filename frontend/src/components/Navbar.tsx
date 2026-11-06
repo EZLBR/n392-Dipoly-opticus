@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
-import { useTranslation } from "../contexts/LanguageContext";
+import { roleKey, useTranslation } from "../contexts/LanguageContext";
 import { Moon, Sun, Globe, LogOut, Menu, X } from "lucide-react";
 
 export default function Navbar({ currentView, setView }) {
@@ -49,12 +49,12 @@ export default function Navbar({ currentView, setView }) {
     <header className="navbar">
       <div className="navbar-top-row">
         <a href="/" className="logo" onClick={(e) => handleNavClick("marketplace", e)} style={{ cursor: "pointer", textDecoration: "none", color: "inherit" }}>
-          OPTICUS
+          {t("brand-name")}
         </a>
 
         <button
           className="mobile-menu-btn"
-          aria-label={language === "pt" ? "Abrir ou fechar menu" : "Toggle navigation menu"}
+          aria-label={t("navbar-toggle-navigation-menu")}
           aria-expanded={menuOpen}
           aria-controls="main-navigation"
           onClick={() => setMenuOpen(!menuOpen)}
@@ -64,7 +64,7 @@ export default function Navbar({ currentView, setView }) {
       </div>
 
       <div id="main-navigation" className={`nav-menu ${menuOpen ? "open" : ""}`}>
-        <nav aria-label={language === "pt" ? "Navegação principal" : "Main navigation"}>
+        <nav aria-label={t("navbar-main-navigation")}>
           <a
             href="#"
             className={currentView === "marketplace" ? "active" : ""}
@@ -145,7 +145,7 @@ export default function Navbar({ currentView, setView }) {
             {session ? (
               <div className="session-box">
                 <span>
-                  {session.name} &middot; {session.role.toUpperCase()}
+                  {session.name} &middot; {t(roleKey(session.role)).toUpperCase()}
                 </span>
                 <button className="btn logout-btn" id="logoutBtn" type="button" onClick={logout}>
                   <LogOut size={14} style={{ marginRight: "4px", verticalAlign: "middle" }} />
@@ -163,7 +163,7 @@ export default function Navbar({ currentView, setView }) {
             <Globe size={14} className="globe-icon" style={{ marginRight: "4px", verticalAlign: "middle" }} />
             <select
               id="languageSelector"
-              aria-label={language === "pt" ? "Selecionar idioma" : "Select language"}
+              aria-label={t("navbar-select-language")}
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
             >
@@ -175,7 +175,7 @@ export default function Navbar({ currentView, setView }) {
           <button
             id="darkToggle"
             className="dark-toggle"
-            aria-label={language === "pt" ? "Alternar modo escuro" : "Toggle dark mode"}
+            aria-label={t("navbar-toggle-dark-mode")}
             aria-pressed={darkMode}
             onClick={() => setDarkMode(!darkMode)}
           >

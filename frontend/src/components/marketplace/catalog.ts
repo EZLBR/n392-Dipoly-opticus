@@ -1,5 +1,6 @@
-import { normalizeConfig, type EyewearConfig } from "../../eyewear/config";
+import { label, normalizeConfig, type EyewearConfig } from "../../eyewear/config";
 import { calculateBasePrice } from "../../utils/pricing";
+import { translate } from "../../contexts/LanguageContext";
 
 export interface StudioModel {
   id: string;
@@ -52,17 +53,11 @@ export const studioModels: StudioModel[] = [
   model("base-square-metal", "Titan Edge", "square", "titanium", "titan-edge"),
 ];
 export const shapeLabel = (shape: string, pt: boolean) =>
-  shape === "round" ? (pt ? "Redondo" : "Round") : pt ? "Quadrado" : "Square";
+  shape === "round" ? label("round", pt ? "pt" : "en") : translate("market-shape-square", pt ? "pt" : "en");
 export const materialLabel = (material: string, pt: boolean) =>
   material === "acetate"
-    ? pt
-      ? "Acetato"
-      : "Acetate"
-    : material === "titanium"
-      ? pt
-        ? "Titânio"
-        : "Titanium"
-      : "Metal";
+    ? label("acetate", pt ? "pt" : "en")
+    : translate(material === "titanium" ? "market-material-titanium" : "market-material-metal", pt ? "pt" : "en");
 export const foldText = (value: string) =>
   value
     .normalize("NFD")

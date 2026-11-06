@@ -26,6 +26,23 @@ it("não mostra uma cobrança real como checkout simulado", async () => {
   expect(res.status).toBe(404);
 });
 
+it("apresenta a mesma cobrança simulada em português ou inglês", async () => {
+  const dono = await criarUsuario();
+  const pedido = await criarPedido({ dono, status: "Pending_Payment" });
+  const cobranca = await criarCobranca(pedido, true);
+  const checkout = (language: string) => request(app).get("/api/payments/simulated-checkout")
+    .set(...comToken(dono.token)).set("Accept-Language", language).query({ billingId: cobranca.billingId });
+  const pt = await checkout("pt-BR");
+  expect(pt.status).toBe(200);
+  expect(pt.text).toContain("Cobrança:");
+  const en = await checkout("en-US");
+  expect(en.status).toBe(200);
+  expect(en.text).toContain('lang="en"');
+  expect(en.text).toContain("Billing:");
+  expect(en.text).toContain(cobranca.billingId);
+  expect(await lerCobranca(cobranca)).toEqual({ pedido: "Pending_Payment", pagamento: "pendente" });
+});
+
 it.each(["pedido", "carrinho"])("confirma cobrança emitida pelo fluxo simulado de %s", async fluxo => {
   const dono = await criarUsuario();
   const fabrica = await criarUsuario("factory");

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
 import { apiClient, ProblemError } from "../api/client";
+import { localizeProblem, translate } from "./LanguageContext";
 import { normalizeConfig } from "../eyewear/config";
 import { hasArtwork } from "../eyewear/artwork";
 
@@ -54,7 +55,7 @@ export function CartProvider({ children }) {
         return { ok: true, ...data };
       } catch (e: any) {
         if (e instanceof ProblemError) {
-          return { ok: false, error: e.detail || e.title || e.message };
+          return { ok: false, error: localizeProblem(e.problem) };
         }
         console.error("Consolidated backend checkout failed, shifting to local cache simulation:", e);
       }
@@ -62,7 +63,7 @@ export function CartProvider({ children }) {
 
     return {
       ok: false,
-      error: "Checkout indisponível sem conexão segura com o backend."
+      error: translate("checkout-connection-required")
     };
   };
 

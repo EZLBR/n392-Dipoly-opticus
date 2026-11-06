@@ -5,9 +5,11 @@ afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); });
 
 it("loads the private checkout with Authorization instead of putting the token in its URL", async () => {
   localStorage.setItem("opticus_token", "private-token");
+  localStorage.setItem("opticus_language", "en");
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
     expect(String(url)).toBe("http://localhost:5000/api/payments/simulated-checkout?billingId=private-bill");
     expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer private-token");
+    expect(new Headers(init?.headers).get("Accept-Language")).toBe("en");
     return new Response("<h1>My checkout</h1>", { headers: { "Content-Type": "text/html" } });
   });
   expect(await fetchSimulatedCheckoutHtml("http://localhost:5000/api/payments/simulated-checkout?billingId=private-bill")).toContain("My checkout");

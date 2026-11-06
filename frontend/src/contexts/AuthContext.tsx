@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { ANONYMOUS_STUDIO_OWNER, STUDIO_OWNER_KEY, mergeSavedDesigns, readJSON, switchStudioOwner } from "../eyewear/storage";
 import { apiClient, ProblemError, setAuthErrorHandler } from "../api/client";
+import { localizeProblem, translate } from "./LanguageContext";
 
 // O token vai explícito quando a resposta precisa ser conferida contra a
 // sessão que fez a requisição (BUG #82): se a sessão mudar no meio do
@@ -8,7 +9,7 @@ import { apiClient, ProblemError, setAuthErrorHandler } from "../api/client";
 const comToken = (token?: string | null) =>
   token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
 const mensagemDoProblema = (erro: unknown) =>
-  erro instanceof ProblemError ? erro.detail || erro.title || erro.message : undefined;
+  erro instanceof ProblemError ? localizeProblem(erro.problem) : undefined;
 
 const AuthContext = createContext<any>(undefined);
 
@@ -63,11 +64,10 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     setAuthErrorHandler((status, problem) => {
-      const message = problem?.title || (status === 401 ? "Acesso não autorizado." : "Acesso negado.");
       if (status === 401) {
         endSession();
       } else if (status === 403) {
-        setAuthWarning(message);
+        setAuthWarning(localizeProblem(problem ?? { status }));
       }
     });
 
@@ -145,10 +145,10 @@ export function AuthProvider({ children }) {
     } catch (err) {
       console.error("Falha ao acessar o backend durante o login:", err);
       if (err instanceof ProblemError) {
-        return { ok: false, message: mensagemDoProblema(err) || "Login failed." };
+        return { ok: false, message: err.status === 401 ? translate("auth-login-invalid") : localizeProblem(err.problem) };
       }
       setIsBackendConnected(false);
-      return { ok: false, message: "Serviço de autenticação indisponível. Tente novamente." };
+      return { ok: false, message: translate("auth-login-unavailable") };
     }
   };
 
@@ -161,10 +161,10 @@ export function AuthProvider({ children }) {
     } catch (err) {
       console.error("Falha ao acessar o backend durante o cadastro:", err);
       if (err instanceof ProblemError) {
-        return { ok: false, message: mensagemDoProblema(err) || "Signup failed." };
+        return { ok: false, message: localizeProblem(err.problem) };
       }
       setIsBackendConnected(false);
-      return { ok: false, message: "Serviço de cadastro indisponível. Tente novamente." };
+      return { ok: false, message: translate("auth-signup-unavailable") };
     }
   };
 
