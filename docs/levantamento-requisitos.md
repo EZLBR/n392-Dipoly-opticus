@@ -195,8 +195,8 @@ Todos os módulos abaixo estão implementados, montados em `backend/src/app.ts` 
 | **Camada de repositórios** | `backend/src/repositories/index.ts:1-2` — **VAZIA** (placeholder, `export {}`) |
 | Seed de produção | `backend/prisma/seed.ts` |
 | Seed de desenvolvimento | `backend/prisma/seed.dev.ts` |
-| Esquema do banco | `backend/prisma/schema.prisma` + `backend/prisma/migrations/20260901133803_init/migration.sql` |
-| Legado preservado | `legacy/src/config/schema.sql`, `legacy/src/scripts/migrate.ts` |
+| Esquema do banco | `backend/prisma/schema.prisma` + `backend/prisma/migrations/`, conferidos entre si no CI |
+| Esquema legado | Removido no DB-04 (`legacy/src/config/schema.sql`, `legacy/src/scripts/migrate.ts`); consultar o histórico do git |
 
 ### 4.2 Fora do escopo — ausência comprovada no repositório
 
