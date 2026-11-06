@@ -115,7 +115,16 @@ npx prisma migrate dev      # cria/applica migrations e regenera o client
 ```
 
 > Não há mais DDL em `db.ts` nem `schema.sql` manual: o schema evolui
-> apenas via `prisma/migrations/`.
+> apenas via `prisma/migrations/`, e o `schema.prisma` precisa descrever
+> exatamente o que as migrations criam. O CI falha se os dois divergirem.
+> Para conferir na sua máquina, aponte para um banco vazio e descartável:
+>
+> ```bash
+> npx prisma migrate diff --from-migrations ./prisma/migrations \n>   --to-schema-datamodel ./prisma/schema.prisma \n>   --shadow-database-url "postgresql://...banco-vazio..." --exit-code
+> ```
+>
+> O `publicId` é gerado pelo banco (`gen_random_uuid()`), não pelo Prisma:
+> os `INSERT`s em SQL puro dependem desse default.
 
 ### 3. Seed
 

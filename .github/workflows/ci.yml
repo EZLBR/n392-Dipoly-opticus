@@ -80,6 +80,14 @@ jobs:
         run: npm run prisma:generate
       - name: Aplicar migrations no banco de teste
         run: npm run migrate
+      - name: Conferir schema.prisma contra as migrations
+        # Falha se os dois divergirem: o schema.prisma tinha perdido o default
+        # do publicId que as migrations criam, e nada acusava (DB-04).
+        env:
+          SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/opticus_ci_shadow
+        run: |
+          node -e "const {Client}=require('pg');const c=new Client({connectionString:process.env.DATABASE_URL});c.connect().then(()=>c.query('CREATE DATABASE opticus_ci_shadow')).finally(()=>c.end())"
+          npx prisma migrate diff --from-migrations ./prisma/migrations --to-schema-datamodel ./prisma/schema.prisma --shadow-database-url "$SHADOW_DATABASE_URL" --exit-code
       - name: Verificar tipos
         run: npm run typecheck
       - name: Executar testes
