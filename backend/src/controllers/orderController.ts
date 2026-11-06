@@ -99,7 +99,7 @@ export async function createOrder(req: Request, res: Response) {
 //   GET /api/orders
 // ─────────────────────────────────────────────────────────
 export async function getOrders(req: Request, res: Response) {
-  const { role, email, id } = req.user!;
+  const { role, id } = req.user!;
 
   const selectFields = `
     id,
@@ -127,11 +127,11 @@ export async function getOrders(req: Request, res: Response) {
   let totalCount = 0;
 
   if (role === "client") {
-    const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos WHERE customer_email = $1`, [email]);
+    const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos WHERE usuario_id = $1`, [id]);
     totalCount = parseInt(countRes.rows[0].count);
     const result = await pool.query(
-      `SELECT ${selectFields} FROM pedidos WHERE customer_email = $1 ORDER BY criado_em DESC LIMIT $2 OFFSET $3`,
-      [email, limit, offset]
+      `SELECT ${selectFields} FROM pedidos WHERE usuario_id = $1 ORDER BY criado_em DESC LIMIT $2 OFFSET $3`,
+      [id, limit, offset]
     );
     rows = result.rows;
   } else if (role === "factory") {

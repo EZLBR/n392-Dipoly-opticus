@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { NavLink } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { useTranslation } from "../contexts/LanguageContext";
@@ -117,6 +118,8 @@ export default function Navbar({ currentView, setView }) {
               </a>
             </>
           )}
+
+          {session?.role === "client" && <NavLink to="/orders">{t("nav-orders")}</NavLink>}
 
           {/* Dashboard link for Factory or Staff */}
           {session && session.role === "factory" && (

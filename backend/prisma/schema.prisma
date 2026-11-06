@@ -93,12 +93,33 @@ model Pedido {
   fabrica    Usuario?     @relation("FactoryPedidos", fields: [factoryId], references: [id], onDelete: SetNull)
   itens      PedidoItem[]
   pagamentos Pagamento[]
+  statusHistory OrderStatusHistory[]
 
   @@index([usuarioId], map: "idx_pedidos_usuario")
   @@index([factoryId], map: "idx_pedidos_factory")
   @@index([status], map: "idx_pedidos_status")
   @@index([abacateBillingId], map: "idx_pedidos_billing")
   @@map("pedidos")
+}
+
+enum OrderHistoryKind {
+  baseline
+  created
+  transition
+}
+
+model OrderStatusHistory {
+  id         BigInt           @id @default(autoincrement())
+  orderId    Int              @map("order_id")
+  kind       OrderHistoryKind
+  fromStatus PedidoStatus?    @map("from_status")
+  toStatus   PedidoStatus?    @map("to_status")
+  occurredAt DateTime         @default(now()) @map("occurred_at") @db.Timestamptz(3)
+
+  order Pedido @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, id], map: "idx_order_status_history_order_id")
+  @@map("order_status_history")
 }
 
 model PedidoItem {
