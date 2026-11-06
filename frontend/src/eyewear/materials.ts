@@ -14,6 +14,7 @@ export function createPatternTexture(pattern: SurfacePattern, baseColor: string)
     pixels.set([...(painted ? ink : base), 255], (y * size + x) * 4);
   }
   const map = new THREE.DataTexture(pixels, size, size);
+  map.channel = 1;
   map.colorSpace = THREE.SRGBColorSpace;
   map.wrapS = map.wrapT = THREE.RepeatWrapping;
   map.repeat.set(pattern.scale, pattern.scale);

@@ -73,6 +73,15 @@ describe("STUDIO-02 — saved configuration", () => {
     const edited = await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, color: "#abcdef" });
     expect(edited.status).toBe(200);
     expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config.surfacePattern).toEqual(surfacePattern);
+    const legacyConfig = { ...config, color: "#fedcba" };
+    expect((await request(app).post("/api/designs").set(...comToken(owner.token))
+      .send({ ...design, color: legacyConfig.color, config: legacyConfig })).status).toBe(200);
+    expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config)
+      .toMatchObject({ color: legacyConfig.color, surfacePattern });
+    const disabled = { ...surfacePattern, style: "none" };
+    expect((await request(app).post("/api/designs").set(...comToken(owner.token))
+      .send({ ...design, config: { ...config, surfacePattern: disabled } })).status).toBe(200);
+    expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config.surfacePattern).toEqual(disabled);
   });
 
   it.each([

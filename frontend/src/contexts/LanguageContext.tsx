@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 const translations = {
   en: {
     "pattern-title": "Frame patterns",
+    "pattern-camera-note": "Approximate frontal preview · See the pattern in the 3D model.",
     "pattern-style": "Frame pattern",
     "pattern-none": "None",
     "pattern-stripes": "Stripes",
@@ -102,6 +103,7 @@ const translations = {
   },
   pt: {
     "pattern-title": "Estampas da armação",
+    "pattern-camera-note": "Prévia frontal aproximada · Veja a estampa no modelo 3D.",
     "pattern-style": "Estampa da armação",
     "pattern-none": "Nenhuma",
     "pattern-stripes": "Listras",
