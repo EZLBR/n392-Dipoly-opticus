@@ -85,8 +85,9 @@ it("does not clear B's active selection if the session changes during remote ref
 it("requires confirmed remote deletion for an offline edit of a previously synchronized design", async () => {
   const remote = { id: "remote-a", name: "Remote A", model: "round", color: "#112233" };
   let serverDesigns = [remote];
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
-    if (init?.method === "POST") throw new TypeError("Failed to fetch");
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+    // An edit of a synced design is a PUT to its own id (BOLA-04); here it fails offline.
+    if (init?.method === "PUT" || init?.method === "POST") throw new TypeError("Failed to fetch");
     if (init?.method === "DELETE") { serverDesigns = []; return json({ message: "ok" }); }
     if (String(url).endsWith("/auth/me")) return json({ user: { id: "A", name: "A", role: "client" } });
     if (String(url).endsWith("/designs")) return json({ designs: serverDesigns });
@@ -100,6 +101,8 @@ it("requires confirmed remote deletion for an offline edit of a previously synch
   await screen.findByText("Remote A");
   fireEvent.click(screen.getByText("Save offline edit"));
   await screen.findByText("Offline A");
+  const writes = fetch.mock.calls.filter(([, init]) => init?.method === "PUT" || init?.method === "POST");
+  expect(writes.map(([url, init]) => [init?.method, new URL(String(url)).pathname])).toEqual([["PUT", "/api/designs/remote-a"]]);
   fireEvent.click(deleteButton("Offline A"));
   await waitFor(() => expect(serverDesigns).toEqual([]));
   await waitFor(() => expect(screen.queryByText("Offline A")).not.toBeInTheDocument());

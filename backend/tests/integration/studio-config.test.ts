@@ -11,7 +11,7 @@ const config = {
   templeTipMaterial: "acetate", hingeMaterial: "stainless_steel", templeOpen: 0.3,
   artwork: { version: 1, layers: [layer] },
 };
-const design = { id: "text-design", name: "Meu óculos", model: "wayfarer_front_round_temples", color: "#382016" };
+const design = { name: "Meu óculos", model: "wayfarer_front_round_temples", color: "#382016" };
 
 describe("STUDIO-02 — saved configuration", () => {
   it("returns the complete artwork to a fresh authenticated client and preserves edits", async () => {
@@ -21,7 +21,7 @@ describe("STUDIO-02 — saved configuration", () => {
     const fresh = await request(app).get("/api/designs").set(...comToken(owner.token));
     expect(fresh.body.designs[0].config).toEqual(config);
     const edited = { ...config, artwork: { version: 1, layers: [{ ...layer, text: "Texto novo" }] } };
-    expect((await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, config: edited })).status).toBe(200);
+    expect((await request(app).put(`/api/designs/${saved.body.id}`).set(...comToken(owner.token)).send({ ...design, config: edited })).status).toBe(200);
     expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config).toEqual(edited);
     const other = await criarUsuario();
     expect((await request(app).get("/api/designs").set(...comToken(other.token))).body.designs).toEqual([]);
@@ -36,8 +36,8 @@ describe("STUDIO-02 — saved configuration", () => {
 
   it("applies legacy edits to a modern document while retaining its artwork", async () => {
     const owner = await criarUsuario();
-    await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, config });
-    const response = await request(app).post("/api/designs").set(...comToken(owner.token))
+    const saved = await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, config });
+    const response = await request(app).put(`/api/designs/${saved.body.id}`).set(...comToken(owner.token))
       .send({ ...design, model: "round_front_cateye_temples", color: "#abcdef", frame_profile: "bold", anti_reflective: false });
     expect(response.status).toBe(200);
     const updated = (await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config;
