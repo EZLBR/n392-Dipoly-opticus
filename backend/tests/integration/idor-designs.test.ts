@@ -2,7 +2,8 @@
 //   TEST-02 — Regressão IDOR/BOLA: designs salvos
 //
 //   Dono do recurso: o usuário que salvou o design.
-//   Rotas: GET /api/designs, POST /api/designs, DELETE /api/designs/:id
+//   Rotas: GET /api/designs, POST /api/designs, PUT /api/designs/:id,
+//          DELETE /api/designs/:id
 //
 //   Cada tentativa negada verifica que o design da vítima continua
 //   intacto no banco. Sem isso o teste passaria mesmo com TOCTOU.
@@ -11,10 +12,12 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { app } from "../setup/app.js";
+import prisma from "../../src/config/prisma.js";
 import { criarUsuario, comToken } from "../helpers/auth.js";
 import { criarDesign, lerDesign } from "../helpers/designs.js";
 import { esperarProblema, semanticaDoProblema } from "../helpers/problem.js";
-import { vulnerabilidadeConhecida } from "../helpers/vulneravel.js";
+
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 const corpoDeDesign = (id?: string) => ({
   id,
@@ -108,19 +111,40 @@ describe("designs — autorização de objeto (TEST-02)", () => {
     });
   });
 
-  describe("POST /api/designs — identificador no corpo", () => {
-    it("enviar o id de um design alheio não altera o design da vítima", async () => {
+  describe("POST /api/designs — só cria, com identificador do servidor (BOLA-04)", () => {
+    it("o id gerado é UUID v4, e o design criado pertence a quem fez a requisição", async () => {
+      const dono = await criarUsuario("client");
+
+      const res = await request(app)
+        .post("/api/designs")
+        .set(...comToken(dono.token))
+        .send(corpoDeDesign());
+
+      expect(res.status).toBe(201);
+      expect(res.body.id).toMatch(UUID_V4);
+      expect(await lerDesign(res.body.id)).toMatchObject({ usuarioId: dono.id, customerEmail: dono.email });
+    });
+
+    it("id no corpo é recusado com 400, sem criar nem alterar design", async () => {
       const vitima = await criarUsuario("client");
       const atacante = await criarUsuario("client");
       const design = await criarDesign(vitima);
       const antes = await lerDesign(design.id);
 
-      await request(app)
+      const alheio = await request(app)
         .post("/api/designs")
         .set(...comToken(atacante.token))
         .send(corpoDeDesign(design.id));
+      const livre = await request(app)
+        .post("/api/designs")
+        .set(...comToken(atacante.token))
+        .send(corpoDeDesign(`design-livre-${Date.now()}`));
 
+      esperarProblema(alheio, 400, "bad-request");
+      esperarProblema(livre, 400, "bad-request");
+      expect(semanticaDoProblema(alheio.body)).toEqual(semanticaDoProblema(livre.body));
       expect(await lerDesign(design.id)).toEqual(antes);
+      expect(await prisma.savedDesign.count()).toBe(1);
     });
 
     it("dono e e-mail enviados no corpo são ignorados — vale o token", async () => {
@@ -147,35 +171,83 @@ describe("designs — autorização de objeto (TEST-02)", () => {
       expect(daVitima.body.designs).toHaveLength(0);
     });
 
-    it("[VULNERÁVEL · BOLA-04] id alheio e id inexistente respondem de forma distinguível", () =>
-      vulnerabilidadeConhecida({
-        issue: "BOLA-04",
-        observar: async () => {
-          const vitima = await criarUsuario("client");
-          const atacante = await criarUsuario("client");
-          const design = await criarDesign(vitima);
+  });
 
-          const alheio = await request(app)
-            .post("/api/designs")
-            .set(...comToken(atacante.token))
-            .send(corpoDeDesign(design.id));
-          const inexistente = await request(app)
-            .post("/api/designs")
-            .set(...comToken(atacante.token))
-            .send(corpoDeDesign(`design-livre-${Date.now()}`));
+  describe("PUT /api/designs/:id — só atualiza, no escopo do dono (BOLA-04)", () => {
+    it("usuário anônimo recebe 401 e o design continua intacto", async () => {
+      const dono = await criarUsuario("client");
+      const design = await criarDesign(dono);
+      const antes = await lerDesign(design.id);
 
-          return { alheio, inexistente };
-        },
-        // Alvo: a resposta não pode revelar se o id pertence a alguém.
-        seguro: ({ alheio, inexistente }) => {
-          expect(alheio.status).toBe(inexistente.status);
-        },
-        // Hoje: o SELECT escopado não acha, o fluxo cai no INSERT e a chave
-        // primária colide. Id alheio vira 409; id livre cria o design.
-        vulneravel: ({ alheio, inexistente }) => {
-          esperarProblema(alheio, 409, "conflict");
-          expect(inexistente.status).toBe(201);
-        },
-      }));
+      esperarProblema(
+        await request(app).put(`/api/designs/${design.id}`).send(corpoDeDesign()),
+        401,
+        "unauthorized"
+      );
+      expect(await lerDesign(design.id)).toEqual(antes);
+    });
+
+    it("dono atualiza o próprio design", async () => {
+      const dono = await criarUsuario("client");
+      const design = await criarDesign(dono);
+
+      const res = await request(app)
+        .put(`/api/designs/${design.id}`)
+        .set(...comToken(dono.token))
+        .send({ ...corpoDeDesign(), name: "Novo nome" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(design.id);
+      expect(await lerDesign(design.id)).toMatchObject({ name: "Novo nome", color: "#ff0000", usuarioId: dono.id });
+    });
+
+    it("outro usuário recebe 404 e o design da vítima permanece intacto", async () => {
+      const vitima = await criarUsuario("client");
+      const atacante = await criarUsuario("client");
+      const design = await criarDesign(vitima);
+      const antes = await lerDesign(design.id);
+
+      const res = await request(app)
+        .put(`/api/designs/${design.id}`)
+        .set(...comToken(atacante.token))
+        .send(corpoDeDesign());
+
+      esperarProblema(res, 404, "not-found");
+      expect(await lerDesign(design.id)).toEqual(antes);
+    });
+
+    // Promovido de vulnerabilidadeConhecida: antes, id alheio caía no INSERT,
+    // colidia com a chave primária (409) e o id livre criava o design (201).
+    it("id alheio e id inexistente respondem de forma indistinguível", async () => {
+      const vitima = await criarUsuario("client");
+      const atacante = await criarUsuario("client");
+      const design = await criarDesign(vitima);
+
+      const alheio = await request(app)
+        .put(`/api/designs/${design.id}`)
+        .set(...comToken(atacante.token))
+        .send(corpoDeDesign());
+      const inexistente = await request(app)
+        .put(`/api/designs/design-livre-${Date.now()}`)
+        .set(...comToken(atacante.token))
+        .send(corpoDeDesign());
+
+      esperarProblema(alheio, 404, "not-found");
+      esperarProblema(inexistente, 404, "not-found");
+      expect(alheio.headers["content-type"]).toBe(inexistente.headers["content-type"]);
+      expect(semanticaDoProblema(alheio.body)).toEqual(semanticaDoProblema(inexistente.body));
+    });
+
+    it("id livre não vira criação: 404 e nada é gravado", async () => {
+      const dono = await criarUsuario("client");
+
+      const res = await request(app)
+        .put("/api/designs/design-que-nao-existe")
+        .set(...comToken(dono.token))
+        .send(corpoDeDesign());
+
+      esperarProblema(res, 404, "not-found");
+      expect(await prisma.savedDesign.count()).toBe(0);
+    });
   });
 });

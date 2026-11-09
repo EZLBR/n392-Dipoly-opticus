@@ -293,21 +293,24 @@ describe("API real — respostas de erro em Problem Details", () => {
     expectProblem(res, 409, "conflict");
   });
 
-  it("violação de unicidade real no banco (id de design) devolve 409", async () => {
+  // A violação de unicidade real (23505 → 409) é coberta pela rota
+  // /conflito-banco do mini-app. Pela API de designs ela não acontece mais:
+  // era o oráculo de existência do BOLA-04, quando o id do cliente ia ao INSERT.
+  it("id de design de outro usuário devolve 404 Problem Details, sem chegar ao INSERT", async () => {
     const clienteA = await criarUsuario("client");
     const clienteB = await criarUsuario("client");
-    const design = { id: "design-dup-integracao", name: "A", model: "M", color: "C" };
+    const design = { name: "A", model: "M", color: "C" };
 
-    await request(app)
+    const criado = await request(app)
       .post("/api/designs")
       .set(...comToken(clienteA.token))
       .send(design);
 
     const res = await request(app)
-      .post("/api/designs")
+      .put(`/api/designs/${criado.body.id}`)
       .set(...comToken(clienteB.token))
       .send(design);
 
-    expectProblem(res, 409, "conflict");
+    expectProblem(res, 404, "not-found");
   });
 });
