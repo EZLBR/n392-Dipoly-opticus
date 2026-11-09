@@ -182,7 +182,6 @@ model Pagamento {
 model SavedDesign {
   id             String    @id @db.VarChar(255)
   usuarioId      Int       @map("usuario_id")
-  customerEmail  String    @map("customer_email") @db.VarChar(255)
   name           String    @db.VarChar(255)
   model          String    @db.VarChar(255)
   color          String    @db.VarChar(50)
@@ -203,6 +202,5 @@ model SavedDesign {
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
   @@index([usuarioId], map: "idx_designs_usuario")
-  @@index([customerEmail], map: "idx_designs_email")
   @@map("saved_designs")
 }

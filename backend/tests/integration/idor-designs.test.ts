@@ -13,11 +13,32 @@ import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { app } from "../setup/app.js";
 import prisma from "../../src/config/prisma.js";
-import { criarUsuario, comToken } from "../helpers/auth.js";
+import { criarUsuario, comToken, type UsuarioDeTeste } from "../helpers/auth.js";
 import { criarDesign, lerDesign } from "../helpers/designs.js";
 import { esperarProblema, semanticaDoProblema } from "../helpers/problem.js";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/**
+ * Troca o e-mail do usuário direto no banco (a API ainda não expõe essa
+ * operação, mas o dado é mutável) e devolve um token novo, com o e-mail novo.
+ */
+async function trocarEmail(usuario: UsuarioDeTeste): Promise<UsuarioDeTeste> {
+  const email = `trocado-${usuario.id}-${Date.now()}@exemplo.invalid`;
+  await prisma.usuario.update({ where: { id: usuario.id }, data: { email } });
+  const login = await request(app).post("/api/auth/login").send({ email, password: usuario.senha });
+  expect(login.status).toBe(200);
+  return { ...usuario, email, token: login.body.token };
+}
+
+/** Cadastra uma conta nova com o e-mail informado, pela API. */
+async function cadastrarCom(email: string) {
+  const res = await request(app)
+    .post("/api/auth/register")
+    .send({ name: "Herdeiro do e-mail", email, password: "SenhaTeste123" });
+  expect(res.status).toBe(201);
+  return { id: res.body.user.id as number, token: res.body.token as string };
+}
 
 const corpoDeDesign = (id?: string) => ({
   id,
@@ -122,7 +143,7 @@ describe("designs — autorização de objeto (TEST-02)", () => {
 
       expect(res.status).toBe(201);
       expect(res.body.id).toMatch(UUID_V4);
-      expect(await lerDesign(res.body.id)).toMatchObject({ usuarioId: dono.id, customerEmail: dono.email });
+      expect(await lerDesign(res.body.id)).toMatchObject({ usuarioId: dono.id });
     });
 
     it("id no corpo é recusado com 400, sem criar nem alterar design", async () => {
@@ -165,7 +186,6 @@ describe("designs — autorização de objeto (TEST-02)", () => {
       expect(res.status).toBe(201);
       const criado = await lerDesign(res.body.id);
       expect(criado?.usuarioId).toBe(atacante.id);
-      expect(criado?.customerEmail).toBe(atacante.email);
 
       const daVitima = await request(app).get("/api/designs").set(...comToken(vitima.token));
       expect(daVitima.body.designs).toHaveLength(0);
@@ -248,6 +268,62 @@ describe("designs — autorização de objeto (TEST-02)", () => {
 
       esperarProblema(res, 404, "not-found");
       expect(await prisma.savedDesign.count()).toBe(0);
+    });
+  });
+
+  // BOLA-05: o escopo é o usuario_id do token, imutável. Com o e-mail como
+  // escopo, a conta que recebesse um e-mail liberado recebia os designs dele.
+  describe("[BOLA-05] o dono é o usuario_id, não o e-mail", () => {
+    it("quem se cadastra com o e-mail antigo do dono não lista, não altera e não apaga os designs dele", async () => {
+      const dono = await criarUsuario("client");
+      const design = await criarDesign(dono);
+      const antes = await lerDesign(design.id);
+      await trocarEmail(dono);
+      const herdeiro = await cadastrarCom(dono.email);
+
+      const lista = await request(app).get("/api/designs").set(...comToken(herdeiro.token));
+      const edicao = await request(app)
+        .put(`/api/designs/${design.id}`)
+        .set(...comToken(herdeiro.token))
+        .send(corpoDeDesign());
+      const exclusao = await request(app)
+        .delete(`/api/designs/${design.id}`)
+        .set(...comToken(herdeiro.token));
+
+      expect(lista.status).toBe(200);
+      expect(lista.body.designs).toEqual([]);
+      esperarProblema(edicao, 404, "not-found");
+      esperarProblema(exclusao, 404, "not-found");
+      expect(await lerDesign(design.id)).toEqual(antes);
+    });
+
+    it("o dono continua com os próprios designs depois de trocar de e-mail", async () => {
+      const original = await criarUsuario("client");
+      const design = await criarDesign(original);
+      const dono = await trocarEmail(original);
+
+      const lista = await request(app).get("/api/designs").set(...comToken(dono.token));
+      expect(lista.body.designs.map((d: { id: string }) => d.id)).toEqual([design.id]);
+
+      const edicao = await request(app)
+        .put(`/api/designs/${design.id}`)
+        .set(...comToken(dono.token))
+        .send({ ...corpoDeDesign(), name: "Depois da troca" });
+      expect(edicao.status).toBe(200);
+      expect(await lerDesign(design.id)).toMatchObject({ name: "Depois da troca", usuarioId: dono.id });
+
+      const exclusao = await request(app).delete(`/api/designs/${design.id}`).set(...comToken(dono.token));
+      expect(exclusao.status).toBe(200);
+      expect(await lerDesign(design.id)).toBeNull();
+    });
+
+    it("design criado depois da troca de e-mail continua do mesmo usuario_id", async () => {
+      const dono = await trocarEmail(await criarUsuario("client"));
+
+      const res = await request(app).post("/api/designs").set(...comToken(dono.token)).send(corpoDeDesign());
+
+      expect(res.status).toBe(201);
+      expect(await lerDesign(res.body.id)).toMatchObject({ usuarioId: dono.id });
     });
   });
 });
