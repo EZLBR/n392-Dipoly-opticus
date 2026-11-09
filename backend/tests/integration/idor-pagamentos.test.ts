@@ -30,6 +30,21 @@ import { assinarWebhook, eventoCheckoutPago, SEGREDO_WEBHOOK } from "../helpers/
 const PENDENTE = { pedido: "Pending_Payment", pagamento: "pendente" };
 const PAGO = { pedido: "Queued", pagamento: "aprovado" };
 
+/** Vínculo de cobrança gravado no pedido, lido sem escopo. */
+async function cobrancaGravada(pedidoId: number) {
+  return prisma.pedido.findUniqueOrThrow({
+    where: { id: pedidoId },
+    select: { abacateBillingId: true, pagamentoSimulado: true },
+  });
+}
+
+/** Resposta de sucesso do AbacatePay para uma cobrança criada. */
+const aprovacaoDoGateway = (id: string) =>
+  new Response(JSON.stringify({ success: true, data: { id, url: `https://gateway.invalid/pagar/${id}` } }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+
 async function cenarioDeCobranca(simulada = true) {
   const fabrica = await criarUsuario("factory");
   const dono = await criarUsuario("client");
@@ -113,6 +128,104 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.checkoutUrl).toEqual(expect.any(String));
+      expect(await cobrancaGravada(pedido.id)).toEqual({ abacateBillingId: expect.any(String), pagamentoSimulado: true });
+    });
+
+    // BOLA-03: a posse está na própria consulta (e na escrita que a segue),
+    // não numa comparação em memória depois de ler o pedido sem escopo.
+    describe("[BOLA-03] escopo do dono na própria consulta", () => {
+      afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllEnvs();
+      });
+
+      it("dono cria a cobrança simulada e o vínculo fica gravado no próprio pedido", async () => {
+        const cliente = await criarUsuario("client");
+        const pedido = await criarPedido({ dono: cliente });
+
+        const res = await request(app)
+          .post("/api/payments/create-billing")
+          .set(...comToken(cliente.token))
+          .send({ orderId: pedido.id });
+
+        expect(res.status).toBe(200);
+        expect(res.body.isSimulated).toBe(true);
+        const gravada = await cobrancaGravada(pedido.id);
+        expect(gravada).toEqual({ abacateBillingId: expect.any(String), pagamentoSimulado: true });
+        expect(res.body.checkoutUrl).toContain(`billingId=${gravada.abacateBillingId}`);
+      });
+
+      it("a fábrica do pedido não é dona dele: 404 e nada muda no banco", async () => {
+        const dono = await criarUsuario("client");
+        const fabrica = await criarUsuario("factory");
+        const pedido = await criarPedido({ dono, fabrica });
+        const antes = await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } });
+
+        const res = await request(app)
+          .post("/api/payments/create-billing")
+          .set(...comToken(fabrica.token))
+          .send({ orderId: pedido.id });
+
+        esperarProblema(res, 404, "not-found");
+        expect(res.body.detail).toBe("Pedido não encontrado.");
+        expect(await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })).toEqual(antes);
+      });
+
+      it("a exceção de staff não alcança pedido inexistente", async () => {
+        const staff = await criarUsuario("staff");
+
+        const res = await request(app)
+          .post("/api/payments/create-billing")
+          .set(...comToken(staff.token))
+          .send({ orderId: 999_999 });
+
+        esperarProblema(res, 404, "not-found");
+        expect(res.body.detail).toBe("Pedido não encontrado.");
+      });
+
+      it("pedido alheio é recusado antes de chegar ao gateway real", async () => {
+        vi.stubEnv("ABACATE_TOKEN", "token-de-teste");
+        const gateway = vi.spyOn(globalThis, "fetch").mockResolvedValue(aprovacaoDoGateway("bill_alheio"));
+        const vitima = await criarUsuario("client");
+        const atacante = await criarUsuario("client");
+        const pedido = await criarPedido({ dono: vitima, status: "Pending_Payment" });
+        const antes = await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } });
+
+        const res = await request(app)
+          .post("/api/payments/create-billing")
+          .set(...comToken(atacante.token))
+          .send({ orderId: pedido.id });
+
+        esperarProblema(res, 404, "not-found");
+        expect(gateway).not.toHaveBeenCalled();
+        expect(await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })).toEqual(antes);
+        expect(await prisma.pagamento.count()).toBe(0);
+      });
+
+      it("dono cobra pelo gateway real com os dados do próprio pedido", async () => {
+        vi.stubEnv("ABACATE_TOKEN", "token-de-teste");
+        const gateway = vi.spyOn(globalThis, "fetch").mockResolvedValue(aprovacaoDoGateway("bill_do_dono"));
+        const cliente = await criarUsuario("client");
+        const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
+        const lido = await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } });
+
+        const res = await request(app)
+          .post("/api/payments/create-billing")
+          .set(...comToken(cliente.token))
+          .send({ orderId: pedido.id });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ checkoutUrl: "https://gateway.invalid/pagar/bill_do_dono", isSimulated: false });
+        expect(gateway).toHaveBeenCalledTimes(1);
+        // As colunas explícitas da consulta chegam ao gateway e ao registro do pagamento.
+        const cobranca = JSON.parse(String(gateway.mock.calls[0][1]?.body));
+        expect(cobranca.products).toEqual([
+          { externalId: String(pedido.id), name: lido.productName, quantity: 1, price: 45_000 },
+        ]);
+        expect(cobranca.customer).toMatchObject({ name: lido.customerName, email: lido.customerEmail });
+        expect(await cobrancaGravada(pedido.id)).toEqual({ abacateBillingId: "bill_do_dono", pagamentoSimulado: false });
+        expect(await lerCobranca({ billingId: "bill_do_dono", pedidoPublicId: pedido.publicId })).toEqual(PENDENTE);
+      });
     });
   });
 

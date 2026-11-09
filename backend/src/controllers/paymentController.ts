@@ -40,6 +40,16 @@ const PORT          = env.PORT;
 
 import type { CreateBillingDTO } from "../dtos/payment/payment.dto.js";
 
+/** Só as colunas de que a cobrança precisa: nada de `SELECT *`. */
+interface PedidoCobravel {
+  id: number;
+  total: string;
+  product_name: string;
+  customer_name: string;
+  customer_email: string;
+  abacate_billing_id: string | null;
+}
+
 // ─────────────────────────────────────────────────────────
 //   CRIAR COBRANÇA (AbacatePay ou simulador)
 //   POST /api/payments/create-billing
@@ -47,19 +57,24 @@ import type { CreateBillingDTO } from "../dtos/payment/payment.dto.js";
 export async function createBilling(req: Request, res: Response) {
   const { orderId } = req.body as CreateBillingDTO;
 
-  const { rows } = await pool.query("SELECT * FROM pedidos WHERE id = $1", [orderId]);
+  // BOLA-03: a posse é parte da própria consulta, e não uma comparação em
+  // memória depois de ler o pedido. Staff é a exceção explícita na cláusula.
+  // Pedido inexistente e pedido alheio caem no mesmo 404 (BOLA-02): 403 fica
+  // reservado à falta de papel RBAC, sem revelar a existência.
+  const escopo = [req.user!.role === "staff", req.user!.id];
+
+  const { rows } = await pool.query<PedidoCobravel>(
+    `SELECT id, total, product_name, customer_name, customer_email, abacate_billing_id
+       FROM pedidos
+      WHERE id = $1 AND ($2::boolean OR usuario_id = $3)`,
+    [orderId, ...escopo]
+  );
 
   if (rows.length === 0) {
     throw new NotFoundProblem("Pedido não encontrado.");
   }
 
   const order = rows[0];
-
-  // BOLA-02: falta de posse usa o mesmo 404 do pedido inexistente.
-  // 403 fica reservado à falta de papel RBAC, sem revelar a existência.
-  if (order.usuario_id !== req.user!.id && req.user!.role !== "staff") {
-    throw new NotFoundProblem("Pedido não encontrado.");
-  }
 
   const ABACATE_TOKEN = getAbacateToken();
   const amountInCents   = Math.round(Number(order.total) * 100);
@@ -77,10 +92,17 @@ export async function createBilling(req: Request, res: Response) {
 
     const mockBillingId  = gerarBillingId("sim");
 
-    await pool.query(
-      "UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true, status = 'Pending Payment' WHERE id = $2",
-      [mockBillingId, orderId]
+    // A escrita repete o escopo da leitura: a autorização vale para a
+    // mutação, e não só para o SELECT que a precedeu.
+    const { rowCount } = await pool.query(
+      `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true, status = 'Pending Payment'
+        WHERE id = $2 AND ($3::boolean OR usuario_id = $4)`,
+      [mockBillingId, order.id, ...escopo]
     );
+
+    if (rowCount !== 1) {
+      throw new NotFoundProblem("Pedido não encontrado.");
+    }
 
     const mockCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${mockBillingId}&orderId=${orderId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
 
