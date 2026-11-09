@@ -22,7 +22,6 @@ export async function criarDesign(dono: UsuarioDeTeste): Promise<DesignDeTeste> 
     data: {
       id: `design-teste-${n}-${Date.now()}`,
       usuarioId: dono.id,
-      customerEmail: dono.email,
       name: `Design Teste ${n}`,
       model: "aviador",
       color: "#1a1a1a",
@@ -35,6 +34,6 @@ export async function criarDesign(dono: UsuarioDeTeste): Promise<DesignDeTeste> 
 export async function lerDesign(id: string) {
   return prisma.savedDesign.findUnique({
     where: { id },
-    select: { id: true, usuarioId: true, customerEmail: true, name: true, color: true },
+    select: { id: true, usuarioId: true, name: true, color: true },
   });
 }

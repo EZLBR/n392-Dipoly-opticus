@@ -38,6 +38,23 @@ describe("schema criado pelas migrations (DB-04)", () => {
     },
   );
 
+  // BOLA-05: a autoria é só usuario_id, obrigatório e ligado a usuarios.
+  // O e-mail, mutável, não fica mais copiado no design.
+  it("saved_designs identifica o dono só por usuario_id, NOT NULL e com FK para usuarios", async () => {
+    const { rows: colunas } = await pool.query<{ column_name: string; is_nullable: string }>(
+      `SELECT column_name, is_nullable FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'saved_designs'`,
+    );
+    expect(colunas.map((c) => c.column_name)).not.toContain("customer_email");
+    expect(colunas.find((c) => c.column_name === "usuario_id")?.is_nullable).toBe("NO");
+
+    const { rows: fks } = await pool.query<{ definicao: string }>(
+      `SELECT pg_get_constraintdef(oid) AS definicao FROM pg_constraint
+        WHERE conrelid = 'saved_designs'::regclass AND contype = 'f'`,
+    );
+    expect(fks.map((f) => f.definicao)).toContainEqual(expect.stringMatching(/FOREIGN KEY \(usuario_id\) REFERENCES usuarios\(id\)/));
+  });
+
   // Textual para caber o UUID gerado pelo servidor (BOLA-04) e os ids
   // legados que o Studio enviava ("design-<timestamp>").
   it("saved_designs tem chave primária textual", async () => {

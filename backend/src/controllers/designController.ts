@@ -19,6 +19,11 @@ import { emTransacao } from "../config/transacao.js";
 // Agora o POST só cria, com id gerado pelo servidor, e o PUT só atualiza o
 // que estiver no escopo do usuário. Design alheio e design inexistente dão
 // o mesmo 404, e nenhum id enviado pelo cliente chega a um INSERT.
+//
+// BOLA-05: o dono do design é o usuario_id do token, imutável. O e-mail é
+// mutável (o staff pode trocá-lo) e deixou de existir em saved_designs: com
+// ele como escopo, quem herdasse o e-mail antigo herdava os designs
+// (docs/decisions/ADR-0002-designs-escopados-por-usuario-id.md).
 
 const DESIGN_NAO_ENCONTRADO = "Design não encontrado ou sem permissão.";
 
@@ -33,20 +38,19 @@ export async function createDesign(req: Request, res: Response) {
     top_bar, bridge_style, frame_profile, temple_open, published, config
   } = req.body as SaveDesignDTO;
 
-  const customerEmail = req.user!.email;
-  const usuarioId     = req.user!.id;
+  const usuarioId = req.user!.id;
 
   // O identificador é sempre do servidor: UUID v4, nunca valor do cliente.
   const id = randomUUID();
 
   const { rows: result } = await pool.query<{ id: string }>(
     `INSERT INTO saved_designs
-      (id, usuario_id, customer_email, name, model, color,
+      (id, usuario_id, name, model, color,
        is_sunglasses, anti_reflective, temple_style,
        top_bar, bridge_style, frame_profile, temple_open, published, studio_config)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb) RETURNING id`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb) RETURNING id`,
     [
-      id, usuarioId, customerEmail, name, model, color,
+      id, usuarioId, name, model, color,
       Boolean(is_sunglasses), Boolean(anti_reflective), temple_style || "standard",
       Boolean(top_bar), bridge_style || "keyhole", frame_profile || "medium",
       temple_open || 0.00, Boolean(published), config ? JSON.stringify(config) : null
@@ -72,14 +76,14 @@ export async function updateDesign(req: Request, res: Response) {
     top_bar, bridge_style, frame_profile, temple_open, published
   } = payload;
 
-  const customerEmail = req.user!.email;
+  const usuarioId = req.user!.id;
 
   await emTransacao(async (conexao) => {
     // O documento atual entra na fusão das edições legadas. FOR UPDATE
     // segura a linha até a escrita, para outra edição não se intercalar.
     const { rows: existing } = await conexao.query<{ studio_config: unknown }>(
-      "SELECT studio_config FROM saved_designs WHERE id = $1 AND customer_email = $2 FOR UPDATE",
-      [id, customerEmail]
+      "SELECT studio_config FROM saved_designs WHERE id = $1 AND usuario_id = $2 FOR UPDATE",
+      [id, usuarioId]
     );
 
     if (existing.length === 0) {
@@ -94,13 +98,13 @@ export async function updateDesign(req: Request, res: Response) {
         top_bar = $7, bridge_style = $8, frame_profile = $9,
         temple_open = $10, published = $11, updated_at = CURRENT_TIMESTAMP,
         studio_config = COALESCE($14::jsonb, studio_config)
-       WHERE id = $12 AND customer_email = $13`,
+       WHERE id = $12 AND usuario_id = $13`,
       [
         name, document ? `${document.frontModel}_front_${document.templeModel}_temples` : model, document?.color ?? color,
         document?.isSunglasses ?? Boolean(is_sunglasses), document ? document.lensTreatments.includes("anti_reflective") : Boolean(anti_reflective), temple_style || "standard",
         Boolean(top_bar), bridge_style || "keyhole", document?.frameProfile ?? frame_profile ?? "medium",
         document?.templeOpen ?? temple_open ?? 0.00, Boolean(published),
-        id, customerEmail, document ? JSON.stringify(document) : null
+        id, usuarioId, document ? JSON.stringify(document) : null
       ]
     );
   }, { traceId: req.requestId });
@@ -113,11 +117,11 @@ export async function updateDesign(req: Request, res: Response) {
 //   GET /api/designs
 // ─────────────────────────────────────────────────────────
 export async function getDesigns(req: Request, res: Response) {
-  const customerEmail = req.user!.email;
+  const usuarioId = req.user!.id;
 
   const { rows } = await pool.query(
-    "SELECT * FROM saved_designs WHERE customer_email = $1 ORDER BY created_at DESC",
-    [customerEmail]
+    "SELECT * FROM saved_designs WHERE usuario_id = $1 ORDER BY created_at DESC",
+    [usuarioId]
   );
 
   const designs = rows.map(row => ({
@@ -146,12 +150,12 @@ export async function getDesigns(req: Request, res: Response) {
 //   DELETE /api/designs/:id
 // ─────────────────────────────────────────────────────────
 export async function deleteDesign(req: Request, res: Response) {
-  const { id }       = req.params;
-  const customerEmail = req.user!.email;
+  const { id }    = req.params;
+  const usuarioId = req.user!.id;
 
   const { rowCount } = await pool.query(
-    "DELETE FROM saved_designs WHERE id = $1 AND customer_email = $2",
-    [id, customerEmail]
+    "DELETE FROM saved_designs WHERE id = $1 AND usuario_id = $2",
+    [id, usuarioId]
   );
 
   if (rowCount === 0) {
