@@ -12,7 +12,8 @@ import {
 import { calculateBasePrice } from "../../utils/pricing";
 import { ArrowRight, Check, Bookmark, ShoppingBag } from "lucide-react";
 import ArtworkPanel from "./ArtworkPanel";
-import { hasArtwork } from "../../eyewear/artwork";
+import { hasUnapprovedCustomization } from "../../eyewear/artwork";
+import PatternControls from "./PatternControls";
 
 export default function CustomizationPanel({
   onSave,
@@ -28,7 +29,7 @@ export default function CustomizationPanel({
     setActiveStep,
     toggleLensTreatment,
   } = useCreatorStudio();
-  const { language } = useTranslation();
+  const { language, t } = useTranslation();
   const pt = language === "pt";
   const steps = pt
     ? ["Armação", "Lentes", "Componentes", "Arte", "Revisão"]
@@ -100,7 +101,7 @@ export default function CustomizationPanel({
                 pt
                   ? "Personalize cada ponto de contato."
                   : "Personalize every point of contact.",
-                pt ? "Escreva na armação e veja sua ideia tomar forma." : "Write on the frame and see your idea take shape.",
+                t("artwork-step-intro"),
                 pt
                   ? "Confira sua criação antes de continuar."
                   : "Check your creation before continuing.",
@@ -174,6 +175,7 @@ export default function CustomizationPanel({
               "frameProfile",
               ["thin", "medium", "bold"],
             )}
+            <PatternControls />
           </>
         )}
         {activeStep === 2 && (
@@ -332,9 +334,8 @@ export default function CustomizationPanel({
                 ? "Modelo conceitual. Medidas e disponibilidade precisam ser confirmadas antes da fabricação."
                 : "Concept model. Dimensions and availability must be confirmed before manufacturing."}
             </p>
-            {hasArtwork(c) && <p className="studio-art-production-note">
-              {pt ? `${c.artwork.layers.length} camada(s) de texto. Salve seu design; compra com arte ainda em validação.`
-                : `${c.artwork.layers.length} text layer(s). Save your design; artwork purchasing is still under review.`}
+            {hasUnapprovedCustomization(c) && <p className="studio-art-production-note">
+              {t("decoration-preview")}
             </p>}
           </>
         )}
@@ -365,7 +366,7 @@ export default function CustomizationPanel({
               <ArrowRight size={16} />
             </button>
           ) : (
-            <button className="studio-primary" onClick={onCart} disabled={hasArtwork(c)}>
+            <button className="studio-primary" onClick={onCart} disabled={hasUnapprovedCustomization(c)}>
               <ShoppingBag size={16} />
               {pt ? "Adicionar à sacola" : "Add to bag"}
             </button>

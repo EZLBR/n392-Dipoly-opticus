@@ -81,7 +81,7 @@ export function drawEyewearOverlay(
 }
 export default function TryOnViewport() {
   const { config, environment, setTryOnMode } = useCreatorStudio();
-  const { language } = useTranslation();
+  const { language, t } = useTranslation();
   const pt = language === "pt";
   const video = useRef<HTMLVideoElement>(null),
     canvas = useRef<HTMLCanvasElement>(null),
@@ -276,7 +276,9 @@ export default function TryOnViewport() {
             ? pt
               ? "Posicione seu rosto de frente para a câmera"
               : "Face the camera"
-            : pt
+            : config.surfacePattern.style !== "none"
+              ? t("pattern-camera-note")
+              : pt
               ? "Prévia frontal aproximada • não mede o ajuste no rosto"
               : "Approximate frontal preview • does not measure fit"}
         </div>

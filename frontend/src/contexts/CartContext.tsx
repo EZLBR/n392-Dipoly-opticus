@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
 import { apiClient, ProblemError } from "../api/client";
 import { normalizeConfig } from "../eyewear/config";
-import { hasArtwork } from "../eyewear/artwork";
+import { hasUnapprovedCustomization } from "../eyewear/artwork";
 
 const CartContext = createContext<any>(undefined);
 
@@ -23,7 +23,7 @@ export function CartProvider({ children }) {
   }, [cart]);
 
   const addToCart = (item) => {
-    if (hasArtwork(normalizeConfig(item.customSpecs))) return;
+    if (hasUnapprovedCustomization(normalizeConfig(item.customSpecs))) return;
     setCart((prevCart) => {
       const existing = prevCart.find((i) => i.id === item.id);
       if (existing) {

@@ -2,12 +2,20 @@ import { z } from "zod";
 
 const shape = z.enum(["wayfarer", "aviator", "cateye", "round"]);
 const color = z.string().regex(/^#[\da-f]{6}$/i, "Use uma cor hexadecimal de seis dígitos.");
+const artworkZone = z.enum(["front-left", "front-right", "temple-left", "temple-right"]);
+export const surfacePatternSchema = z.object({
+  version: z.literal(1),
+  style: z.enum(["none", "stripes", "dots", "checker"]),
+  scale: z.number().min(1).max(6),
+  rotation: z.number().min(-180).max(180),
+  ink: color,
+}).strict();
 export const textLayerSchema = z.object({
   id: z.string().min(1).max(64),
   text: z.string().trim().min(1).max(48)
     .refine(value => Array.from(value).length <= 24, "Use no máximo 24 caracteres.")
     .refine(value => !/[\u0000-\u001f\u007f]/.test(value), "Texto contém caracteres de controle."),
-  zone: z.enum(["front-left", "front-right", "temple-left", "temple-right"]),
+  zone: artworkZone,
   font: z.enum(["sans", "serif", "mono"]),
   color,
   x: z.number().min(-1).max(1),
@@ -15,6 +23,24 @@ export const textLayerSchema = z.object({
   size: z.number().min(0.25).max(1),
   rotation: z.number().min(-30).max(30),
 }).strict();
+
+const coordinate = z.number().int().min(0).max(1000);
+const drawingStrokeSchema = z.strictObject({
+  color,
+  width: z.number().int().min(2).max(20),
+  points: z.array(z.tuple([coordinate, coordinate])).min(1).max(128),
+});
+const drawingLayerSchema = z.strictObject({
+  kind: z.literal("drawing"),
+  id: z.string().min(1).max(64),
+  zone: artworkZone,
+  strokes: z.array(drawingStrokeSchema).max(32),
+});
+const artworkSchema = z.discriminatedUnion("version", [
+  z.strictObject({ version: z.literal(1), layers: z.array(textLayerSchema).max(6) }),
+  z.strictObject({ version: z.literal(2), layers: z.array(z.union([textLayerSchema, drawingLayerSchema])).max(6) }),
+]).refine(artwork => new Set(artwork.layers.map(layer => layer.id)).size === artwork.layers.length,
+  "Camadas devem ter identificadores únicos.");
 
 export const studioConfigSchema = z.object({
   version: z.literal(1),
@@ -31,9 +57,6 @@ export const studioConfigSchema = z.object({
   templeTipMaterial: z.enum(["acetate", "silicone", "rubber"]),
   hingeMaterial: z.enum(["stainless_steel", "titanium", "gold"]),
   templeOpen: z.number().min(-0.05).max(1.35),
-  artwork: z.object({
-    version: z.literal(1),
-    layers: z.array(textLayerSchema).max(6)
-      .refine(layers => new Set(layers.map(layer => layer.id)).size === layers.length, "Camadas devem ter identificadores únicos."),
-  }).strict(),
+  surfacePattern: surfacePatternSchema.optional(),
+  artwork: artworkSchema,
 }).strict();

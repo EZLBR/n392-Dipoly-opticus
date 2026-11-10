@@ -1,4 +1,5 @@
 import { normalizeArtwork, type Artwork } from "./artwork";
+import { normalizeSurfacePattern, type SurfacePattern } from "./patterns";
 
 export const silhouettes = ["wayfarer", "aviator", "cateye", "round"] as const;
 export const materials = [
@@ -23,6 +24,7 @@ export type FrameMaterial = (typeof materials)[number];
 export interface EyewearConfig {
   version: 1;
   artwork: Artwork;
+  surfacePattern: SurfacePattern;
   frontModel: Silhouette;
   templeModel: Silhouette;
   frameProfile: "thin" | "medium" | "bold";
@@ -40,6 +42,7 @@ export interface EyewearConfig {
 export const defaultConfig: EyewearConfig = {
   version: 1,
   artwork: { version: 1, layers: [] },
+  surfacePattern: normalizeSurfacePattern(undefined),
   frontModel: "wayfarer",
   templeModel: "wayfarer",
   frameProfile: "medium",
@@ -86,6 +89,7 @@ export function normalizeConfig(input: unknown = {}): EyewearConfig {
   return {
     version: 1,
     artwork: normalizeArtwork(c.artwork),
+    surfacePattern: normalizeSurfacePattern(c.surfacePattern),
     frontModel,
     templeModel: choose(
       shapeAlias(c.templeModel || legacy[1]?.replace("_temples", "")),
