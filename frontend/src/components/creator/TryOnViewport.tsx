@@ -269,7 +269,7 @@ export default function TryOnViewport() {
         <div className="studio-tracking-label" role="status">
           {state === "searching"
             ? t("try-on-face-the-camera")
-            : t("try-on-approximate-frontal-preview-does-not-measure")}
+            : t(config.surfacePattern.style !== "none" ? "pattern-camera-note" : "try-on-approximate-frontal-preview-does-not-measure")}
         </div>
       )}
     </div>

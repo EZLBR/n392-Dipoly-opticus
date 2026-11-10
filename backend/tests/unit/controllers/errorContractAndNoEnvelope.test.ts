@@ -73,17 +73,18 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
       await expect(paymentController.createBilling(req, res)).rejects.toThrow(NotFoundProblem);
     });
 
+    // BOLA-03: a posse está na própria consulta. Para pedido alheio o banco
+    // devolve zero linhas, e a resposta é a mesma do pedido inexistente.
     it("paymentController lança o mesmo NotFoundProblem se pedido pertencer a outro usuário", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({
-        rows: [{ id: 5, usuario_id: 2, total: "100.00" }],
-        rowCount: 1,
-      } as any);
+      const query = vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
       const req = { body: { orderId: 5 }, user: { id: 1, role: "client" } } as unknown as Request;
       const res = mockResponse();
 
       await expect(paymentController.createBilling(req, res)).rejects.toThrow(
         new NotFoundProblem("Pedido não encontrado."),
       );
+      // O escopo vem do token: o id do usuário, sem a exceção de staff.
+      expect(query).toHaveBeenCalledWith(expect.stringMatching(/usuario_id = \$3/), [5, false, 1]);
     });
 
     it("paymentController lança BadRequestProblem se billingId estiver ausente no checkout simulado", async () => {

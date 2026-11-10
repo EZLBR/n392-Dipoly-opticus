@@ -756,6 +756,30 @@ body.page-create .navbar .nav-menu.open {
 .studio-art-empty { padding: 22px 0; font-size: 13px; line-height: 1.8; color: var(--st-muted); }
 .studio-art-production-note { padding: 12px 14px; font-size: 11px; line-height: 1.8; background: #f0eadb; color: #66512d; border-radius: 5px; }
 .studio-art-remove { width: 100%; margin-top: 8px; }
+
+.studio-art-layer-header { flex-wrap: wrap; }
+.studio-drawing-pad {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 10px 0 16px;
+  border-radius: 6px;
+  outline: 1px solid var(--st-line);
+  background: #373a36;
+  cursor: crosshair;
+  touch-action: none;
+}
+.studio-drawing-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.studio-drawing-coordinates { margin-block: 12px; }
+.studio-drawing-coordinates summary { cursor: pointer; }
+.studio-drawing-coordinates > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-block: 10px;
+}
+.studio-drawing-coordinates label { display: grid; gap: 4px; font-size: 12px; }
+.studio-drawing-coordinates input { min-width: 0; width: 100%; }
 .studio-shell button:disabled { opacity: 0.5; cursor: not-allowed; }
 .studio-art-panel input:focus-visible, .studio-art-panel select:focus-visible { outline: 2px solid var(--st-accent); outline-offset: 2px; }
 @media (max-width: 760px) {

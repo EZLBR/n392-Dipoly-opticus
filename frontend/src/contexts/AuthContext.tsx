@@ -17,6 +17,7 @@ export function AuthProvider({ children }) {
   const [designs, setDesigns] = useState([]);
   const [users, setUsers] = useState([]);
   const [session, setSession] = useState(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
   const [authWarning, setAuthWarning] = useState<string | null>(null);
   const [studioOwner, setStudioOwner] = useState<string | undefined>();
@@ -123,7 +124,7 @@ export function AuthProvider({ children }) {
       changeStudioOwner(ANONYMOUS_STUDIO_OWNER);
     }
 
-    initSession();
+    void initSession().finally(() => setSessionLoading(false));
   }, []);
 
   useEffect(() => {
@@ -178,16 +179,26 @@ export function AuthProvider({ children }) {
       invalidateLocalSession();
       throw new Error("A sessão mudou em outra aba. Atualize a página antes de salvar.");
     }
-    let finalId = designData.id || `design-${Date.now()}`;
+    const localId = designData.id ? String(designData.id) : null;
+    // BOLA-04: the server generates the id on creation and PUT only changes a
+    // design that already exists there. A draft that never synced is created;
+    // one with a proven remote identity (same rule as deletion) is updated.
+    const known = localId ? readJSON(localStorage, "opticus_designs", []).find(item => String(item.id) === localId) : undefined;
+    const remoteId = known && (known.remoteId || known.syncStatus !== "local") ? String(known.remoteId || known.id) : null;
+    let finalId = localId || `design-${Date.now()}`;
     let syncStatus = "local";
     if (token) {
       try {
-        const data = await apiClient.post<any>("/designs", { ...designData, id: finalId }, comToken(token));
-        const remoteId = data?.id ?? data?.design?.id;
-        if (typeof remoteId !== "string" || !remoteId.trim()) {
+        const fields = { ...designData };
+        delete fields.id;
+        const data = remoteId
+          ? await apiClient.put<any>(`/designs/${encodeURIComponent(remoteId)}`, fields, comToken(token))
+          : await apiClient.post<any>("/designs", fields, comToken(token));
+        const savedId = data?.id ?? data?.design?.id;
+        if (typeof savedId !== "string" || !savedId.trim()) {
           throw new Error("Resposta inválida ao salvar o design. Não foi possível confirmar o salvamento.");
         }
-        finalId = remoteId;
+        finalId = savedId;
         syncStatus = "synced";
       } catch (e) {
         // A server rejection (including 5xx) is never an offline draft.
@@ -201,7 +212,8 @@ export function AuthProvider({ children }) {
       throw new Error("A sessão mudou durante o salvamento. Abra o Studio novamente.");
     }
     const cached = readJSON(localStorage, "opticus_designs", []);
-    const existingIndex = cached.findIndex(item => String(item.id) === String(finalId));
+    // A synced draft takes the server's id: replace the entry under its local id, not append a copy.
+    const existingIndex = cached.findIndex(item => String(item.id) === (localId ?? String(finalId)));
     const previousDesign = existingIndex >= 0 ? cached[existingIndex] : {};
     const newDesign = {
       ...previousDesign,
@@ -293,6 +305,8 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       session,
+      sessionLoading,
+      sessionToken: authTokenRef.current,
       studioOwner,
       studioSessionChanged,
       setSession,

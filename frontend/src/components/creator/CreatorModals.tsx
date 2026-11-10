@@ -9,7 +9,7 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
     useCreatorStudio();
   const { saveDesign, session } = useAuth();
   const { language, t } = useTranslation();
-  const hasEmptyText = config.artwork.layers.some(layer => !layer.text.trim());
+  const hasEmptyText = config.artwork.layers.some(layer => "text" in layer && !layer.text.trim());
   const dialog = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");

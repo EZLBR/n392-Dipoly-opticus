@@ -12,7 +12,8 @@ import {
 import { calculateBasePrice } from "../../utils/pricing";
 import { ArrowRight, Check, Bookmark, ShoppingBag } from "lucide-react";
 import ArtworkPanel from "./ArtworkPanel";
-import { hasArtwork } from "../../eyewear/artwork";
+import { hasUnapprovedCustomization } from "../../eyewear/artwork";
+import PatternControls from "./PatternControls";
 
 export default function CustomizationPanel({
   onSave,
@@ -162,6 +163,7 @@ export default function CustomizationPanel({
               "frameProfile",
               ["thin", "medium", "bold"],
             )}
+            <PatternControls />
           </>
         )}
         {activeStep === 2 && (
@@ -306,8 +308,8 @@ export default function CustomizationPanel({
             <p className="studio-note">
               {t("studio-options-concept-model-dimensions-and-availability-must")}
             </p>
-            {hasArtwork(c) && <p className="studio-art-production-note">
-              {c.artwork.layers.length} {t("studio-artwork-count")}
+            {hasUnapprovedCustomization(c) && <p className="studio-art-production-note">
+              {t("decoration-preview")}
             </p>}
           </>
         )}
@@ -338,7 +340,7 @@ export default function CustomizationPanel({
               <ArrowRight size={16} />
             </button>
           ) : (
-            <button className="studio-primary" onClick={onCart} disabled={hasArtwork(c)}>
+            <button className="studio-primary" onClick={onCart} disabled={hasUnapprovedCustomization(c)}>
               <ShoppingBag size={16} />
               {t("studio-options-add-to-bag")}
             </button>

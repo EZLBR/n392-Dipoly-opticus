@@ -8,7 +8,7 @@ import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, Info, AlertCircle } from 
 import ThreePreview from "./ThreePreview";
 import { fetchSimulatedCheckoutHtml, confirmSimulatedPayment } from "../utils/simulated-checkout";
 import { ProblemError } from "../api/client";
-import { hasArtwork } from "../eyewear/artwork";
+import { hasUnapprovedCustomization } from "../eyewear/artwork";
 import { normalizeConfig } from "../eyewear/config";
 
 interface SimulatedCheckout {
@@ -30,7 +30,7 @@ export default function Cart({ setView }) {
   const [simulatedCheckout, setSimulatedCheckout] = useState<SimulatedCheckout | null>(null);
   const [checkoutLanguageError, setCheckoutLanguageError] = useState(false);
   const [checkoutLanguageAttempt, setCheckoutLanguageAttempt] = useState(0);
-  const containsArtwork = cart.some(item => hasArtwork(normalizeConfig(item.customSpecs)));
+  const containsArtwork = cart.some(item => hasUnapprovedCustomization(normalizeConfig(item.customSpecs)));
   const checkout = simulatedCheckout?.owner === String(session?.id)
     && simulatedCheckout.token === localStorage.getItem("opticus_token") ? simulatedCheckout : null;
 

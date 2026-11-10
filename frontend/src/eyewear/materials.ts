@@ -1,6 +1,31 @@
 import * as THREE from "three";
 import { isMetal, type EyewearConfig } from "./config";
 import type { MaterialSet } from "./geometry";
+import { normalizeSurfacePattern, type SurfacePattern } from "./patterns";
+
+export function createPatternTexture(pattern: SurfacePattern, baseColor: string) {
+  const size = 256, pixels = new Uint8Array(size * size * 4);
+  const rgb = (hex: string) => [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16));
+  const base = rgb(baseColor), ink = rgb(pattern.ink);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const painted = pattern.style === "stripes" ? Math.floor(x / 32) % 2 === 0
+      : pattern.style === "checker" ? (Math.floor(x / 32) + Math.floor(y / 32)) % 2 === 0
+      : pattern.style === "dots" && (x % 64 - 32) ** 2 + (y % 64 - 32) ** 2 < 16 ** 2;
+    pixels.set([...(painted ? ink : base), 255], (y * size + x) * 4);
+  }
+  const map = new THREE.DataTexture(pixels, size, size);
+  map.channel = 1;
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(pattern.scale, pattern.scale);
+  map.center.set(0.5, 0.5);
+  map.rotation = THREE.MathUtils.degToRad(pattern.rotation);
+  map.magFilter = THREE.LinearFilter;
+  map.minFilter = THREE.LinearMipmapLinearFilter;
+  map.generateMipmaps = true;
+  map.needsUpdate = true;
+  return map;
+}
 
 function surfaceTexture(kind: "tortoise" | "wood" | "carbon") {
   const size = 256,
@@ -95,6 +120,7 @@ export function lensAppearance(c: EyewearConfig, environment = "studio") {
 }
 
 export function createMaterials() {
+  let customPattern: THREE.DataTexture | undefined, patternKey = "";
   const maps = {
     tortoise: surfaceTexture("tortoise"),
     wood: surfaceTexture("wood"),
@@ -111,7 +137,14 @@ export function createMaterials() {
     const metal = isMetal(c),
       crystal = c.frameMaterial === "acetate" && c.finish === "crystal";
     const frameLook = frameAppearance(c);
-    frame.map = frameLook.texture ? maps[frameLook.texture] : null;
+    const pattern = normalizeSurfacePattern(c.surfacePattern);
+    const nextPatternKey = pattern.style === "none" ? "" : JSON.stringify([pattern, c.color]);
+    if (nextPatternKey !== patternKey) {
+      customPattern?.dispose();
+      customPattern = nextPatternKey ? createPatternTexture(pattern, c.color) : undefined;
+      patternKey = nextPatternKey;
+    }
+    frame.map = customPattern || (frameLook.texture ? maps[frameLook.texture] : null);
     frame.color.set(frame.map ? "#ffffff" : frameLook.color);
     frame.metalness = metal ? 1 : 0;
     frame.roughness =
@@ -189,6 +222,7 @@ export function createMaterials() {
     dispose: () => {
       Object.values(materials).forEach((m) => m.dispose());
       Object.values(maps).forEach((m) => m.dispose());
+      customPattern?.dispose();
     },
   };
 }

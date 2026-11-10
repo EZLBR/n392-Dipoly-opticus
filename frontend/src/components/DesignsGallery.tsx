@@ -8,7 +8,7 @@ import { calculateBasePrice } from "../utils/pricing";
 
 import ThreePreview from "./ThreePreview";
 import { normalizeConfig, label } from "../eyewear/config";
-import { hasArtwork } from "../eyewear/artwork";
+import { hasUnapprovedCustomization } from "../eyewear/artwork";
 import { ProblemError } from "../api/client";
 
 export default function DesignsGallery({ setView }) {
@@ -39,7 +39,7 @@ export default function DesignsGallery({ setView }) {
 
   const handleAddToCart = (design) => {
     const config = normalizeConfig(design);
-    if (hasArtwork(config)) return;
+    if (hasUnapprovedCustomization(config)) return;
     const price = calculateBasePrice(config);
 
     const cartItem = {
@@ -136,10 +136,10 @@ export default function DesignsGallery({ setView }) {
                       <button className="btn" style={{ width: "100%", justifyContent: "center" }} onClick={() => handleOpenDesign(index)}>
                         <Edit size={14} style={{ marginRight: "6px" }} /> {t("designs-edit")}
                       </button>
-                      {hasArtwork(config) && <p style={{ fontSize: 12 }}>
-                        {t("designs-artwork-purchasing-awaits-factory-approval-you")}
+                      {hasUnapprovedCustomization(config) && <p style={{ fontSize: 12 }}>
+                        {t("decoration-preview")}
                       </p>}
-                      <button className="btn primary" disabled={hasArtwork(config)} style={{ width: "100%", justifyContent: "center" }} onClick={() => handleAddToCart(design)}>
+                      <button className="btn primary" disabled={hasUnapprovedCustomization(config)} style={{ width: "100%", justifyContent: "center" }} onClick={() => handleAddToCart(design)}>
                         <ShoppingCart size={14} style={{ marginRight: "6px" }} /> {t("designs-add-cart")}
                       </button>
                     </div>

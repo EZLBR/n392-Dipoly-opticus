@@ -6,6 +6,7 @@ import React, {
   useRef,
 } from "react";
 import { normalizeConfig, type EyewearConfig } from "../eyewear/config";
+import type { DrawingStroke } from "../eyewear/artwork";
 import { restoreStudio, STUDIO_OWNER_KEY } from "../eyewear/storage";
 import { useAuth } from "./AuthContext";
 import { translate } from "./LanguageContext";
@@ -14,6 +15,7 @@ import type { CameraView } from "../eyewear/EyewearViewer";
 function useStudioState(owner: string) {
   const [initial] = useState(() => restoreStudio(localStorage));
   const [config, setConfig] = useState(initial.config);
+  const [drawingRedo, setDrawingRedo] = useState(() => new Map<string, DrawingStroke[]>());
   const [activeStep, setActiveStep] = useState(1);
   const [tryOnMode, setTryOnMode] = useState(false);
   const [environment, setEnvironment] = useState("studio");
@@ -29,6 +31,12 @@ function useStudioState(owner: string) {
   const source = useRef(initial.source);
   const patchConfig = (patch: Partial<EyewearConfig>) =>
     setConfig((previous) => normalizeConfig({ ...previous, ...patch }));
+  const setLayerRedo = (id: string, strokes: DrawingStroke[]) => setDrawingRedo(previous => {
+    const next = new Map(previous);
+    if (strokes.length) next.set(id, strokes);
+    else next.delete(id);
+    return next;
+  });
   const showToast = (message: string) => {
     clearTimeout(timer.current);
     setStatusMessage(message);
@@ -71,6 +79,8 @@ function useStudioState(owner: string) {
   return {
     config,
     patchConfig,
+    drawingRedo,
+    setLayerRedo,
     activeStep,
     setActiveStep,
     tryOnMode,

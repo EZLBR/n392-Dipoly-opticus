@@ -15,6 +15,7 @@ const CreatorStudio = lazy(() => import("./components/CreatorStudio"));
 const DesignsGallery = lazy(() => import("./components/DesignsGallery"));
 const AuthPage = lazy(() => import("./components/AuthPage"));
 const Cart = lazy(() => import("./components/Cart"));
+const CustomerOrders = lazy(() => import("./components/CustomerOrders"));
 
 function AppContent() {
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
@@ -139,6 +140,8 @@ function AppContent() {
               <Route path="/designs" element={<DesignsGallery setView={setViewLegacy} />} />
               <Route path="/create" element={<CreatorStudio setView={setViewLegacy} />} />
               <Route path="/cart" element={<Cart setView={setViewLegacy} />} />
+              <Route path="/orders" element={<CustomerOrders />} />
+              <Route path="/orders/:publicId" element={<CustomerOrders />} />
               <Route path="/login" element={<AuthPage setView={setViewLegacy} />} />
               <Route path="/factory-dashboard" element={<FactoryDashboard />} />
               <Route path="/staff-dashboard" element={<StaffDashboard />} />

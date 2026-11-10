@@ -17,3 +17,12 @@ it.each(["/api/orders", "/api/orders/checkout-cart"])("does not create orders wi
     .toEqual([path.endsWith("checkout-cart") ? "cartItems.0.customSpecs.artwork" : "customSpecs.artwork"]);
   expect((await pool.query("SELECT COUNT(*)::int AS total FROM pedidos")).rows[0].total).toBe(0);
 });
+
+it.each(["/api/orders", "/api/orders/checkout-cart"])("does not create orders with visual-only patterns through %s", async path => {
+  const owner = await criarUsuario();
+  const factory = await criarUsuario("factory");
+  const item = { productName: "Pattern frame", factoryId: factory.id, factoryName: "Factory", customSpecs: especificacaoDoStudio({ surfacePattern: { version: 1, style: "checker", scale: 2, rotation: 0, ink: "#ffffff" } }) };
+  const response = await request(app).post(path).set(...comToken(owner.token)).send(path.endsWith("checkout-cart") ? { cartItems: [item] } : item);
+  expect(response.status).toBe(400);
+  expect((await pool.query("SELECT COUNT(*)::int AS total FROM pedidos")).rows[0].total).toBe(0);
+});
