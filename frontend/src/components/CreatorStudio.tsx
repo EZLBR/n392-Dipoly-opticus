@@ -31,7 +31,7 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
     draftStatus,
   } = useCreatorStudio();
   const { language, t } = useTranslation();
-  const pt = language === "pt";
+
   const { addToCart } = useCart();
   const [showSaveModal, setShowSaveModal] = useState(false);
   const d = dimensions[config.frontModel];
@@ -57,9 +57,7 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
       },
     });
     showToast(
-      pt
-        ? "Sua criação foi adicionada à sacola."
-        : "Your creation was added to the bag.",
+      t("studio-your-creation-was-added-to-the"),
     );
     setView("cart");
   }
@@ -69,12 +67,12 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
         <button
           className="studio-back"
           onClick={() => setView("marketplace")}
-          aria-label={pt ? "Voltar à coleção" : "Back to collection"}
+          aria-label={t("studio-back-to-collection")}
         >
           <ArrowLeft size={18} />
         </button>
         <div>
-          <span className="studio-eyebrow">OPTICUS / ATELIER</span>
+          <span className="studio-eyebrow">{t("brand-atelier")}</span>
           <h1>
             Creator Studio<span>01</span>
           </h1>
@@ -82,12 +80,8 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
         <span className="studio-draft">
           <Check size={13} />
           {draftStatus === "saved"
-            ? pt
-              ? "Salvo neste dispositivo"
-              : "Saved on this device"
-            : pt
-              ? "Não foi possível salvar o rascunho"
-              : "Unable to save draft"}
+            ? t("studio-saved-on-this-device")
+            : t("studio-unable-to-save-draft")}
         </span>
       </header>
       <main className="studio-workspace">
@@ -96,7 +90,7 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
             "studio-stage " +
             (environment === "wooddark" ? "studio-stage-dark" : "")
           }
-          aria-label={pt ? "Prévia do óculos" : "Eyewear preview"}
+          aria-label={t("studio-eyewear-preview")}
         >
           <div className="studio-mode">
             <button
@@ -104,11 +98,11 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
               onClick={() => setTryOnMode(false)}
             >
               <Box size={15} />
-              {pt ? "Modelo 3D" : "3D model"}
+              {t("studio-3d-model")}
             </button>
             <button aria-pressed={tryOnMode} onClick={() => setTryOnMode(true)}>
               <Camera size={15} />
-              {pt ? "Experimentar" : "Try on"}
+              {t("studio-try-on")}
             </button>
           </div>
           <div className="studio-model">
@@ -128,9 +122,9 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
               </div>
               <div
                 className="studio-view-controls"
-                aria-label={pt ? "Ângulo da câmera" : "Camera angle"}
+                aria-label={t("studio-camera-angle")}
               >
-                {(["perspective", "front", "side", "left-side"] as const).map((v, i) => (
+                {(["perspective", "front", "side", "left-side"] as const).map((v) => (
                   <button
                     key={v}
                     aria-pressed={view === v}
@@ -139,15 +133,11 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
                       setAutoRotate(false);
                     }}
                   >
-                    {
-                      (pt
-                        ? ["¾", "Frente", "Direita", "Esquerda"]
-                        : ["¾", "Front", "Right", "Left"])[i]
-                    }
+                    {t(`studio-view-${v}`)}
                   </button>
                 ))}
                 <button
-                  aria-label={pt ? "Rotação automática" : "Auto rotate"}
+                  aria-label={t("studio-auto-rotate")}
                   aria-pressed={autoRotate}
                   onClick={() => setAutoRotate(!autoRotate)}
                 >
@@ -156,20 +146,18 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
               </div>
               <div className="studio-stage-bottom">
                 <label>
-                  {pt ? "Luz" : "Light"}
+                  {t("studio-light")}
                   <select
                     value={environment}
                     onChange={(e) => setEnvironment(e.target.value)}
                   >
-                    <option value="studio">{pt ? "Estúdio" : "Studio"}</option>
-                    <option value="wooddark">{pt ? "Escuro" : "Dark"}</option>
-                    <option value="sunlight">{pt ? "Sol" : "Sun"}</option>
+                    <option value="studio">{t("studio-studio")}</option>
+                    <option value="wooddark">{t("studio-dark")}</option>
+                    <option value="sunlight">{t("studio-sun")}</option>
                   </select>
                 </label>
                 <p>
-                  {pt
-                    ? "Arraste para girar · Role para aproximar"
-                    : "Drag to orbit · Scroll to zoom"}
+                  {t("studio-drag-to-orbit-scroll-to-zoom")}
                 </p>
               </div>
             </>

@@ -1,15 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useCreatorStudio } from "../../contexts/CreatorStudioContext";
 import { useAuth } from "../../contexts/AuthContext";
-import { useTranslation } from "../../contexts/LanguageContext";
+import { localizeProblem, useTranslation } from "../../contexts/LanguageContext";
 import { ProblemError } from "../../api/client";
 
 export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
   const { config, designId, designName, setDesignName, markSaved, showToast } =
     useCreatorStudio();
   const { saveDesign, session } = useAuth();
-  const { language } = useTranslation();
-  const pt = language === "pt";
+  const { language, t } = useTranslation();
   const hasEmptyText = config.artwork.layers.some(layer => "text" in layer && !layer.text.trim());
   const dialog = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false),
@@ -44,21 +43,15 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
       markSaved(String(saved.id));
       showToast(
         saved.syncStatus === "local"
-          ? pt
-            ? "Salvo neste dispositivo. A sincronização não está disponível."
-            : "Saved on this device. Sync is unavailable."
-          : pt
-            ? "Design salvo na sua conta, com materiais e camadas de arte."
-            : "Design saved to your account, including materials and artwork.",
+          ? t("studio-save-saved-on-this-device-sync-is")
+          : t("studio-save-design-saved-to-your-account-including"),
       );
       onClose();
       onOpenDesigns?.();
     } catch (error) {
       setError(
-        error instanceof ProblemError ? error.detail || error.title || error.message
-          : pt
-          ? "Não foi possível confirmar o salvamento. Tente novamente."
-          : "Unable to confirm the save. Please try again.",
+        error instanceof ProblemError ? localizeProblem(error.problem, language)
+          : t("studio-save-unable-to-confirm-the-save-please"),
       );
     } finally {
       setBusy(false);
@@ -76,17 +69,15 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
     >
       <form onSubmit={save}>
         <h2 id="save-design-title">
-          {pt ? "Guarde sua criação." : "Keep your creation."}
+          {t("studio-save-keep-your-creation")}
         </h2>
         <p className="studio-note">
           {session
-            ? pt ? "Salve na sua conta para continuar esta criação em outro dispositivo. Se estiver sem conexão, o Studio informa quando a cópia ficou apenas aqui."
-              : "Save to your account to continue on another device. When offline, Studio tells you if the copy is only stored here."
-            : pt ? "Entre na sua conta para acessar esta criação em outros dispositivos. Sem login, o design fica apenas neste navegador."
-              : "Sign in to access this creation on other devices. Without login, it is only saved in this browser."}
+            ? t("studio-save-save-to-your-account-to-continue")
+            : t("studio-save-sign-in-to-access-this-creation")}
         </p>
         <label>
-          {pt ? "Nome do design" : "Design name"}
+          {t("studio-save-design-name")}
           <input
             autoFocus
             required
@@ -94,12 +85,12 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
             value={designName}
             onChange={(e) => setDesignName(e.target.value)}
             placeholder={
-              pt ? "Ex.: Meu Wayfarer âmbar" : "e.g. My amber Wayfarer"
+              t("studio-save-e-g-my-amber-wayfarer")
             }
           />
         </label>
         {error && <p role="alert">{error}</p>}
-        {hasEmptyText && <p role="alert">{pt ? "Preencha ou remova as camadas de texto vazias antes de salvar." : "Fill in or remove empty text layers before saving."}</p>}
+        {hasEmptyText && <p role="alert">{t("studio-save-fill-in-or-remove-empty-text")}</p>}
         <div className="studio-actions">
           <button
             type="button"
@@ -107,7 +98,7 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
             disabled={busy}
             onClick={onClose}
           >
-            {pt ? "Cancelar" : "Cancel"}
+            {t("studio-save-cancel")}
           </button>
           <button
             type="submit"
@@ -115,12 +106,8 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
             disabled={busy || !designName.trim() || hasEmptyText}
           >
             {busy
-              ? pt
-                ? "Salvando…"
-                : "Saving…"
-              : pt
-                ? "Salvar design"
-                : "Save design"}
+              ? t("studio-save-saving")
+              : t("studio-save-save-design")}
           </button>
         </div>
       </form>

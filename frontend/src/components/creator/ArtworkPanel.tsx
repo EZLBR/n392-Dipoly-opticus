@@ -7,8 +7,7 @@ import DrawingControls from "./DrawingControls";
 
 export default function ArtworkPanel() {
   const { config, patchConfig, setCameraView, setAutoRotate, setTryOnMode, drawingRedo, setLayerRedo } = useCreatorStudio();
-  const { language, t } = useTranslation();
-  const pt = language === "pt";
+  const { t } = useTranslation();
   const layers = config.artwork.layers;
   const [selectedId, setSelectedId] = useState<string | undefined>(layers[0]?.id);
   const selectedLayer = layers.find(layer => layer.id === selectedId) || layers[0];
@@ -25,7 +24,7 @@ export default function ArtworkPanel() {
   };
   function add() {
     if (layers.length >= MAX_ARTWORK_LAYERS) return;
-    const layer: TextLayer = { id: crypto.randomUUID(), text: pt ? "Seu nome" : "Your name", zone: "temple-right",
+    const layer: TextLayer = { id: crypto.randomUUID(), text: t("artwork-your-name"), zone: "temple-right",
       font: "sans", color: "#f7f0db", x: 0, y: 0, size: 0.8, rotation: 0 };
     setLayers([...layers, layer]);
     setSelectedId(layer.id); focusZone(layer.zone);
@@ -57,14 +56,12 @@ export default function ArtworkPanel() {
         onChange={event => update({ [field]: Number(event.target.value) })} />
     </div>;
   return <div className="studio-art-panel">
-    <p className="studio-note">{pt
-      ? "Personalize a frente e as hastes. Lentes e peças de apoio estão bloqueadas para arte."
-      : "Personalize the front and temples. Lenses and support components are unavailable for artwork."}</p>
+    <p className="studio-note">{t("artwork-personalize-the-front-and-temples-lenses")}</p>
     <div className="studio-art-layer-header">
       <strong>{t("artwork-layers")} <small>{layers.length}/{MAX_ARTWORK_LAYERS}</small></strong>
       <div className="studio-drawing-actions">
         <button className="studio-secondary" type="button" disabled={layers.length >= MAX_ARTWORK_LAYERS} onClick={add}>
-          {pt ? "Adicionar texto" : "Add text"}
+          {t("artwork-add-text")}
         </button>
         <button className="studio-secondary" type="button" disabled={layers.length >= MAX_ARTWORK_LAYERS} onClick={addDrawing}>
           {t("drawing-add")}
@@ -75,34 +72,34 @@ export default function ArtworkPanel() {
       {layers.map((layer, index) => <button key={layer.id} type="button" aria-pressed={selectedLayer?.id === layer.id}
         onClick={() => { setSelectedId(layer.id); focusZone(layer.zone); }}>
         <span>{String(index + 1).padStart(2, "0")}</span>
-        {"kind" in layer ? t("drawing-layer") : layer.text || (pt ? "Texto vazio" : "Empty text")}
+        {"kind" in layer ? t("drawing-layer") : layer.text || (t("artwork-empty-text"))}
       </button>)}
     </div>}
     {!selectedLayer && <p className="studio-art-empty">{t("artwork-empty")}</p>}
     {selected && <fieldset className="studio-field studio-art-fields">
-      <legend>{pt ? "Editar texto" : "Edit text"}</legend>
-      <label>{pt ? "Texto" : "Text"}
-        <input type="text" aria-label={pt ? "Texto" : "Text"} value={selected.text} maxLength={48} onChange={event => update({ text: event.target.value })} />
+      <legend>{t("artwork-edit-text")}</legend>
+      <label>{t("artwork-text")}
+        <input type="text" aria-label={t("artwork-text")} value={selected.text} maxLength={48} onChange={event => update({ text: event.target.value })} />
         <small>{Array.from(selected.text).length}/{MAX_TEXT_CHARACTERS}</small>
       </label>
-      {!selected.text.trim() && <p role="alert" className="studio-note">{pt ? "Preencha o texto antes de salvar." : "Enter text before saving."}</p>}
+      {!selected.text.trim() && <p role="alert" className="studio-note">{t("artwork-enter-text-before-saving")}</p>}
       {region(selected)}
-      <label>{pt ? "Fonte" : "Font"}
-        <select aria-label={pt ? "Fonte" : "Font"} value={selected.font} onChange={event => update({ font: event.target.value as TextLayer["font"] })}>
-          {artworkFonts.map((font, index) => <option key={font} value={font}>
-            {(pt ? ["Sem serifa", "Serifa", "Monoespaçada"] : ["Sans serif", "Serif", "Monospace"])[index]}
+      <label>{t("artwork-font")}
+        <select aria-label={t("artwork-font")} value={selected.font} onChange={event => update({ font: event.target.value as TextLayer["font"] })}>
+          {artworkFonts.map(font => <option key={font} value={font}>
+            {t(`artwork-font-${font}`)}
           </option>)}
         </select>
       </label>
-      <label className="studio-art-color">{pt ? "Cor do texto" : "Text color"}
-        <input aria-label={pt ? "Cor do texto" : "Text color"} type="color" value={selected.color} onChange={event => update({ color: event.target.value })} />
+      <label className="studio-art-color">{t("artwork-text-color")}
+        <input aria-label={t("artwork-text-color")} type="color" value={selected.color} onChange={event => update({ color: event.target.value })} />
       </label>
-      {range("x", pt ? "Posição horizontal" : "Horizontal position", -1, 1, 0.02)}
-      {range("y", pt ? "Posição vertical" : "Vertical position", -1, 1, 0.02)}
-      {range("size", pt ? "Tamanho do texto" : "Text size", 0.25, 1, 0.01)}
-      {range("rotation", pt ? "Rotação" : "Rotation", -30, 30, 1)}
+      {range("x", t("artwork-horizontal-position"), -1, 1, 0.02)}
+      {range("y", t("artwork-vertical-position"), -1, 1, 0.02)}
+      {range("size", t("artwork-text-size"), 0.25, 1, 0.01)}
+      {range("rotation", t("artwork-rotation"), -30, 30, 1)}
       <button className="studio-secondary studio-art-remove" type="button" onClick={removeSelected}>
-        {pt ? "Remover texto" : "Remove text"}
+        {t("artwork-remove-text")}
       </button>
     </fieldset>}
     {drawing && <fieldset className="studio-field studio-art-fields">
@@ -115,8 +112,6 @@ export default function ArtworkPanel() {
           layer.id === drawing.id ? { ...drawing, strokes } : layer,
         ))} />
     </fieldset>}
-    <p className="studio-art-production-note">{pt
-      ? "Aplicação em estudo. Você pode salvar esta criação; a compra com arte será liberada após a validação da fábrica."
-      : "Application under review. You can save this creation; purchasing artwork designs will be enabled after factory approval."}</p>
+    <p className="studio-art-production-note">{t("artwork-application-under-review-you-can-save")}</p>
   </div>;
 }

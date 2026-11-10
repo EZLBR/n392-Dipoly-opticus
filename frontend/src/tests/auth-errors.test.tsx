@@ -123,7 +123,7 @@ describe("Épico 7 - Tratamento de 401 e 403 no Frontend", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/login");
   });
 
-  it("Cenário 2: 403 exibe aviso com o title do Problem Details e mantém a sessão ativa", async () => {
+  it("Cenário 2: 403 exibe aviso no idioma selecionado e mantém a sessão ativa", async () => {
     localStorage.setItem("opticus_token", "valid-client-token");
 
     const mockProblemDetails403 = {
@@ -165,7 +165,7 @@ describe("Épico 7 - Tratamento de 401 e 403 no Frontend", () => {
     await waitFor(() => {
       const alert = screen.getByRole("alert");
       expect(alert).toBeInTheDocument();
-      expect(alert).toHaveTextContent("Acesso negado para este perfil.");
+      expect(alert).toHaveTextContent("You don't have permission to do this.");
     });
 
     // 2. Mantém a sessão ativa
@@ -218,7 +218,7 @@ describe("Épico 7 - Tratamento de 401 e 403 no Frontend", () => {
     fireEvent.click(screen.getByText("Disparar updateUser"));
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("Somente staff pode alterar usuários.");
+      expect(screen.getByRole("alert")).toHaveTextContent("You don't have permission to do this.");
     });
 
     expect(screen.getByTestId("session-status")).toHaveTextContent("Logged as Ana (client)");

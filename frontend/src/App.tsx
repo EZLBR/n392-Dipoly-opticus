@@ -21,7 +21,7 @@ function AppContent() {
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const { session, authWarning, clearAuthWarning } = useAuth();
   const { clearCart } = useCart();
-  const { language } = useTranslation();
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -112,7 +112,7 @@ function AppContent() {
           </div>
           <button
             onClick={clearAuthWarning}
-            aria-label="Fechar aviso"
+            aria-label={t("app-close-warning")}
             style={{
               background: "transparent",
               border: "none",
@@ -131,7 +131,7 @@ function AppContent() {
       <main className="main-content">
         <Suspense fallback={
           <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', color:'rgba(255,255,255,0.5)', fontFamily:'var(--font-primary)'}}>
-            Carregando interface...
+            {t("app-loading")}
           </div>
         }>
           <ErrorBoundary>
@@ -157,7 +157,7 @@ function AppContent() {
           <div className="modal-card" style={{ maxWidth: "480px", background: "rgba(22, 27, 34, 0.95)", border: "1px solid rgba(240, 246, 252, 0.1)", borderRadius: "16px" }}>
             <div className="modal-head" style={{ borderBottom: "1px solid rgba(240, 246, 252, 0.08)" }}>
               <h3 style={{ textTransform: "uppercase", letterSpacing: "1.5px", fontWeight: "700", color: "#22c55e" }}>
-                {language === "pt" ? "PAGAMENTO VERIFICADO" : "PAYMENT CONFIRMED"}
+                {t("app-payment-confirmed")}
               </h3>
               <button
                 className="modal-close"
@@ -187,12 +187,10 @@ function AppContent() {
                 <Check size={36} />
               </div>
               <h2 style={{ fontSize: "24px", fontWeight: "700", marginBottom: "12px", letterSpacing: "-0.5px" }}>
-                {language === "pt" ? "Pedido em Produção!" : "Order in Production!"}
+                {t("app-order-in-production")}
               </h2>
               <p style={{ color: "#8b949e", fontSize: "14px", lineHeight: "1.6", marginBottom: "32px" }}>
-                {language === "pt"
-                  ? "Excelente! Seu pagamento via Pix foi validado com sucesso através do AbacatePay. O pedido foi recebido e encaminhado para a fila de produção da Fábrica!"
-                  : "Excellent! Your Pix payment was validated successfully through AbacatePay. The order has been received and forwarded to the Factory production queue!"}
+                {t("app-excellent-your-pix-payment-was-validated")}
               </p>
               <button
                 className="btn primary"
@@ -202,7 +200,7 @@ function AppContent() {
                   setShowPaymentSuccess(false);
                 }}
               >
-                {language === "pt" ? "CONFIRMAR" : "DISMISS"}
+                {t("app-dismiss")}
               </button>
             </div>
           </div>

@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import * as THREE from "three";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
-import { useTranslation } from "../contexts/LanguageContext";
+import { localizeProblem, useTranslation, type Language } from "../contexts/LanguageContext";
 import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, Info, AlertCircle } from "lucide-react";
 
 import ThreePreview from "./ThreePreview";
@@ -11,6 +11,15 @@ import { ProblemError } from "../api/client";
 import { hasUnapprovedCustomization } from "../eyewear/artwork";
 import { normalizeConfig } from "../eyewear/config";
 
+interface SimulatedCheckout {
+  html: string;
+  owner: string;
+  token: string | null;
+  billingId: string;
+  url: string;
+  language: Language;
+}
+
 export default function Cart({ setView }) {
   const { session } = useAuth();
   const { cart, removeFromCart, updateCartQty, clearCart, checkoutCart } = useCart();
@@ -18,8 +27,26 @@ export default function Cart({ setView }) {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
-  const [simulatedCheckout, setSimulatedCheckout] = useState<{ html: string; owner: string; billingId: string } | null>(null);
+  const [simulatedCheckout, setSimulatedCheckout] = useState<SimulatedCheckout | null>(null);
+  const [checkoutLanguageError, setCheckoutLanguageError] = useState(false);
+  const [checkoutLanguageAttempt, setCheckoutLanguageAttempt] = useState(0);
   const containsArtwork = cart.some(item => hasUnapprovedCustomization(normalizeConfig(item.customSpecs)));
+  const checkout = simulatedCheckout?.owner === String(session?.id)
+    && simulatedCheckout.token === localStorage.getItem("opticus_token") ? simulatedCheckout : null;
+
+  useEffect(() => {
+    if (!checkout || checkout.language === language) return;
+    const controller = new AbortController();
+    setCheckoutLanguageError(false);
+    fetchSimulatedCheckoutHtml(checkout.url, language, controller.signal).then(html => {
+      if (!controller.signal.aborted && checkout.token === localStorage.getItem("opticus_token")) {
+        setSimulatedCheckout(current => current === checkout ? { ...current, html, language } : current);
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted) setCheckoutLanguageError(true);
+    });
+    return () => controller.abort();
+  }, [checkout, language, checkoutLanguageAttempt]);
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -43,15 +70,14 @@ export default function Cart({ setView }) {
     if (containsArtwork) return;
     if (!session) {
       alert(
-        language === "pt"
-          ? "Você precisa estar conectado para finalizar uma compra."
-          : "You need to log in to complete your checkout."
+        t("cart-you-need-to-log-in-to")
       );
       setView("login");
       return;
     }
 
     setCheckoutLoading(true);
+    const token = localStorage.getItem("opticus_token");
 
     try {
       const result = await checkoutCart(cart);
@@ -64,9 +90,13 @@ export default function Cart({ setView }) {
           }, 2000);
         } else if (result.checkoutUrl) {
           if (result.isSimulated) {
-            const html = await fetchSimulatedCheckoutHtml(result.checkoutUrl);
-            const billingId = result.billingId || new URL(result.checkoutUrl).searchParams.get("billingId") || "";
-            setSimulatedCheckout({ html, owner: String(session.id), billingId });
+            if (token !== localStorage.getItem("opticus_token")) return;
+            const url = result.checkoutUrl;
+            const html = await fetchSimulatedCheckoutHtml(url, language);
+            const billingId = result.billingId || new URL(url).searchParams.get("billingId") || "";
+            if (token === localStorage.getItem("opticus_token")) {
+              setSimulatedCheckout({ html, owner: String(session.id), token, billingId, url, language });
+            }
           } else {
             window.location.href = result.checkoutUrl;
           }
@@ -74,17 +104,13 @@ export default function Cart({ setView }) {
       } else {
         alert(
           result?.error ||
-          (language === "pt"
-            ? "Ocorreu um erro ao finalizar o pagamento."
-            : "An error occurred during checkout initialization.")
+          (t("cart-an-error-occurred-during-checkout-initialization"))
         );
       }
     } catch (err) {
       console.error("Checkout process failed:", err);
       alert(
-        language === "pt"
-          ? "Não foi possível conectar ao servidor de pagamentos."
-          : "Could not connect to the payment server."
+        err instanceof ProblemError ? localizeProblem(err.problem, language) : t("cart-could-not-connect-to-the-payment")
       );
     } finally {
       setCheckoutLoading(false);
@@ -92,30 +118,28 @@ export default function Cart({ setView }) {
   };
 
   const handleConfirmSimulatedPayment = async () => {
-    if (!simulatedCheckout) return;
+    if (!checkout) return;
     setConfirmingPayment(true);
     try {
-      await confirmSimulatedPayment(simulatedCheckout.billingId);
+      await confirmSimulatedPayment(checkout.billingId);
       // O App escuta `?payment=success` no carregamento e limpa a sacola.
       window.location.href = "/?payment=success";
     } catch (err) {
-      const detail = err instanceof ProblemError ? err.detail || err.title || "" : "";
+      const detail = err instanceof ProblemError ? localizeProblem(err.problem, language) : "";
       alert(
         detail ||
-        (language === "pt"
-          ? "Não foi possível confirmar o pagamento simulado."
-          : "Could not confirm the simulated payment.")
+        (t("cart-could-not-confirm-the-simulated-payment"))
       );
     } finally {
       setConfirmingPayment(false);
     }
   };
 
-  if (simulatedCheckout && simulatedCheckout.owner === String(session?.id)) {
-    return <section aria-label={language === "pt" ? "Pagamento simulado" : "Simulated payment"} style={{ padding: 16 }}>
+  if (checkout) {
+    return <section aria-label={t("cart-simulated-payment")} style={{ padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <button className="btn" onClick={() => setSimulatedCheckout(null)}>
-          {language === "pt" ? "Voltar à sacola" : "Back to bag"}
+          {t("cart-back-to-bag")}
         </button>
         <button
           className="btn primary"
@@ -123,12 +147,18 @@ export default function Cart({ setView }) {
           disabled={confirmingPayment}
         >
           {confirmingPayment
-            ? (language === "pt" ? "CONFIRMANDO..." : "CONFIRMING...")
-            : (language === "pt" ? "SIMULAR PAGAMENTO PIX" : "SIMULATE PIX PAYMENT")}
+            ? (t("cart-confirming"))
+            : (t("cart-simulate-pix-payment"))}
         </button>
       </div>
-      <iframe title={language === "pt" ? "Sua cobrança Pix" : "Your Pix billing"}
-        srcDoc={simulatedCheckout.html} sandbox="allow-same-origin"
+      {checkoutLanguageError && checkout.language !== language && <div role="alert">
+        <p>{t("cart-language-load-failed")}</p>
+        <button className="btn" onClick={() => setCheckoutLanguageAttempt(attempt => attempt + 1)}>
+          {t("cart-retry-language")}
+        </button>
+      </div>}
+      <iframe title={t("cart-your-pix-billing")}
+        srcDoc={checkout.html} sandbox="allow-same-origin"
         referrerPolicy="no-referrer" style={{ width: "100%", height: "80vh", border: 0, marginTop: 16 }} />
     </section>;
   }
@@ -192,12 +222,10 @@ export default function Cart({ setView }) {
             {t("cart-empty")}
           </h2>
           <p style={{ color: "var(--color-hint)", fontSize: "14px", maxWidth: "400px", margin: "0 auto 32px auto", lineHeight: "1.6" }}>
-            {language === "pt"
-              ? "Navegue pelo nosso catálogo ou abra o estúdio 3D para criar um modelo personalizado exclusivo para você!"
-              : "Browse our catalog or open the 3D studio to create an exclusive customized model built just for you!"}
+            {t("cart-browse-our-catalog-or-open-the")}
           </p>
           <button className="btn primary" onClick={() => setView("marketplace")} style={{ padding: "12px 32px", fontSize: "14px", fontWeight: "600" }}>
-            {language === "pt" ? "VOLTAR PARA O CATÁLOGO" : "GO TO MARKETPLACE"}
+            {t("cart-go-to-marketplace")}
           </button>
         </div>
       ) : (
@@ -223,7 +251,7 @@ export default function Cart({ setView }) {
                       {item.productName}
                     </h3>
                     <p style={{ color: "var(--color-hint)", fontSize: "12px", margin: "0 0 12px 0", textTransform: "uppercase", letterSpacing: "1px" }}>
-                      {t("journey-03-title")} &bull; {item.factoryName || "Opticus Partner"}
+                      {t("journey-03-title")} &bull; {item.factoryName || t("cart-partner")}
                     </p>
 
                     <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -235,7 +263,7 @@ export default function Cart({ setView }) {
                         borderRadius: "12px",
                         color: "var(--text-light)"
                       }}>
-                        {language === "pt" ? "Forma: " : "Shape: "}{shape.toUpperCase()}
+                        {t("cart-shape")}{shape.toUpperCase()}
                       </span>
                       <span style={{
                         background: "rgba(255,255,255,0.04)",
@@ -247,7 +275,7 @@ export default function Cart({ setView }) {
                         alignItems: "center",
                         gap: "6px"
                       }}>
-                        {language === "pt" ? "Cor: " : "Color: "}
+                        {t("cart-color")}
                         <span style={{ display: "inline-block", width: "10px", height: "10px", borderRadius: "50%", background: color, border: "1px solid rgba(255,255,255,0.2)" }} />
                         {color}
                       </span>
@@ -259,7 +287,7 @@ export default function Cart({ setView }) {
                         borderRadius: "12px",
                         color: isSun ? "#f59e0b" : "var(--color-hint)"
                       }}>
-                        {isSun ? (language === "pt" ? "Óculos de Sol" : "Sunglasses") : (language === "pt" ? "Grau/Claro" : "Clear Lens")}
+                        {isSun ? (t("cart-sunglasses")) : (t("cart-clear-lens"))}
                       </span>
                       {specs.antiReflective && (
                         <span style={{
@@ -270,7 +298,7 @@ export default function Cart({ setView }) {
                           borderRadius: "12px",
                           color: "#22c55e"
                         }}>
-                          Anti-Reflexo
+                          {t("cart-anti-reflective")}
                         </span>
                       )}
                     </div>
@@ -339,7 +367,7 @@ export default function Cart({ setView }) {
                 onClick={() => setView("marketplace")}
                 style={{ padding: "10px 20px", fontSize: "13px", fontWeight: "600" }}
               >
-                {language === "pt" ? "CONTINUAR COMPRANDO" : "CONTINUE SHOPPING"}
+                {t("cart-continue-shopping")}
               </button>
               <button
                 className="btn"
@@ -363,17 +391,17 @@ export default function Cart({ setView }) {
             backdropFilter: "blur(16px)"
           }}>
             <h3 style={{ fontSize: "18px", fontWeight: "600", marginBottom: "20px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "12px" }}>
-              {language === "pt" ? "RESUMO DO PEDIDO" : "ORDER SUMMARY"}
+              {t("cart-order-summary")}
             </h3>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "24px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", color: "var(--color-hint)" }}>
-                <span>{language === "pt" ? "Total de itens:" : "Total items:"}</span>
+                <span>{t("cart-total-items")}</span>
                 <span>{cart.reduce((sum, item) => sum + (item.quantity || 1), 0)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", color: "var(--color-hint)" }}>
-                <span>{language === "pt" ? "Envio:" : "Shipping:"}</span>
-                <span style={{ color: "#22c55e", fontWeight: "600" }}>{language === "pt" ? "GRÁTIS (SEDEX)" : "FREE EXPRESS"}</span>
+                <span>{t("cart-shipping")}</span>
+                <span style={{ color: "#22c55e", fontWeight: "600" }}>{t("cart-free-express")}</span>
               </div>
 
               <div style={{ borderTop: "1px dashed rgba(255,255,255,0.08)", margin: "8px 0" }} />
@@ -401,13 +429,11 @@ export default function Cart({ setView }) {
             }}>
               <AlertCircle size={18} style={{ flexShrink: 0, color: "var(--primary-accent)", marginTop: "2px" }} />
               <div>
-                {language === "pt"
-                  ? "Pagamento seguro Pix processado através da AbacatePay. O pedido é enviado diretamente para a fábrica após a aprovação do Pix."
-                  : "Secure Pix payment processed through AbacatePay. Orders are forwarded directly to production upon Pix validation."}
+                {t("cart-secure-pix-payment-processed-through-abacatepay")}
               </div>
             </div>
 
-            {containsArtwork && <p role="status">{language === "pt" ? "Remova os designs com arte da sacola para continuar. A fabricação está em validação." : "Remove artwork designs from the bag to continue. Manufacturing is under review."}</p>}
+            {containsArtwork && <p role="status">{t("cart-remove-artwork-designs-from-the-bag")}</p>}
             <button
               className="btn primary"
               onClick={handleCheckout}
@@ -431,7 +457,7 @@ export default function Cart({ setView }) {
               }}
             >
               {checkoutLoading ? (
-                language === "pt" ? "PROCESSANDO..." : "PROCESSING..."
+                t("cart-processing")
               ) : (
                 <>
                   {t("cart-checkout")}

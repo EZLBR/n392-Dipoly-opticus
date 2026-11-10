@@ -31,9 +31,7 @@ export default function CustomizationPanel({
   } = useCreatorStudio();
   const { language, t } = useTranslation();
   const pt = language === "pt";
-  const steps = pt
-    ? ["Armação", "Lentes", "Componentes", "Arte", "Revisão"]
-    : ["Frame", "Lenses", "Components", "Artwork", "Review"];
+  const steps = ["frame", "lenses", "components", "artwork", "review"].map(step => t(`studio-step-${step}`));
   const choices = (
     title: string,
     key: keyof EyewearConfig,
@@ -60,7 +58,7 @@ export default function CustomizationPanel({
     <div className="studio-panel">
       <nav
         className="studio-steps"
-        aria-label={pt ? "Etapas de personalização" : "Customization steps"}
+        aria-label={t("studio-options-customization-steps")}
       >
         {steps.map((step, i) => (
           <button
@@ -76,35 +74,27 @@ export default function CustomizationPanel({
       <div className="studio-panel-scroll">
         <div className="studio-section-heading">
           <span className="studio-eyebrow">
-            {pt ? "FEITO PARA VOCÊ" : "MADE FOR YOU"} / 0{activeStep}
+            {t("studio-options-made-for-you")} / 0{activeStep}
           </span>
           <h2>
             {
               [
-                pt ? "Sua forma de ver." : "Your point of view.",
-                pt ? "Uma nova perspectiva." : "A fresh perspective.",
-                pt ? "Detalhes que importam." : "Details that matter.",
-                pt ? "Sua marca, seu óculos." : "Your mark, your eyewear.",
-                pt ? "Exatamente seu." : "Uniquely yours.",
+                t("studio-options-your-point-of-view"),
+                t("studio-options-a-fresh-perspective"),
+                t("studio-options-details-that-matter"),
+                t("studio-options-your-mark-your-eyewear"),
+                t("studio-options-uniquely-yours"),
               ][activeStep - 1]
             }
           </h2>
           <p>
             {
               [
-                pt
-                  ? "Comece pela silhueta. Dê personalidade com a matéria."
-                  : "Start with a silhouette. Bring it to life with material.",
-                pt
-                  ? "Explore transparência, reflexos e proteção."
-                  : "Explore clarity, reflections and protection.",
-                pt
-                  ? "Personalize cada ponto de contato."
-                  : "Personalize every point of contact.",
-                t("artwork-step-intro"),
-                pt
-                  ? "Confira sua criação antes de continuar."
-                  : "Check your creation before continuing.",
+                t("studio-options-start-with-a-silhouette-bring-it"),
+                t("studio-options-explore-clarity-reflections-and-protection"),
+                t("studio-options-personalize-every-point-of-contact"),
+                t("studio-options-write-on-the-frame-and-see"),
+                t("studio-options-check-your-creation-before-continuing"),
               ][activeStep - 1]
             }
           </p>
@@ -112,24 +102,24 @@ export default function CustomizationPanel({
         {activeStep === 1 && (
           <>
             {choices(
-              pt ? "01 — Silhueta" : "01 — Silhouette",
+              t("studio-options-01-silhouette"),
               "frontModel",
               silhouettes,
             )}
             {choices(
-              pt ? "02 — Material" : "02 — Material",
+              t("studio-options-02-material"),
               "frameMaterial",
               materials,
             )}
             {c.frameMaterial === "acetate" &&
               choices(
-                pt ? "Acabamento do acetato" : "Acetate finish",
+                t("studio-options-acetate-finish"),
                 "finish",
                 ["solid", "tortoise", "crystal"],
               )}
             <fieldset className="studio-field">
               <legend>
-                {pt ? "03 — Cor" : "03 — Color"}{" "}
+                {t("studio-options-03-color")}{" "}
                 <small>{c.color.toUpperCase()}</small>
               </legend>
               <div className="studio-swatches">
@@ -144,17 +134,17 @@ export default function CustomizationPanel({
                 ].map((hex) => (
                   <button
                     key={hex}
-                    aria-label={(pt ? "Cor " : "Color ") + hex}
+                    aria-label={(t("studio-options-color")) + hex}
                     aria-pressed={c.color === hex}
                     style={{ background: hex }}
                     onClick={() => patchConfig({ color: hex, finish: "solid" })}
                   />
                 ))}
                 <label className="studio-custom-color">
-                  <span>{pt ? "Outra" : "Custom"}</span>
+                  <span>{t("studio-options-custom")}</span>
                   <input
                     type="color"
-                    aria-label={pt ? "Cor personalizada" : "Custom color"}
+                    aria-label={t("studio-options-custom-color")}
                     value={c.color}
                     onChange={(e) =>
                       patchConfig({ color: e.target.value, finish: "solid" })
@@ -164,14 +154,12 @@ export default function CustomizationPanel({
               </div>
               {["gold", "wood", "carbon_fiber"].includes(c.frameMaterial) && (
                 <p className="studio-note">
-                  {pt
-                    ? "Este material mantém sua aparência natural. A cor é aplicada aos componentes de acetato."
-                    : "This material keeps its natural appearance. Color applies to acetate components."}
+                  {t("studio-options-this-material-keeps-its-natural-appearance")}
                 </p>
               )}
             </fieldset>
             {choices(
-              pt ? "04 — Espessura do aro" : "04 — Rim profile",
+              t("studio-options-04-rim-profile"),
               "frameProfile",
               ["thin", "medium", "bold"],
             )}
@@ -181,7 +169,7 @@ export default function CustomizationPanel({
         {activeStep === 2 && (
           <>
             <fieldset className="studio-field">
-              <legend>{pt ? "Tipo de lente" : "Lens type"}</legend>
+              <legend>{t("studio-options-lens-type")}</legend>
               <div className="studio-options">
                 {[false, true].map((sun) => (
                   <button
@@ -190,23 +178,19 @@ export default function CustomizationPanel({
                     onClick={() => patchConfig({ isSunglasses: sun })}
                   >
                     {sun
-                      ? pt
-                        ? "Solar"
-                        : "Sun"
-                      : pt
-                        ? "Transparente"
-                        : "Clear"}
+                      ? t("studio-options-sun")
+                      : t("studio-options-clear")}
                   </button>
                 ))}
               </div>
             </fieldset>
             {choices(
-              pt ? "Material da lente" : "Lens material",
+              t("studio-options-lens-material"),
               "lensMaterial",
               ["cr39", "polycarbonate"],
             )}
             <fieldset className="studio-field">
-              <legend>{pt ? "Tratamentos" : "Treatments"}</legend>
+              <legend>{t("studio-options-treatments")}</legend>
               <div className="studio-treatments">
                 {treatments.map((t) => (
                   <label key={t}>
@@ -221,26 +205,24 @@ export default function CustomizationPanel({
               </div>
             </fieldset>
             <p className="studio-note">
-              {pt
-                ? "Fotocromático: selecione o cenário Sol para ver o escurecimento. UV e polarização são propriedades ópticas e não mudam a cor. A prévia não representa uma receita ou certificação óptica."
-                : "Photochromic: choose the Sun environment to see darkening. UV and polarization are optical properties and do not change color. The preview does not represent a prescription or optical certification."}
+              {t("studio-options-photochromic-choose-the-sun-environment-to")}
             </p>
           </>
         )}
         {activeStep === 3 && (
           <>
             {choices(
-              pt ? "Desenho das hastes" : "Temple design",
+              t("studio-options-temple-design"),
               "templeModel",
               silhouettes,
             )}
             <fieldset className="studio-field">
               <legend>
-                {pt ? "Dobrar hastes" : "Fold temples"}{" "}
+                {t("studio-options-fold-temples")}{" "}
                 <small>{Math.round((c.templeOpen / 1.35) * 100)}%</small>
               </legend>
               <input
-                aria-label={pt ? "Dobrar hastes" : "Fold temples"}
+                aria-label={t("studio-options-fold-temples")}
                 type="range"
                 min="0"
                 max="1.35"
@@ -251,22 +233,20 @@ export default function CustomizationPanel({
                 }
               />
               <p className="studio-note">
-                {pt
-                  ? "Use a vista lateral para inspecionar a articulação."
-                  : "Use the side view to inspect the hinge."}
+                {t("studio-options-use-the-side-view-to-inspect")}
               </p>
             </fieldset>
-            {choices(pt ? "Plaquetas" : "Nose pads", "nosePadMaterial", [
+            {choices(t("studio-options-nose-pads"), "nosePadMaterial", [
               "silicone",
               "titanium",
               "acetate",
             ])}
-            {choices(pt ? "Ponteiras" : "Temple tips", "templeTipMaterial", [
+            {choices(t("studio-options-temple-tips"), "templeTipMaterial", [
               "acetate",
               "silicone",
               "rubber",
             ])}
-            {choices(pt ? "Dobradiças" : "Hinges", "hingeMaterial", [
+            {choices(t("studio-options-hinges"), "hingeMaterial", [
               "stainless_steel",
               "titanium",
               "gold",
@@ -278,43 +258,39 @@ export default function CustomizationPanel({
           <>
             <dl className="studio-summary">
               {[
-                [pt ? "Silhueta" : "Silhouette", label(c.frontModel, language)],
+                [t("studio-options-silhouette"), label(c.frontModel, language)],
                 [
-                  pt ? "Armação" : "Frame",
+                  t("studio-options-frame"),
                   label(c.frameMaterial, language) +
                     " · " +
                     label(c.frameProfile, language),
                 ],
                 [
-                  pt ? "Acabamento" : "Finish",
+                  t("studio-options-finish"),
                   label(c.finish, language) + " · " + c.color.toUpperCase(),
                 ],
                 [
-                  pt ? "Lentes" : "Lenses",
+                  t("studio-options-lenses"),
                   label(c.lensMaterial, language) +
                     " · " +
                     (c.isSunglasses
-                      ? pt
-                        ? "Solar"
-                        : "Sun"
-                      : pt
-                        ? "Transparente"
-                        : "Clear"),
+                      ? t("studio-options-sun")
+                      : t("studio-options-clear")),
                 ],
                 [
-                  pt ? "Tratamentos" : "Treatments",
+                  t("studio-options-treatments"),
                   c.lensTreatments.map((t) => label(t, language)).join(", ") ||
                     "—",
                 ],
-                [pt ? "Hastes" : "Temples", label(c.templeModel, language)],
+                [t("studio-options-temples"), label(c.templeModel, language)],
                 [
-                  pt ? "Plaquetas / ponteiras" : "Pads / tips",
+                  t("studio-options-pads-tips"),
                   label(c.nosePadMaterial, language) +
                     " / " +
                     label(c.templeTipMaterial, language),
                 ],
                 [
-                  pt ? "Medidas de referência" : "Reference dimensions",
+                  t("studio-options-reference-dimensions"),
                   dimensions[c.frontModel].lensWidth +
                     " □ " +
                     dimensions[c.frontModel].bridge +
@@ -330,9 +306,7 @@ export default function CustomizationPanel({
               ))}
             </dl>
             <p className="studio-note">
-              {pt
-                ? "Modelo conceitual. Medidas e disponibilidade precisam ser confirmadas antes da fabricação."
-                : "Concept model. Dimensions and availability must be confirmed before manufacturing."}
+              {t("studio-options-concept-model-dimensions-and-availability-must")}
             </p>
             {hasUnapprovedCustomization(c) && <p className="studio-art-production-note">
               {t("decoration-preview")}
@@ -343,7 +317,7 @@ export default function CustomizationPanel({
       <footer className="studio-panel-footer">
         <div className="studio-price">
           <span>
-            {pt ? "Estimativa da configuração" : "Configuration estimate"}
+            {t("studio-options-configuration-estimate")}
           </span>
           <strong>
             {new Intl.NumberFormat(pt ? "pt-BR" : "en-US", {
@@ -355,20 +329,20 @@ export default function CustomizationPanel({
         <div className="studio-actions">
           <button className="studio-secondary" onClick={onSave}>
             <Bookmark size={16} />
-            {pt ? "Salvar" : "Save"}
+            {t("studio-options-save")}
           </button>
           {activeStep < 5 ? (
             <button
               className="studio-primary"
               onClick={() => setActiveStep(activeStep + 1)}
             >
-              {pt ? "Continuar" : "Continue"}
+              {t("studio-options-continue")}
               <ArrowRight size={16} />
             </button>
           ) : (
             <button className="studio-primary" onClick={onCart} disabled={hasUnapprovedCustomization(c)}>
               <ShoppingBag size={16} />
-              {pt ? "Adicionar à sacola" : "Add to bag"}
+              {t("studio-options-add-to-bag")}
             </button>
           )}
         </div>

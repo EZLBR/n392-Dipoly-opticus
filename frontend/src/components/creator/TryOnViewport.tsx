@@ -81,8 +81,7 @@ export function drawEyewearOverlay(
 }
 export default function TryOnViewport() {
   const { config, environment, setTryOnMode } = useCreatorStudio();
-  const { language, t } = useTranslation();
-  const pt = language === "pt";
+  const { t } = useTranslation();
   const video = useRef<HTMLVideoElement>(null),
     canvas = useRef<HTMLCanvasElement>(null),
     live = useRef({ config, environment });
@@ -240,47 +239,37 @@ export default function TryOnViewport() {
       <canvas
         ref={canvas}
         aria-label={
-          pt ? "Prévia do óculos na câmera" : "Camera eyewear preview"
+          t("try-on-camera-eyewear-preview")
         }
       />
       {(state === "loading" || state === "error") && (
         <div className="studio-camera-message" role="status">
           <p>
             {state === "loading"
-              ? pt
-                ? "Aguardando câmera e preparando o rastreamento…"
-                : "Waiting for camera and preparing tracking…"
-              : pt
-                ? "Câmera indisponível. Verifique a permissão, a conexão e se outro app está usando a câmera."
-                : "Camera unavailable. Check permission, connection and whether another app is using it."}
+              ? t("try-on-waiting-for-camera-and-preparing-tracking")
+              : t("try-on-camera-unavailable-check-permission-connection-and")}
           </p>
           {state === "error" && (
             <button
               className="studio-primary"
               onClick={() => setAttempt((n) => n + 1)}
             >
-              {pt ? "Tentar novamente" : "Try again"}
+              {t("try-on-try-again")}
             </button>
           )}
           <button
             className="studio-secondary"
             onClick={() => setTryOnMode(false)}
           >
-            {pt ? "Voltar ao 3D" : "Back to 3D"}
+            {t("try-on-back-to-3d")}
           </button>
         </div>
       )}
       {(state === "tracking" || state === "searching") && (
         <div className="studio-tracking-label" role="status">
           {state === "searching"
-            ? pt
-              ? "Posicione seu rosto de frente para a câmera"
-              : "Face the camera"
-            : config.surfacePattern.style !== "none"
-              ? t("pattern-camera-note")
-              : pt
-              ? "Prévia frontal aproximada • não mede o ajuste no rosto"
-              : "Approximate frontal preview • does not measure fit"}
+            ? t("try-on-face-the-camera")
+            : t(config.surfacePattern.style !== "none" ? "pattern-camera-note" : "try-on-approximate-frontal-preview-does-not-measure")}
         </div>
       )}
     </div>
