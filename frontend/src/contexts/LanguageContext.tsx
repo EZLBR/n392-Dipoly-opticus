@@ -188,6 +188,7 @@ const translations = {
     "api-unknown": "Couldn't complete the request. Try again.",
     "api-payment-unavailable": "Payments are unavailable. No charge was created. Try again later.",
     "api-payment-pending": "The charge could not be confirmed. Your order is pending. Check your orders before trying again.",
+    "api-payment-conflict": "Your orders changed while the charge was being created. A charge may already exist. Review your orders before paying again.",
     "auth-login-invalid": "Invalid email or password.",
     "auth-account-exists": "An account already exists with this email.",
     "auth-login-unavailable": "Sign-in is temporarily unavailable. Try again.",
@@ -558,6 +559,7 @@ const translations = {
     "api-unknown": "Não foi possível concluir a solicitação. Tente novamente.",
     "api-payment-unavailable": "O pagamento está indisponível. Nenhuma cobrança foi criada. Tente novamente mais tarde.",
     "api-payment-pending": "Não foi possível confirmar a cobrança. O pedido está pendente. Confira seus pedidos antes de tentar novamente.",
+    "api-payment-conflict": "Os pedidos mudaram durante a criação da cobrança. Uma cobrança pode já existir. Confira seus pedidos antes de pagar novamente.",
     "auth-login-invalid": "E-mail ou senha inválidos.",
     "auth-account-exists": "Já existe uma conta com esse e-mail.",
     "auth-login-unavailable": "O login está temporariamente indisponível. Tente novamente.",
@@ -776,6 +778,10 @@ export function localizeProblem(problem: ProblemDetails, language: Language = ge
   const detail = typeof problem.detail === "string" ? problem.detail : "";
   if (problem.status === 400 && detail === "Email ou senha incorretos.") return translate("auth-login-invalid", language);
   if (problem.status === 409 && detail === "Já existe uma conta com esse email.") return translate("auth-account-exists", language);
+  if (problem.status === 409 && (
+    detail === "Os pedidos mudaram enquanto a cobrança era criada. Atualize seus pedidos antes de pagar."
+    || detail === "O pedido mudou enquanto a cobrança era criada. Atualize seus pedidos antes de pagar."
+  )) return translate("api-payment-conflict", language);
   if (detail.startsWith("Não foi possível confirmar a cobrança com o gateway de pagamento.")) {
     return translate("api-payment-pending", language);
   }

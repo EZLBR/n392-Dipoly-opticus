@@ -27,6 +27,20 @@ it("keeps actionable login, registration and pending payment messages", () => {
     .toContain("Check your orders before trying again.");
 });
 
+it.each([
+  "Os pedidos mudaram enquanto a cobrança era criada. Atualize seus pedidos antes de pagar.",
+  "O pedido mudou enquanto a cobrança era criada. Atualize seus pedidos antes de pagar.",
+])("preserves payment reconciliation guidance for a checkout conflict: %s", detail => {
+  const problem = { type: "https://opticus.example/problems/conflict", status: 409, detail };
+  expect(localizeProblem(problem, "pt")).toBe("Os pedidos mudaram durante a criação da cobrança. Uma cobrança pode já existir. Confira seus pedidos antes de pagar novamente.");
+  expect(localizeProblem(problem, "en")).toBe("Your orders changed while the charge was being created. A charge may already exist. Review your orders before paying again.");
+});
+
+it("keeps unrelated conflicts on the generic translated fallback", () => {
+  expect(localizeProblem({ status: 409, detail: "O recurso foi alterado." }, "en"))
+    .toBe("The data changed or already exists. Refresh and try again.");
+});
+
 it("persists a selected language across provider remounts", () => {
   const first = renderHook(useTranslation, { wrapper: LanguageProvider });
   act(() => first.result.current.setLanguage("pt"));
