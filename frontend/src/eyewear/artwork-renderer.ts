@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { DecalGeometry } from "three/examples/jsm/geometries/DecalGeometry.js";
 import { isMetal, type EyewearConfig } from "./config";
 import { lensShape, proportions, type EyewearModel } from "./geometry";
-import type { TextLayer } from "./artwork";
+import type { DrawingLayer, TextLayer } from "./artwork";
+import { drawingAspect, paintStrokes } from "./drawing";
 
 function upperEdge(shape: THREE.Shape, x: number) {
   const points = shape.getPoints(120);
@@ -17,7 +18,10 @@ function upperEdge(shape: THREE.Shape, x: number) {
 }
 
 /** Projection uses a single local frame mesh; lenses and other components are never targets. */
-export function projectTextLayer(model: EyewearModel, config: EyewearConfig, layer: TextLayer, aspect: number) {
+export function projectArtworkLayer(
+  model: EyewearModel, config: EyewearConfig,
+  layer: Pick<TextLayer, "zone" | "x" | "y" | "size" | "rotation">, aspect: number,
+) {
   const side = layer.zone.endsWith("left") ? -1 : 1;
   const front = layer.zone.startsWith("front");
   const d = proportions(config);
@@ -102,7 +106,21 @@ export function createTextTexture(layer: TextLayer): { texture: THREE.Texture; a
   return { texture, aspect: canvas.width / canvas.height };
 }
 
-export function createArtworkRenderer(textureFactory = createTextTexture) {
+export function createDrawingTexture(layer: DrawingLayer): { texture: THREE.Texture; aspect: number } {
+  const canvas = document.createElement("canvas");
+  const aspect = drawingAspect(layer.zone);
+  canvas.width = 512;
+  canvas.height = canvas.width / aspect;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Unable to create drawing texture");
+  paintStrokes(context, layer.strokes);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return { texture, aspect };
+}
+
+export function createArtworkRenderer(textTexture = createTextTexture, drawingTexture = createDrawingTexture) {
   const meshes: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>[] = [];
   const clear = () => {
     for (const mesh of meshes) {
@@ -115,9 +133,11 @@ export function createArtworkRenderer(textureFactory = createTextTexture) {
     update(model: EyewearModel, config: EyewearConfig) {
       clear();
       for (const layer of config.artwork.layers) {
-        if (!layer.text.trim()) continue;
-        const { texture, aspect } = textureFactory(layer);
-        const projection = projectTextLayer(model, config, layer, aspect);
+        const drawing = "kind" in layer;
+        if (drawing ? !layer.strokes.length : !layer.text.trim()) continue;
+        const { texture, aspect } = drawing ? drawingTexture(layer) : textTexture(layer);
+        const placement = drawing ? { zone: layer.zone, x: 0, y: 0, size: 1, rotation: 0 } : layer;
+        const projection = projectArtworkLayer(model, config, placement, aspect);
         if (!projection || !projection.geometry.getAttribute("position").count) {
           projection?.geometry.dispose(); texture.dispose(); continue;
         }
@@ -125,7 +145,7 @@ export function createArtworkRenderer(textureFactory = createTextTexture) {
           depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, toneMapped: false });
         const mesh = new THREE.Mesh(projection.geometry, material);
         mesh.name = "art:" + layer.id;
-        mesh.renderOrder = 2;
+        mesh.renderOrder = 2 + meshes.length;
         projection.parent.add(mesh); meshes.push(mesh);
       }
     },

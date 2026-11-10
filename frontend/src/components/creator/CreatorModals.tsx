@@ -10,7 +10,7 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
   const { saveDesign, session } = useAuth();
   const { language } = useTranslation();
   const pt = language === "pt";
-  const hasEmptyText = config.artwork.layers.some(layer => !layer.text.trim());
+  const hasEmptyText = config.artwork.layers.some(layer => "text" in layer && !layer.text.trim());
   const dialog = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -48,8 +48,8 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
             ? "Salvo neste dispositivo. A sincronização não está disponível."
             : "Saved on this device. Sync is unavailable."
           : pt
-            ? "Design salvo na sua conta, com materiais e textos."
-            : "Design saved to your account, including materials and text.",
+            ? "Design salvo na sua conta, com materiais e camadas de arte."
+            : "Design saved to your account, including materials and artwork.",
       );
       onClose();
       onOpenDesigns?.();
