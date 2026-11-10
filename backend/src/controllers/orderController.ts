@@ -4,11 +4,13 @@
 // ============================================================
 
 import pool from "../config/db.js";
+import { emTransacao } from "../config/transacao.js";
 import { getAbacateToken, isSimulatedPaymentGateway } from "../config/env.js";
 import { gerarBillingId } from "../utils/billingId.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
 import type { Request, Response } from "express";
-import { ConflictProblem, ForbiddenProblem, ServiceUnavailableProblem } from "../errors/problem.js";
+import { BadRequestProblem, ConflictProblem, ForbiddenProblem, ServiceUnavailableProblem } from "../errors/problem.js";
+import { parsePagination } from "../utils/pagination.js";
 import {
   PAGAMENTO_INDISPONIVEL,
   PAGAMENTO_NAO_CONFIRMADO,
@@ -97,7 +99,7 @@ export async function createOrder(req: Request, res: Response) {
 //   GET /api/orders
 // ─────────────────────────────────────────────────────────
 export async function getOrders(req: Request, res: Response) {
-  const { role, email, id } = req.user!;
+  const { role, id } = req.user!;
 
   const selectFields = `
     id,
@@ -115,19 +117,21 @@ export async function getOrders(req: Request, res: Response) {
     DATE(atualizado_em) AS "updatedAt"
   `;
 
-  const page = parseInt(String(req.query.page || "")) || 1;
-  const limit = parseInt(String(req.query.limit || "")) || 20;
-  const offset = (page - 1) * limit;
+  const pagination = parsePagination(req.query);
+  if (!pagination.isValid) {
+    throw new BadRequestProblem(pagination.error);
+  }
+  const { page, limit, offset } = pagination;
 
   let rows;
   let totalCount = 0;
 
   if (role === "client") {
-    const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos WHERE customer_email = $1`, [email]);
+    const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos WHERE usuario_id = $1`, [id]);
     totalCount = parseInt(countRes.rows[0].count);
     const result = await pool.query(
-      `SELECT ${selectFields} FROM pedidos WHERE customer_email = $1 ORDER BY criado_em DESC LIMIT $2 OFFSET $3`,
-      [email, limit, offset]
+      `SELECT ${selectFields} FROM pedidos WHERE usuario_id = $1 ORDER BY criado_em DESC LIMIT $2 OFFSET $3`,
+      [id, limit, offset]
     );
     rows = result.rows;
   } else if (role === "factory") {
@@ -219,10 +223,8 @@ export async function checkoutCart(req: Request, res: Response) {
   const usuarioId     = Number(req.user!.id);
   const consolidatedBillingId = gerarBillingId("sim");
 
-  const client = await pool.connect();
-  let createdOrders = [];
-  try {
-    await client.query("BEGIN");
+  const createdOrders = await emTransacao(async (client) => {
+    const criados = [];
     let finalFactoryIdCache = null;
 
     for (const item of cartItems) {
@@ -259,7 +261,7 @@ export async function checkoutCart(req: Request, res: Response) {
         ]
       );
 
-      createdOrders.push({
+      criados.push({
         id: result[0].id,
         productName,
         quantity,
@@ -268,13 +270,8 @@ export async function checkoutCart(req: Request, res: Response) {
         factoryName
       });
     }
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    client.release();
-    throw err;
-  }
-  client.release();
+    return criados;
+  }, { traceId: req.requestId });
 
     const frontendOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `http://localhost:5173`);
     const backendProto = req.headers['x-forwarded-proto'] || req.protocol;

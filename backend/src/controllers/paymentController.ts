@@ -15,7 +15,6 @@ import {
 } from "../config/pagamento.js";
 import { solicitarCobranca } from "../services/gatewayDePagamento.js";
 import type { Request, Response } from "express";
-import type { PoolClient } from "pg";
 import {
   BadRequestProblem,
   ConflictProblem,
@@ -23,7 +22,9 @@ import {
   ServiceUnavailableProblem,
   UnauthorizedProblem,
 } from "../errors/problem.js";
+import { parsePagination } from "../utils/pagination.js";
 import logger from "../utils/logger.js";
+import { emTransacao } from "../config/transacao.js";
 
 // Security Helper
 const escapeHTML = (str: unknown) => {
@@ -39,6 +40,16 @@ const PORT          = env.PORT;
 
 import type { CreateBillingDTO } from "../dtos/payment/payment.dto.js";
 
+/** Só as colunas de que a cobrança precisa: nada de `SELECT *`. */
+interface PedidoCobravel {
+  id: number;
+  total: string;
+  product_name: string;
+  customer_name: string;
+  customer_email: string;
+  abacate_billing_id: string | null;
+}
+
 // ─────────────────────────────────────────────────────────
 //   CRIAR COBRANÇA (AbacatePay ou simulador)
 //   POST /api/payments/create-billing
@@ -46,19 +57,24 @@ import type { CreateBillingDTO } from "../dtos/payment/payment.dto.js";
 export async function createBilling(req: Request, res: Response) {
   const { orderId } = req.body as CreateBillingDTO;
 
-  const { rows } = await pool.query("SELECT * FROM pedidos WHERE id = $1", [orderId]);
+  // BOLA-03: a posse é parte da própria consulta, e não uma comparação em
+  // memória depois de ler o pedido. Staff é a exceção explícita na cláusula.
+  // Pedido inexistente e pedido alheio caem no mesmo 404 (BOLA-02): 403 fica
+  // reservado à falta de papel RBAC, sem revelar a existência.
+  const escopo = [req.user!.role === "staff", req.user!.id];
+
+  const { rows } = await pool.query<PedidoCobravel>(
+    `SELECT id, total, product_name, customer_name, customer_email, abacate_billing_id
+       FROM pedidos
+      WHERE id = $1 AND ($2::boolean OR usuario_id = $3)`,
+    [orderId, ...escopo]
+  );
 
   if (rows.length === 0) {
     throw new NotFoundProblem("Pedido não encontrado.");
   }
 
   const order = rows[0];
-
-  // BOLA-02: falta de posse usa o mesmo 404 do pedido inexistente.
-  // 403 fica reservado à falta de papel RBAC, sem revelar a existência.
-  if (order.usuario_id !== req.user!.id && req.user!.role !== "staff") {
-    throw new NotFoundProblem("Pedido não encontrado.");
-  }
 
   const ABACATE_TOKEN = getAbacateToken();
   const amountInCents   = Math.round(Number(order.total) * 100);
@@ -76,10 +92,17 @@ export async function createBilling(req: Request, res: Response) {
 
     const mockBillingId  = gerarBillingId("sim");
 
-    await pool.query(
-      "UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true, status = 'Pending Payment' WHERE id = $2",
-      [mockBillingId, orderId]
+    // A escrita repete o escopo da leitura: a autorização vale para a
+    // mutação, e não só para o SELECT que a precedeu.
+    const { rowCount } = await pool.query(
+      `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true, status = 'Pending Payment'
+        WHERE id = $2 AND ($3::boolean OR usuario_id = $4)`,
+      [mockBillingId, order.id, ...escopo]
     );
+
+    if (rowCount !== 1) {
+      throw new NotFoundProblem("Pedido não encontrado.");
+    }
 
     const mockCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${mockBillingId}&orderId=${orderId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
 
@@ -131,48 +154,41 @@ async function registrarCobrancaNoPedido(
   pedido: { id: number; total: string; abacate_billing_id: string | null },
   billingId: string,
 ) {
-  let conexao: PoolClient | undefined;
   try {
-    conexao = await pool.connect();
-    await conexao.query("BEGIN");
-    const { rowCount } = await conexao.query(
-      `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = false, status = 'Pending Payment'
-        WHERE id = $2 AND abacate_billing_id IS NOT DISTINCT FROM $3::varchar`,
-      [billingId, pedido.id, pedido.abacate_billing_id]
-    );
-
-    if (rowCount !== 1) {
-      await conexao.query("ROLLBACK");
-      logger.error(
-        { traceId, requestId: traceId, billingId, pedidoId: pedido.id },
-        "[AbacatePay] Pedido mudou durante a cobrança; nada foi registrado: conciliar",
+    await emTransacao(async (conexao) => {
+      const { rowCount } = await conexao.query(
+        `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = false, status = 'Pending Payment'
+          WHERE id = $2 AND abacate_billing_id IS NOT DISTINCT FROM $3::varchar`,
+        [billingId, pedido.id, pedido.abacate_billing_id]
       );
-      throw new ConflictProblem(
-        "O pedido mudou enquanto a cobrança era criada. Atualize seus pedidos antes de pagar."
-      );
-    }
 
-    // O total segue como o DECIMAL que o banco devolveu, sem passar por float.
-    await conexao.query(
-      "INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa) VALUES ($1, 'pix', 'pendente', $2, $3)",
-      [pedido.id, pedido.total, billingId]
-    );
-    await conexao.query("COMMIT");
-  } catch (err) {
-    if (!(err instanceof ConflictProblem)) {
-      if (conexao) {
-        await conexao.query("ROLLBACK").catch((erroDoRollback) =>
-          logger.error({ err: erroDoRollback, traceId, requestId: traceId }, "Falha no ROLLBACK do registro da cobrança")
+      if (rowCount !== 1) {
+        logger.error(
+          { traceId, requestId: traceId, billingId, pedidoId: pedido.id },
+          "[AbacatePay] Pedido mudou durante a cobrança; nada foi registrado: conciliar",
+        );
+        throw new ConflictProblem(
+          "O pedido mudou enquanto a cobrança era criada. Atualize seus pedidos antes de pagar."
         );
       }
+
+      // O total segue como o DECIMAL que o banco devolveu, sem passar por float.
+      await conexao.query(
+        "INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa) VALUES ($1, 'pix', 'pendente', $2, $3)",
+        [pedido.id, pedido.total, billingId]
+      );
+    }, { traceId });
+  } catch (err) {
+    // O ROLLBACK, e o descarte da conexão se ele falhar, ficam com emTransacao.
+    // Aqui só se registra o que a conciliação precisa, inclusive quando nem a
+    // conexão foi obtida.
+    if (!(err instanceof ConflictProblem)) {
       logger.error(
         { err, traceId, requestId: traceId, billingId, pedidoId: pedido.id },
         "[AbacatePay] Cobrança criada no gateway, mas não registrada no pedido: conciliar",
       );
     }
     throw err;
-  } finally {
-    conexao?.release();
   }
 }
 
@@ -181,9 +197,11 @@ async function registrarCobrancaNoPedido(
 //   GET /api/payments  (apenas staff)
 // ─────────────────────────────────────────────────────────
 export async function getPayments(req: Request, res: Response) {
-  const page = parseInt(String(req.query.page || "")) || 1;
-  const limit = parseInt(String(req.query.limit || "")) || 20;
-  const offset = (page - 1) * limit;
+  const pagination = parsePagination(req.query);
+  if (!pagination.isValid) {
+    throw new BadRequestProblem(pagination.error);
+  }
+  const { page, limit, offset } = pagination;
 
   const countRes = await pool.query(`SELECT COUNT(*) FROM pagamentos`);
   const totalCount = parseInt(countRes.rows[0].count);
@@ -248,9 +266,7 @@ export async function handleWebhook(req: Request, res: Response) {
       typeof checkout.id === "string" && checkout.id.trim() &&
       (env.NODE_ENV !== "production" || payload.devMode === false)) {
     const billingId = checkout.id;
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
+    const processados = await emTransacao(async (client) => {
       // Guardar a transição torna reentregas inofensivas, inclusive após entrega.
       const { rows } = await client.query<{ id: number }>(
         `UPDATE pedidos SET status = 'Queued'
@@ -266,14 +282,9 @@ export async function handleWebhook(req: Request, res: Response) {
           WHERE pe.id = ANY($2::int[])
             AND NOT EXISTS (SELECT 1 FROM pagamentos pg
                              WHERE pg.pedido_id = pe.id AND pg.referencia_externa = $1)`, [billingId, ids]);
-      await client.query("COMMIT");
-      logger.info({ traceId: req.requestId, pedidos: ids.length }, "[Webhook] Pagamento processado.");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+      return ids.length;
+    }, { traceId: req.requestId });
+    logger.info({ traceId: req.requestId, pedidos: processados }, "[Webhook] Pagamento processado.");
   }
 
   return res.status(200).json({ received: true });
@@ -377,10 +388,7 @@ export async function confirmSimulatedPayment(req: Request, res: Response) {
   // A identidade vem exclusivamente do token validado por `protect`.
   const usuarioId = req.user!.id;
 
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
+  await emTransacao(async (client) => {
     // Autorização na cláusula WHERE: só o dono, e só enquanto o pedido
     // ainda está em "Pending Payment". rowCount 0 agrupa inexistente,
     // de outro dono e já processado — todos respondem o mesmo 404, sem
@@ -421,14 +429,7 @@ export async function confirmSimulatedPayment(req: Request, res: Response) {
                            WHERE pg.pedido_id = pe.id AND pg.referencia_externa = $1)`,
       [billingId, pedidosConfirmados]
     );
-
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  } finally {
-    client.release();
-  }
+  }, { traceId: req.requestId });
 
   return res.json({ status: "confirmed", billingId });
 }

@@ -1,0 +1,90 @@
+.customer-orders {
+  color: var(--text-dark);
+  margin: 0 auto;
+  max-width: 68rem;
+  padding: clamp(1.25rem, 4vw, 3.5rem);
+}
+
+.customer-orders h1 {
+  margin-block: 0 1.5rem;
+}
+
+.customer-orders-back {
+  display: inline-block;
+  margin-bottom: 1rem;
+}
+
+.customer-orders a:not(.btn) {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.customer-orders-section {
+  background: var(--bg-gray);
+  border: 1px solid var(--border-light);
+  border-radius: 0.8rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.customer-order-list {
+  list-style: none;
+  padding: 0;
+}
+
+.customer-order-list li {
+  align-items: baseline;
+  display: grid;
+  gap: 0.6rem 1rem;
+  grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+}
+
+.customer-order-list a {
+  font-weight: 700;
+}
+
+.customer-order-fields {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  margin: 1rem 0 0;
+}
+
+.customer-order-fields dt,
+.customer-order-history time,
+.customer-order-list time {
+  color: var(--text-gray);
+  font-size: 0.9rem;
+}
+
+.customer-order-fields dd {
+  margin: 0.15rem 0 0;
+}
+
+.customer-order-history {
+  margin: 1rem 0 0;
+  padding-inline-start: 1.5rem;
+}
+
+.customer-order-history li + li {
+  margin-top: 0.8rem;
+}
+
+.customer-order-history span,
+.customer-order-history time {
+  display: block;
+}
+
+.customer-order-pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .customer-order-list li {
+    grid-template-columns: 1fr;
+  }
+}

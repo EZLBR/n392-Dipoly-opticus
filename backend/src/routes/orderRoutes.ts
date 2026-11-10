@@ -1,5 +1,6 @@
 import express from "express";
 import { createOrder, getOrders, updateOrderStatus, checkoutCart } from "../controllers/orderController.js";
+import { getCustomerOrder, getCustomerOrders } from "../controllers/customerOrderController.js";
 import { routerGuard } from "../middlewares/routerGuard.js";
 import { validateBody } from "../middlewares/validate.js";
 import {
@@ -9,6 +10,10 @@ import {
 } from "../dtos/order/order.dto.js";
 
 const router = express.Router();
+
+const customerOnly = routerGuard("client");
+router.get("/mine", customerOnly, getCustomerOrders);
+router.get("/mine/:publicId", customerOnly, getCustomerOrder);
 
 router.use(routerGuard()); // Secure all order routes
 

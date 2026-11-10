@@ -11,7 +11,7 @@ const config = {
   templeTipMaterial: "acetate", hingeMaterial: "stainless_steel", templeOpen: 0.3,
   artwork: { version: 1, layers: [layer] },
 };
-const design = { id: "text-design", name: "Meu óculos", model: "wayfarer_front_round_temples", color: "#382016" };
+const design = { name: "Meu óculos", model: "wayfarer_front_round_temples", color: "#382016" };
 const drawing = {
   id: "drawing-1", kind: "drawing", zone: "temple-left",
   strokes: [{ color: "#00aabb", width: 5, points: [[10, 40], [980, 960]] }],
@@ -22,9 +22,10 @@ describe("STUDIO-02 — saved configuration", () => {
     const owner = await criarUsuario();
     const authorization = comToken(owner.token);
     const artwork = { version: 2, layers: [layer, drawing] };
-    const save = (config: unknown) => request(app).post("/api/designs").set(...authorization).send({ ...design, config });
+    const saved = await request(app).post("/api/designs").set(...authorization).send({ ...design, config: { ...config, artwork } });
+    expect(saved.status).toBe(201);
+    const save = (config: unknown) => request(app).put(`/api/designs/${saved.body.id}`).set(...authorization).send({ ...design, config });
     const read = async () => (await request(app).get("/api/designs").set(...authorization)).body.designs[0].config.artwork;
-    expect((await save({ ...config, artwork })).status).toBe(201);
     expect(await read()).toEqual(artwork);
     expect((await save({ ...config, color: "#abcdef", artwork: { version: 1, layers: [] } })).status).toBe(200);
     expect(await read()).toEqual(artwork);
@@ -54,7 +55,7 @@ describe("STUDIO-02 — saved configuration", () => {
     const fresh = await request(app).get("/api/designs").set(...comToken(owner.token));
     expect(fresh.body.designs[0].config).toEqual(config);
     const edited = { ...config, artwork: { version: 1, layers: [{ ...layer, text: "Texto novo" }] } };
-    expect((await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, config: edited })).status).toBe(200);
+    expect((await request(app).put(`/api/designs/${saved.body.id}`).set(...comToken(owner.token)).send({ ...design, config: edited })).status).toBe(200);
     expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config).toEqual(edited);
     const other = await criarUsuario();
     expect((await request(app).get("/api/designs").set(...comToken(other.token))).body.designs).toEqual([]);
@@ -69,8 +70,8 @@ describe("STUDIO-02 — saved configuration", () => {
 
   it("applies legacy edits to a modern document while retaining its artwork", async () => {
     const owner = await criarUsuario();
-    await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, config });
-    const response = await request(app).post("/api/designs").set(...comToken(owner.token))
+    const saved = await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, config });
+    const response = await request(app).put(`/api/designs/${saved.body.id}`).set(...comToken(owner.token))
       .send({ ...design, model: "round_front_cateye_temples", color: "#abcdef", frame_profile: "bold", anti_reflective: false });
     expect(response.status).toBe(200);
     const updated = (await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config;
@@ -103,16 +104,16 @@ describe("STUDIO-02 — saved configuration", () => {
     const saved = await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, config: { ...config, surfacePattern } });
     expect(saved.status).toBe(201);
     expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config.surfacePattern).toEqual(surfacePattern);
-    const edited = await request(app).post("/api/designs").set(...comToken(owner.token)).send({ ...design, color: "#abcdef" });
+    const edited = await request(app).put(`/api/designs/${saved.body.id}`).set(...comToken(owner.token)).send({ ...design, color: "#abcdef" });
     expect(edited.status).toBe(200);
     expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config.surfacePattern).toEqual(surfacePattern);
     const legacyConfig = { ...config, color: "#fedcba" };
-    expect((await request(app).post("/api/designs").set(...comToken(owner.token))
+    expect((await request(app).put(`/api/designs/${saved.body.id}`).set(...comToken(owner.token))
       .send({ ...design, color: legacyConfig.color, config: legacyConfig })).status).toBe(200);
     expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config)
       .toMatchObject({ color: legacyConfig.color, surfacePattern });
     const disabled = { ...surfacePattern, style: "none" };
-    expect((await request(app).post("/api/designs").set(...comToken(owner.token))
+    expect((await request(app).put(`/api/designs/${saved.body.id}`).set(...comToken(owner.token))
       .send({ ...design, config: { ...config, surfacePattern: disabled } })).status).toBe(200);
     expect((await request(app).get("/api/designs").set(...comToken(owner.token))).body.designs[0].config.surfacePattern).toEqual(disabled);
   });

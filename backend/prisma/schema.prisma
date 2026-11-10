@@ -33,7 +33,7 @@ model Usuario {
   factoryName String?   @map("factory_name") @db.VarChar(255)
   criadoEm    DateTime? @default(now()) @map("criado_em")
 
-  publicId String @unique @default(uuid())
+  publicId String @unique @default(dbgenerated("gen_random_uuid()"))
 
   pedidos        Pedido[]      @relation("UsuarioPedidos")
   pedidosFabrica Pedido[]      @relation("FactoryPedidos")
@@ -52,7 +52,7 @@ model Produto {
   ativo       Boolean?  @default(true)
   criadoEm    DateTime? @default(now()) @map("criado_em")
 
-  publicId String @unique @default(uuid())
+  publicId String @unique @default(dbgenerated("gen_random_uuid()"))
 
   categoria Categoria?   @relation(fields: [categoriaId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   itens     PedidoItem[]
@@ -87,18 +87,39 @@ model Pedido {
   atualizadoEm     DateTime?     @default(now()) @map("atualizado_em")
 
   version  Int    @default(0)
-  publicId String @unique @default(uuid())
+  publicId String @unique @default(dbgenerated("gen_random_uuid()"))
 
   usuario    Usuario      @relation("UsuarioPedidos", fields: [usuarioId], references: [id], onDelete: Cascade)
   fabrica    Usuario?     @relation("FactoryPedidos", fields: [factoryId], references: [id], onDelete: SetNull)
   itens      PedidoItem[]
   pagamentos Pagamento[]
+  statusHistory OrderStatusHistory[]
 
   @@index([usuarioId], map: "idx_pedidos_usuario")
   @@index([factoryId], map: "idx_pedidos_factory")
   @@index([status], map: "idx_pedidos_status")
   @@index([abacateBillingId], map: "idx_pedidos_billing")
   @@map("pedidos")
+}
+
+enum OrderHistoryKind {
+  baseline
+  created
+  transition
+}
+
+model OrderStatusHistory {
+  id         BigInt           @id @default(autoincrement())
+  orderId    Int              @map("order_id")
+  kind       OrderHistoryKind
+  fromStatus PedidoStatus?    @map("from_status")
+  toStatus   PedidoStatus?    @map("to_status")
+  occurredAt DateTime         @default(now()) @map("occurred_at") @db.Timestamptz(3)
+
+  order Pedido @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, id], map: "idx_order_status_history_order_id")
+  @@map("order_status_history")
 }
 
 model PedidoItem {
@@ -161,7 +182,6 @@ model Pagamento {
 model SavedDesign {
   id             String    @id @db.VarChar(255)
   usuarioId      Int       @map("usuario_id")
-  customerEmail  String    @map("customer_email") @db.VarChar(255)
   name           String    @db.VarChar(255)
   model          String    @db.VarChar(255)
   color          String    @db.VarChar(50)
@@ -177,11 +197,10 @@ model SavedDesign {
   updatedAt      DateTime? @default(now()) @map("updated_at")
   studioConfig   Json?     @map("studio_config") @db.JsonB
 
-  publicId String @unique @default(uuid())
+  publicId String @unique @default(dbgenerated("gen_random_uuid()"))
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
   @@index([usuarioId], map: "idx_designs_usuario")
-  @@index([customerEmail], map: "idx_designs_email")
   @@map("saved_designs")
 }

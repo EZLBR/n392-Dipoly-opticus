@@ -1,8 +1,11 @@
 import { z } from "zod";
 import { studioConfigSchema } from "./studio-config.dto.js";
 
+/**
+ * Campos de um design. O identificador não faz parte do corpo (BOLA-04):
+ * na criação ele é gerado pelo servidor e na atualização vem da URL.
+ */
 export const saveDesignSchema = z.object({
-  id: z.string().optional().nullable(),
   name: z
     .string({ message: "Nome é obrigatório." })
     .trim()
@@ -27,6 +30,18 @@ export const saveDesignSchema = z.object({
   temple_open: z.coerce.number().max(99.99).optional(),
   published: z.boolean().optional(),
   config: studioConfigSchema.optional().nullable(),
+});
+
+/**
+ * POST /api/designs só cria. Um `id` no corpo era a atualização pelo POST,
+ * que caía no INSERT quando o design era de outro usuário e virava oráculo
+ * de existência. Ele é recusado em vez de ignorado: ignorar criaria uma
+ * cópia a cada salvamento de um cliente antigo.
+ */
+export const createDesignSchema = saveDesignSchema.extend({
+  id: z
+    .null({ message: "O identificador do design é gerado pelo servidor. Para atualizar, use PUT /api/designs/:id." })
+    .optional(),
 });
 
 export type SaveDesignDTO = z.infer<typeof saveDesignSchema>;
