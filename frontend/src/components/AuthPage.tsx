@@ -1,10 +1,19 @@
 import React, { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Lock } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useTranslation } from "../contexts/LanguageContext";
+import { loginRedirectTarget } from "../routes/access";
 
-export default function AuthPage({ setView }) {
+export default function AuthPage() {
   const { login, signup } = useAuth();
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
+  // Rota privada que o visitante tentou abrir (definida pelo RequireAuth).
+  const requestedPath = (location.state as { from?: unknown } | null)?.from;
+  const continueAfterAuth = (role: unknown) =>
+    navigate(loginRedirectTarget(requestedPath, role), { replace: true });
   const [activeTab, setActiveTab] = useState("login");
 
   // Login form state
@@ -31,16 +40,7 @@ export default function AuthPage({ setView }) {
       setLoginLoading(false);
 
       if (result.ok) {
-        const redirect = localStorage.getItem("opticus_redirect_after_login");
-        if (redirect) {
-          localStorage.removeItem("opticus_redirect_after_login");
-          setView(redirect);
-          return;
-        }
-
-        if (result.role === "client") setView("marketplace");
-        else if (result.role === "factory") setView("factory-dashboard");
-        else if (result.role === "staff") setView("staff-dashboard");
+        continueAfterAuth(result.role);
       } else {
         setLoginError(result.message || t("auth-login-invalid"));
       }
@@ -76,18 +76,7 @@ export default function AuthPage({ setView }) {
 
       if (result.ok) {
         setSignupSuccess(t("auth-signup-created"));
-        setTimeout(() => {
-          const redirect = localStorage.getItem("opticus_redirect_after_login");
-          if (redirect) {
-            localStorage.removeItem("opticus_redirect_after_login");
-            setView(redirect);
-            return;
-          }
-
-          if (result.role === "client") setView("marketplace");
-          else if (result.role === "factory") setView("factory-dashboard");
-          else if (result.role === "staff") setView("staff-dashboard");
-        }, 500);
+        setTimeout(() => continueAfterAuth(result.role), 500);
       } else {
         setSignupError(result.message || t("auth-signup-unexpected"));
       }
@@ -110,6 +99,17 @@ export default function AuthPage({ setView }) {
             {t(activeTab === "login" ? "auth-access-intro" : "auth-join-intro")}
           </p>
         </div>
+
+        {typeof requestedPath === "string" && (
+          <p
+            role="note"
+            className="auth-required-notice"
+            style={{ display: "flex", alignItems: "center", gap: "8px", margin: "0 0 20px 0", padding: "10px 14px", borderRadius: "8px", fontSize: "13px", lineHeight: "1.4", border: "1px solid var(--border-light)", color: "var(--text-dark)" }}
+          >
+            <Lock size={16} aria-hidden="true" style={{ flexShrink: 0 }} />
+            {t("auth-login-required")}
+          </p>
+        )}
 
         <div className="auth-tabs" role="tablist" style={{ display: "flex", borderBottom: "1px solid var(--border-light)", marginBottom: "20px" }}>
           <button
