@@ -53,3 +53,6 @@ coverage/
 *.db
 *.db-*
 *.db-journal
+
+# Contexto local do Claude Code (não versionar)
+CLAUDE.md
