@@ -14,9 +14,9 @@ import { criarUsuario, comToken } from "../helpers/auth.js";
 import { criarProdutoComEstoque, lerEstoque } from "../helpers/estoque.js";
 import { esperarProblema } from "../helpers/problem.js";
 
-const rota = (produtoId: number) => `/api/stock/product/${produtoId}`;
+const rota = (produtoPublicId: string) => `/api/stock/product/${produtoPublicId}`;
 
-describe("PUT /api/stock/product/:produtoId — entrada inválida (BUG #81)", () => {
+describe("PUT /api/stock/product/:produtoPublicId — entrada inválida (BUG #81)", () => {
   describe("quantidade que não é um inteiro explícito responde 400 e não altera o estoque", () => {
     it.each([
       ["null", null],
@@ -37,7 +37,7 @@ describe("PUT /api/stock/product/:produtoId — entrada inválida (BUG #81)", ()
       const estoque = await criarProdutoComEstoque({ quantidade: 10, estoqueMinimo: 5 });
 
       const res = await request(app)
-        .put(rota(estoque.produtoId))
+        .put(rota(estoque.produtoPublicId))
         .set(...comToken(staff.token))
         .send({ quantidade, operacao: "set" });
 
@@ -45,7 +45,7 @@ describe("PUT /api/stock/product/:produtoId — entrada inválida (BUG #81)", ()
       expect(res.body.invalidParams).toEqual([
         expect.objectContaining({ name: "quantidade" }),
       ]);
-      expect(await lerEstoque(estoque.produtoId)).toEqual({ quantidade: 10, estoqueMinimo: 5 });
+      expect(await lerEstoque(estoque.produtoPublicId)).toEqual({ quantidade: 10, estoqueMinimo: 5 });
     });
 
     it("campo ausente", async () => {
@@ -53,12 +53,12 @@ describe("PUT /api/stock/product/:produtoId — entrada inválida (BUG #81)", ()
       const estoque = await criarProdutoComEstoque({ quantidade: 10 });
 
       const res = await request(app)
-        .put(rota(estoque.produtoId))
+        .put(rota(estoque.produtoPublicId))
         .set(...comToken(staff.token))
         .send({ operacao: "set" });
 
       esperarProblema(res, 400, "bad-request");
-      expect((await lerEstoque(estoque.produtoId)).quantidade).toBe(10);
+      expect((await lerEstoque(estoque.produtoPublicId)).quantidade).toBe(10);
     });
   });
 
@@ -67,7 +67,7 @@ describe("PUT /api/stock/product/:produtoId — entrada inválida (BUG #81)", ()
     const estoque = await criarProdutoComEstoque({ quantidade: 10, estoqueMinimo: 5 });
 
     const res = await request(app)
-      .put(rota(estoque.produtoId))
+      .put(rota(estoque.produtoPublicId))
       .set(...comToken(staff.token))
       .send({ quantidade: 10, estoque_minimo: null });
 
@@ -75,7 +75,7 @@ describe("PUT /api/stock/product/:produtoId — entrada inválida (BUG #81)", ()
     expect(res.body.invalidParams).toEqual([
       expect.objectContaining({ name: "estoque_minimo" }),
     ]);
-    expect(await lerEstoque(estoque.produtoId)).toEqual({ quantidade: 10, estoqueMinimo: 5 });
+    expect(await lerEstoque(estoque.produtoPublicId)).toEqual({ quantidade: 10, estoqueMinimo: 5 });
   });
 
   describe("entradas válidas continuam funcionando", () => {
@@ -84,12 +84,12 @@ describe("PUT /api/stock/product/:produtoId — entrada inválida (BUG #81)", ()
       const estoque = await criarProdutoComEstoque({ quantidade: 10 });
 
       const res = await request(app)
-        .put(rota(estoque.produtoId))
+        .put(rota(estoque.produtoPublicId))
         .set(...comToken(staff.token))
         .send({ quantidade: 0, operacao: "set" });
 
       expect(res.status).toBe(200);
-      expect((await lerEstoque(estoque.produtoId)).quantidade).toBe(0);
+      expect((await lerEstoque(estoque.produtoPublicId)).quantidade).toBe(0);
     });
 
     it("número em texto, como envia um formulário, é aceito", async () => {
@@ -97,12 +97,12 @@ describe("PUT /api/stock/product/:produtoId — entrada inválida (BUG #81)", ()
       const estoque = await criarProdutoComEstoque({ quantidade: 10 });
 
       const res = await request(app)
-        .put(rota(estoque.produtoId))
+        .put(rota(estoque.produtoPublicId))
         .set(...comToken(staff.token))
         .send({ quantidade: "7", operacao: "set" });
 
       expect(res.status).toBe(200);
-      expect((await lerEstoque(estoque.produtoId)).quantidade).toBe(7);
+      expect((await lerEstoque(estoque.produtoPublicId)).quantidade).toBe(7);
     });
 
     it("estoque_minimo 0 explícito é aceito", async () => {
@@ -110,12 +110,12 @@ describe("PUT /api/stock/product/:produtoId — entrada inválida (BUG #81)", ()
       const estoque = await criarProdutoComEstoque({ quantidade: 10, estoqueMinimo: 5 });
 
       const res = await request(app)
-        .put(rota(estoque.produtoId))
+        .put(rota(estoque.produtoPublicId))
         .set(...comToken(staff.token))
         .send({ quantidade: 10, estoque_minimo: 0 });
 
       expect(res.status).toBe(200);
-      expect(await lerEstoque(estoque.produtoId)).toEqual({ quantidade: 10, estoqueMinimo: 0 });
+      expect(await lerEstoque(estoque.produtoPublicId)).toEqual({ quantidade: 10, estoqueMinimo: 0 });
     });
   });
 
@@ -123,10 +123,10 @@ describe("PUT /api/stock/product/:produtoId — entrada inválida (BUG #81)", ()
     it("anônimo recebe 401", async () => {
       const estoque = await criarProdutoComEstoque({ quantidade: 10 });
 
-      const res = await request(app).put(rota(estoque.produtoId)).send({ quantidade: 0 });
+      const res = await request(app).put(rota(estoque.produtoPublicId)).send({ quantidade: 0 });
 
       esperarProblema(res, 401, "unauthorized");
-      expect((await lerEstoque(estoque.produtoId)).quantidade).toBe(10);
+      expect((await lerEstoque(estoque.produtoPublicId)).quantidade).toBe(10);
     });
 
     it("fábrica, que só consulta estoque, recebe 403", async () => {
@@ -134,12 +134,12 @@ describe("PUT /api/stock/product/:produtoId — entrada inválida (BUG #81)", ()
       const estoque = await criarProdutoComEstoque({ quantidade: 10 });
 
       const res = await request(app)
-        .put(rota(estoque.produtoId))
+        .put(rota(estoque.produtoPublicId))
         .set(...comToken(fabrica.token))
         .send({ quantidade: 0 });
 
       esperarProblema(res, 403, "forbidden");
-      expect((await lerEstoque(estoque.produtoId)).quantidade).toBe(10);
+      expect((await lerEstoque(estoque.produtoPublicId)).quantidade).toBe(10);
     });
   });
 });

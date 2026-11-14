@@ -197,13 +197,25 @@ describe("regressão — falha de banco não vira 400 (pontos da evidência)", (
     errorSpy.mockClear();
   });
 
+  // ID-02: as entradas passaram a ser publicIds de texto, e uma fábrica
+  // inexistente é recusada antes do INSERT. Nenhuma requisição válida chega
+  // mais a esses erros do banco, então eles são simulados no driver, com o
+  // mesmo formato do erro cru do pg, na consulta que a rota executa.
+  function erroDoPg(mensagem: string, campos: Record<string, string>) {
+    return Object.assign(new Error(mensagem), { name: "error", severity: "ERROR", ...campos });
+  }
+
   it("paymentController: SELECT com tipo inválido vira 500, nunca 400", async () => {
     const cliente = await criarUsuario("client");
+    const consulta = vi.spyOn(pool, "query").mockRejectedValueOnce(
+      erroDoPg('invalid input syntax for type integer: "nao-numerico"', { code: "22P02", table: "pedidos" }),
+    );
 
     const res = await request(app)
       .post("/api/payments/create-billing")
       .set(...comToken(cliente.token))
-      .send({ orderId: "nao-numerico" });
+      .send({ orderPublicId: "nao-numerico" });
+    consulta.mockRestore();
 
     const traceId = expect500Generico(res);
     // SQLSTATE 22P02 (invalid input syntax) é errível cru do pg, não detalhe.
@@ -213,20 +225,23 @@ describe("regressão — falha de banco não vira 400 (pontos da evidência)", (
 
   it("orderController: violação de foreign key vira 409 (mapeada), nunca 400", async () => {
     const cliente = await criarUsuario("client");
+    const consulta = vi.spyOn(pool, "query").mockRejectedValueOnce(
+      erroDoPg('insert or update on table "pedidos" violates foreign key constraint "pedidos_factory_id_fkey"', {
+        code: "23503",
+        constraint: "pedidos_factory_id_fkey",
+        detail: 'Key (factory_id)=(999999) is not present in table "usuarios".',
+      }),
+    );
 
     const res = await request(app)
-      .post("/api/orders/checkout-cart")
+      .post("/api/orders")
       .set(...comToken(cliente.token))
       .send({
-        cartItems: [
-          {
-            productName: "Óculos sem fábrica",
-            factoryId: "999999",
-            factoryName: "Fábrica Fantasma",
-            customSpecs: especificacaoDoStudio(),
-          },
-        ],
+        productName: "Óculos sem fábrica",
+        factoryName: "Fábrica Fantasma",
+        customSpecs: especificacaoDoStudio(),
       });
+    consulta.mockRestore();
 
     expect(res.status).toBe(409);
     expect(res.headers["content-type"]).toContain("application/problem+json");

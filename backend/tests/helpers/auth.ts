@@ -18,7 +18,10 @@ import { pool } from "../setup/db.js";
 export type Papel = "client" | "factory" | "staff";
 
 export interface UsuarioDeTeste {
+  /** Id interno, só para montar e conferir estado no banco. */
   id: number;
+  /** Identificador público (ID-02): o que a API recebe e devolve. */
+  publicId: string;
   nome: string;
   email: string;
   papel: Papel;
@@ -56,11 +59,11 @@ export async function criarUsuario(
     );
   }
 
-  const { rows } = await pool.query<{ id: number }>(
-    "SELECT id FROM usuarios WHERE email = $1",
+  const { rows } = await pool.query<{ id: number; publicId: string }>(
+    `SELECT id, "publicId" FROM usuarios WHERE email = $1`,
     [email]
   );
-  const id = rows[0].id;
+  const { id, publicId } = rows[0];
 
   if (papel !== "client") {
     await pool.query("UPDATE usuarios SET role = $1, factory_name = $2 WHERE id = $3", [
@@ -72,7 +75,7 @@ export async function criarUsuario(
 
   const token = await obterToken(email, SENHA_PADRAO);
 
-  return { id, nome, email, papel, senha: SENHA_PADRAO, token };
+  return { id, publicId, nome, email, papel, senha: SENHA_PADRAO, token };
 }
 
 /** Faz login pela API e devolve o token. Nenhuma suposição sobre o payload. */

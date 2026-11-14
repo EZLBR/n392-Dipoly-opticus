@@ -83,11 +83,13 @@ export function routerGuard(
       const secret = getJwtSecret();
       const decoded = jwt.verify(token, secret);
 
-      if (typeof decoded === "string") {
+      // ID-02: o usuário é identificado pelo publicId. Um token sem ele
+      // (emitido antes da troca, com o id inteiro) não identifica ninguém.
+      if (typeof decoded === "string" || typeof decoded.publicId !== "string" || !decoded.publicId) {
         return next(new UnauthorizedProblem("Invalid or expired token."));
       }
 
-      req.user = decoded; // Attach payload (id, email, name, role)
+      req.user = decoded; // Attach payload (publicId, email, name, role)
 
       if (allowedRoles && allowedRoles.length > 0) {
         const userRole = req.user.role || "";

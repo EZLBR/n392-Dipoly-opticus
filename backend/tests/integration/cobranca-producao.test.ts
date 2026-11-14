@@ -102,7 +102,7 @@ function falharNoBanco(pool: Pool, inicioDoSql: string) {
 function carrinho(fabrica: UsuarioDeTeste, itens = 1) {
   const item = {
     productName: "Wayfarer",
-    factoryId: fabrica.id,
+    factoryPublicId: fabrica.publicId,
     factoryName: "Fabrica",
     total: 210,
     quantity: 1,
@@ -123,7 +123,7 @@ const pedidosDoCliente = (cliente: UsuarioDeTeste) =>
   prisma.pedido.findMany({
     where: { usuarioId: cliente.id },
     orderBy: { id: "asc" },
-    select: { id: true, status: true, abacateBillingId: true },
+    select: { id: true, publicId: true, status: true, abacateBillingId: true },
   });
 const pagamentosDoPedido = (pedidoId: number) =>
   prisma.pagamento.findMany({ where: { pedidoId }, select: { referenciaExterna: true, status: true, valor: true } });
@@ -230,7 +230,7 @@ describe("checkout-cart em produção (SEC-06)", () => {
         const concorrente = await request(app)
           .post("/api/payments/create-billing")
           .set(...comToken(cliente.token))
-          .send({ orderId: primeiro.id });
+          .send({ orderPublicId: primeiro.publicId });
         expect(concorrente.status).toBe(200);
         return respostaDoCheckout();
       });
@@ -340,7 +340,7 @@ describe("create-billing em produção (SEC-06)", () => {
         ? conectar(...args)
         : Promise.reject(new Error("pool indisponível após criação remota"))) as any);
     const res = await request(app).post("/api/payments/create-billing")
-      .set(...comToken(cliente.token)).send({ orderId: pedido.id });
+      .set(...comToken(cliente.token)).send({ orderPublicId: pedido.publicId });
     expect(res.status).toBe(500);
     expect(res.body.checkoutUrl).toBeUndefined();
     expect(await lerPedidoPorId(pedido.id)).toEqual(antes);
@@ -366,7 +366,7 @@ describe("create-billing em produção (SEC-06)", () => {
     const res = await request(app)
       .post("/api/payments/create-billing")
       .set(...comToken(cliente.token))
-      .send({ orderId: pedido.id });
+      .send({ orderPublicId: pedido.publicId });
 
     esperarProblema(res, 503, "service-unavailable");
     expect(res.body.detail).toMatch(detalhe);
@@ -384,7 +384,7 @@ describe("create-billing em produção (SEC-06)", () => {
     const res = await request(app)
       .post("/api/payments/create-billing")
       .set(...comToken(cliente.token))
-      .send({ orderId: pedido.id });
+      .send({ orderPublicId: pedido.publicId });
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ isSimulated: false, checkoutUrl: "https://gateway.invalid/pagar/bill_real" });
@@ -409,7 +409,7 @@ describe("create-billing em produção (SEC-06)", () => {
     const res = await request(app)
       .post("/api/payments/create-billing")
       .set(...comToken(cliente.token))
-      .send({ orderId: pedido.id });
+      .send({ orderPublicId: pedido.publicId });
 
     expect(res.status).toBe(500);
     expect(res.body.type).not.toMatch(/service-unavailable/);
@@ -430,7 +430,7 @@ describe("create-billing em produção (SEC-06)", () => {
     const res = await request(app)
       .post("/api/payments/create-billing")
       .set(...comToken(cliente.token))
-      .send({ orderId: pedido.id });
+      .send({ orderPublicId: pedido.publicId });
 
     esperarProblema(res, 409, "conflict");
     expect(res.body.checkoutUrl).toBeUndefined();
@@ -473,7 +473,7 @@ describe("fora de produção", () => {
       const res = await request(app)
         .post("/api/payments/create-billing")
         .set(...comToken(cliente.token))
-        .send({ orderId: pedido.id });
+        .send({ orderPublicId: pedido.publicId });
 
       esperarProblema(res, 503, "service-unavailable");
       expect(res.body.detail).toMatch(detalhe);
@@ -507,7 +507,7 @@ describe("fora de produção", () => {
       const res = await request(app)
         .post("/api/payments/create-billing")
         .set(...comToken(cliente.token))
-        .send({ orderId: pedido.id });
+        .send({ orderPublicId: pedido.publicId });
 
       expect(res.status).toBe(200);
       expect(res.body.isSimulated).toBe(true);

@@ -30,7 +30,7 @@ router.post("/login",    validateBody(loginSchema),    login);
 // Rotas protegidas
 router.get("/me",            routerGuard(),                                                 getMe);
 router.get("/users",         routerGuard("staff"), validateQuery(getUsersQuerySchema),      getUsers);
-router.put("/users/:id",     routerGuard("staff"), validateBody(updateUserSchema),          updateUser);
-router.delete("/users/:id",  routerGuard("staff"),                                          deleteUser);
+router.put("/users/:publicId",  routerGuard("staff"), validateBody(updateUserSchema),          updateUser);
+router.delete("/users/:publicId",  routerGuard("staff"),                                          deleteUser);
 
 export default router;

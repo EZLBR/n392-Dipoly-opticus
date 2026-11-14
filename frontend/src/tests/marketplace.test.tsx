@@ -169,7 +169,7 @@ describe("Store catalog states", () => {
       .fn()
       .mockResolvedValueOnce({ ok: false })
       .mockResolvedValueOnce(
-        response([{ id: 1, nome: "Armação da loja", preco: "230.50" }]),
+        response([{ publicId: "produto-1", nome: "Armação da loja", preco: "230.50" }]),
       );
     vi.stubGlobal("fetch", fetch);
     mount();
@@ -187,7 +187,7 @@ describe("Store catalog states", () => {
     const fetch = vi
       .fn()
       .mockResolvedValue(
-        response([{ id: 1, nome: "Solar", preco: 220 }], 13, 2),
+        response([{ publicId: "produto-1", nome: "Solar", preco: 220 }], 13, 2),
       );
     vi.stubGlobal("fetch", fetch);
     mount();

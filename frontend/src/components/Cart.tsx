@@ -31,7 +31,7 @@ export default function Cart({ setView }) {
   const [checkoutLanguageError, setCheckoutLanguageError] = useState(false);
   const [checkoutLanguageAttempt, setCheckoutLanguageAttempt] = useState(0);
   const containsArtwork = cart.some(item => hasUnapprovedCustomization(normalizeConfig(item.customSpecs)));
-  const checkout = simulatedCheckout?.owner === String(session?.id)
+  const checkout = simulatedCheckout?.owner === String(session?.publicId)
     && simulatedCheckout.token === localStorage.getItem("opticus_token") ? simulatedCheckout : null;
 
   useEffect(() => {
@@ -95,7 +95,7 @@ export default function Cart({ setView }) {
             const html = await fetchSimulatedCheckoutHtml(url, language);
             const billingId = result.billingId || new URL(url).searchParams.get("billingId") || "";
             if (token === localStorage.getItem("opticus_token")) {
-              setSimulatedCheckout({ html, owner: String(session.id), token, billingId, url, language });
+              setSimulatedCheckout({ html, owner: String(session.publicId), token, billingId, url, language });
             }
           } else {
             window.location.href = result.checkoutUrl;

@@ -322,7 +322,7 @@ describe("Schemas de entrada por rota e validação de invalidParams", () => {
     ]);
   });
 
-  it("createBillingSchema: rejeita orderId ausente", async () => {
+  it("createBillingSchema: rejeita orderPublicId ausente", async () => {
     const { createBillingSchema } = await import("../../../src/dtos/payment/payment.dto.js");
     const app = createTestApp();
     app.post("/billing", validateBody(createBillingSchema), (_req, res) => res.json({ ok: true }));
@@ -332,22 +332,40 @@ describe("Schemas de entrada por rota e validação de invalidParams", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.invalidParams).toEqual([
-      { name: "orderId", reason: "Informe o orderId." },
+      { name: "orderPublicId", reason: "Informe o orderPublicId." },
     ]);
   });
 
-  it("createBillingSchema: aceita string não numérica para permitir validação de regressão no banco", async () => {
+  // ID-02: o pedido é indicado só pelo publicId. O contrato antigo, com o id
+  // inteiro em orderId, não é mais aceito.
+  it("createBillingSchema: recusa o id inteiro do contrato antigo", async () => {
+    const { createBillingSchema } = await import("../../../src/dtos/payment/payment.dto.js");
+    const app = createTestApp();
+    app.post("/billing", validateBody(createBillingSchema), (_req, res) => res.json({ ok: true }));
+    app.use(problemErrorHandler);
+
+    for (const corpo of [{ orderId: 5 }, { orderPublicId: 5 }]) {
+      const res = await request(app).post("/billing").send(corpo);
+      expect(res.status).toBe(400);
+      expect(res.body.invalidParams).toEqual([
+        { name: "orderPublicId", reason: "Informe o orderPublicId." },
+      ]);
+    }
+  });
+
+  it("createBillingSchema: aceita o publicId textual e o repassa sem alteração", async () => {
     const { createBillingSchema } = await import("../../../src/dtos/payment/payment.dto.js");
     const app = createTestApp();
     app.post("/billing", validateBody(createBillingSchema), (req, res) => {
-      res.json({ ok: true, orderId: req.body.orderId });
+      res.json({ ok: true, orderPublicId: req.body.orderPublicId });
     });
     app.use(problemErrorHandler);
 
-    const res = await request(app).post("/billing").send({ orderId: "nao-numerico" });
+    const publicId = "6f1c2a4e-1b2d-4c3e-9f4a-5b6c7d8e9f00";
+    const res = await request(app).post("/billing").send({ orderPublicId: publicId });
 
     expect(res.status).toBe(200);
-    expect(res.body.orderId).toBe("nao-numerico");
+    expect(res.body.orderPublicId).toBe(publicId);
   });
 
   it("validateQuery: não lança TypeError no Express 5 (req.query com getter nativo)", async () => {

@@ -28,10 +28,10 @@ async function pedidosGravados() {
   }));
 }
 
-function itemDoCarrinho(fabricaId: number, alteracoes: Record<string, unknown> = {}) {
+function itemDoCarrinho(fabricaPublicId: string, alteracoes: Record<string, unknown> = {}) {
   return {
     productName: "Wayfarer · Acetato",
-    factoryId: fabricaId,
+    factoryPublicId: fabricaPublicId,
     factoryName: "Fabrica",
     customSpecs: especificacaoDoStudio(),
     quantity: 1,
@@ -52,7 +52,7 @@ describe("POST /api/orders — total calculado no servidor (SEC-05)", () => {
     const res = await request(app)
       .post("/api/orders")
       .set(...comToken(cliente.token))
-      .send({ ...itemDoCarrinho(fabrica.id), total: 0.01 });
+      .send({ ...itemDoCarrinho(fabrica.publicId), total: 0.01 });
 
     expect(res.status).toBe(201);
     expect(res.body.order.total).toBe(PRECO_DA_ESPECIFICACAO_PADRAO);
@@ -66,7 +66,7 @@ describe("POST /api/orders — total calculado no servidor (SEC-05)", () => {
     const res = await request(app)
       .post("/api/orders")
       .set(...comToken(cliente.token))
-      .send(itemDoCarrinho(fabrica.id, {
+      .send(itemDoCarrinho(fabrica.publicId, {
         customSpecs: especificacaoDoStudio({ isSunglasses: true, frameMaterial: "titanium", lensTreatments: [] }),
       }));
 
@@ -84,7 +84,7 @@ describe("POST /api/orders — total calculado no servidor (SEC-05)", () => {
       const res = await request(app)
         .post("/api/orders")
         .set(...comToken(cliente.token))
-        .send(itemDoCarrinho(fabrica.id, { quantity: undefined, customSpecs: especificacaoDoStudio({ quantity: 100 }) }));
+        .send(itemDoCarrinho(fabrica.publicId, { quantity: undefined, customSpecs: especificacaoDoStudio({ quantity: 100 }) }));
 
       expect(res.status).toBe(201);
       const [pedido] = await pedidosGravados();
@@ -99,7 +99,7 @@ describe("POST /api/orders — total calculado no servidor (SEC-05)", () => {
       const res = await request(app)
         .post("/api/orders")
         .set(...comToken(cliente.token))
-        .send(itemDoCarrinho(fabrica.id, { quantity: 3, customSpecs: especificacaoDoStudio({ quantity: 100 }) }));
+        .send(itemDoCarrinho(fabrica.publicId, { quantity: 3, customSpecs: especificacaoDoStudio({ quantity: 100 }) }));
 
       expect(res.status).toBe(201);
       const [pedido] = await pedidosGravados();
@@ -114,7 +114,7 @@ describe("POST /api/orders — total calculado no servidor (SEC-05)", () => {
       const res = await request(app)
         .post("/api/orders")
         .set(...comToken(cliente.token))
-        .send(itemDoCarrinho(fabrica.id, { quantity }));
+        .send(itemDoCarrinho(fabrica.publicId, { quantity }));
 
       esperarProblema(res, 400, "bad-request");
       expect(res.body.invalidParams).toEqual([expect.objectContaining({ name: "quantity" })]);
@@ -133,8 +133,8 @@ describe("POST /api/orders/checkout-cart — total calculado no servidor (SEC-05
       .set(...comToken(cliente.token))
       .send({
         cartItems: [
-          itemDoCarrinho(fabrica.id, { total: 0.01, quantity: 2 }),
-          itemDoCarrinho(fabrica.id, {
+          itemDoCarrinho(fabrica.publicId, { total: 0.01, quantity: 2 }),
+          itemDoCarrinho(fabrica.publicId, {
             total: 0.01,
             customSpecs: especificacaoDoStudio({ frameProfile: "bold", lensMaterial: "polycarbonate" }),
           }),
@@ -157,7 +157,7 @@ describe("POST /api/orders/checkout-cart — total calculado no servidor (SEC-05
       .set(...comToken(cliente.token))
       .send({
         cartItems: [
-          itemDoCarrinho(fabrica.id, {
+          itemDoCarrinho(fabrica.publicId, {
             customSpecs: especificacaoDoStudio({ lensTreatments: ["polarized", "polarized", "polarized"] }),
           }),
         ],
@@ -185,7 +185,7 @@ describe("POST /api/orders/checkout-cart — total calculado no servidor (SEC-05
     const res = await request(app)
       .post("/api/orders/checkout-cart")
       .set(...comToken(cliente.token))
-      .send({ cartItems: [itemDoCarrinho(fabrica.id, { total: 0.01, quantity: 3 })] });
+      .send({ cartItems: [itemDoCarrinho(fabrica.publicId, { total: 0.01, quantity: 3 })] });
 
     expect(res.status).toBe(200);
     expect(res.body.isSimulated).toBe(false);
@@ -220,7 +220,7 @@ describe("POST /api/orders/checkout-cart — total calculado no servidor (SEC-05
       const res = await request(app)
         .post("/api/orders/checkout-cart")
         .set(...comToken(cliente.token))
-        .send({ cartItems: [itemDoCarrinho(fabrica.id, { customSpecs: especificacaoDoStudio(alteracoes) })] });
+        .send({ cartItems: [itemDoCarrinho(fabrica.publicId, { customSpecs: especificacaoDoStudio(alteracoes) })] });
 
       esperarProblema(res, 400, "bad-request");
       expect(res.body.invalidParams).toEqual([
@@ -237,7 +237,7 @@ describe("POST /api/orders/checkout-cart — total calculado no servidor (SEC-05
     const res = await request(app)
       .post("/api/orders/checkout-cart")
       .set(...comToken(cliente.token))
-      .send({ cartItems: [itemDoCarrinho(fabrica.id, { quantity })] });
+      .send({ cartItems: [itemDoCarrinho(fabrica.publicId, { quantity })] });
 
     esperarProblema(res, 400, "bad-request");
     expect(res.body.invalidParams).toEqual([expect.objectContaining({ name: "cartItems.0.quantity" })]);

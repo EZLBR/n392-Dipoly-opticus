@@ -1,4 +1,5 @@
 import pool from "../config/db.js";
+import { usuarioPorPublicId } from "../utils/identidade.js";
 
 interface CustomerOrder {
   publicId: string;
@@ -23,18 +24,18 @@ const orderFields = `
   p.criado_em AT TIME ZONE 'UTC' AS "createdAt"
 `;
 
-export async function listCustomerOrders(userId: number, page: number, limit: number) {
+export async function listCustomerOrders(usuarioPublicId: string, page: number, limit: number) {
   const { rows: [result] } = await pool.query<{ orders: CustomerOrder[]; totalItems: number }>(
     `WITH page AS (
        SELECT ${orderFields}, p.id
-       FROM pedidos p WHERE p.usuario_id = $1
+       FROM pedidos p WHERE p.usuario_id = ${usuarioPorPublicId("$1")}
        ORDER BY p.criado_em DESC NULLS LAST, p.id DESC LIMIT $2 OFFSET $3
      )
      SELECT
        COALESCE(jsonb_agg(to_jsonb(page) - 'id' ORDER BY page."createdAt" DESC NULLS LAST, page.id DESC), '[]') AS orders,
-       (SELECT COUNT(*)::integer FROM pedidos WHERE usuario_id = $1) AS "totalItems"
+       (SELECT COUNT(*)::integer FROM pedidos WHERE usuario_id = ${usuarioPorPublicId("$1")}) AS "totalItems"
      FROM page`,
-    [userId, limit, (page - 1) * limit],
+    [usuarioPublicId, limit, (page - 1) * limit],
   );
   return {
     orders: result.orders,
@@ -54,7 +55,7 @@ function readSpecifications(serialized: string | null): Record<string, unknown> 
   }
 }
 
-export async function findCustomerOrder(userId: number, publicId: string) {
+export async function findCustomerOrder(usuarioPublicId: string, publicId: string) {
   const { rows: [order] } = await pool.query<CustomerOrder & {
     customSpecs: string | null;
     history: StatusEvent[];
@@ -66,8 +67,8 @@ export async function findCustomerOrder(userId: number, publicId: string) {
          ) ORDER BY h.id)
          FROM order_status_history h WHERE h.order_id = p.id
        ), '[]') AS history
-     FROM pedidos p WHERE p.usuario_id = $1 AND p."publicId" = $2`,
-    [userId, publicId],
+     FROM pedidos p WHERE p.usuario_id = ${usuarioPorPublicId("$1")} AND p."publicId" = $2`,
+    [usuarioPublicId, publicId],
   );
   return order ? { ...order, customSpecs: readSpecifications(order.customSpecs) } : undefined;
 }

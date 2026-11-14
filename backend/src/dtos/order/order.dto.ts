@@ -43,6 +43,10 @@ const customSpecsSchema = z.looseObject({
     message: "A compra de estampas aguarda validação da fábrica. Salve sua criação no Studio." });
 });
 
+// ID-02: a fábrica é indicada pelo publicId (UUID), nunca pelo id inteiro.
+// Opcional: sem ela, o pedido vai para a fábrica padrão.
+const publicIdDaFabrica = z.string().trim().min(1, "Fábrica inválida.").max(64, "Fábrica inválida.").optional();
+
 // Quantidade cobrada e gravada no pedido, nos dois endpoints. Uma
 // customSpecs.quantity enviada pelo cliente é sobrescrita por esta.
 const quantidadeSchema = z.coerce.number().int().positive().max(QUANTIDADE_MAXIMA_POR_ITEM).optional().default(1);
@@ -53,7 +57,7 @@ export const createOrderSchema = z.object({
     .trim()
     .min(1, "Nome do produto é obrigatório.")
     .max(255),
-  factoryId: z.coerce.number({ message: "ID da fábrica é obrigatório." }),
+  factoryPublicId: publicIdDaFabrica,
   factoryName: z
     .string({ message: "Nome da fábrica é obrigatório." })
     .trim()
@@ -80,7 +84,7 @@ export const cartItemSchema = z.object({
     .trim()
     .min(1, "Nome do produto é obrigatório.")
     .max(255),
-  factoryId: z.coerce.number({ message: "ID da fábrica é obrigatório." }),
+  factoryPublicId: publicIdDaFabrica,
   factoryName: z
     .string({ message: "Nome da fábrica é obrigatório." })
     .trim()

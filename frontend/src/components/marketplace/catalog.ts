@@ -143,7 +143,7 @@ export async function fetchStorePage(
     (p: Record<string, unknown>): StoreProduct => {
       const price = Number(p.preco);
       if (
-        p.id == null ||
+        typeof p.publicId !== "string" ||
         typeof p.nome !== "string" ||
         p.preco == null ||
         !Number.isFinite(price) ||
@@ -151,7 +151,8 @@ export async function fetchStorePage(
       )
         throw new Error("Invalid product");
       return {
-        id: String(p.id),
+        // ID-02: a API expõe só o publicId do produto.
+        id: p.publicId,
         name: p.nome,
         price,
         description: typeof p.descricao === "string" ? p.descricao : "",

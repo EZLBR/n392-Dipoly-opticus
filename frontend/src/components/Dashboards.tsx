@@ -6,6 +6,10 @@ import { label } from "../eyewear/config";
 import { ShoppingBag, Users, Building, ShieldCheck, DollarSign, Clock, Info, CheckCircle, ChevronRight, Settings } from "lucide-react";
 import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
+// ID-02: a API identifica pedidos só pelo publicId (UUID). O painel mostra
+// um número curto derivado dele, em vez do id sequencial que deixou de vir.
+const orderNumber = (order: { publicId?: string }) => String(order.publicId ?? "").slice(0, 8).toUpperCase();
+
 const CURRENCY_RATES = {
   USD: { rate: 1, symbol: "$" },
   BRL: { rate: 5.15, symbol: "R$" },
@@ -83,7 +87,7 @@ const OrderContextMenu = ({ menu, onClose, onUpdateStatus, onViewDetails }) => {
         boxShadow: "0 10px 30px rgba(0,0,0,0.2)", border: "1px solid var(--border-color)"
       }}>
         <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--border-color)", marginBottom: "8px" }}>
-          <strong style={{ fontSize: "12px", color: "var(--color-hint)" }}>{t("dash-order-number")}{menu.order.id}</strong>
+          <strong style={{ fontSize: "12px", color: "var(--color-hint)" }}>{t("dash-order-number")}{orderNumber(menu.order)}</strong>
         </div>
         <button className="menu-btn hoverable-row" onClick={() => { onViewDetails(menu.order); onClose(); }} style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "8px 12px", background: "none", border: "none", color: "var(--text-color)", cursor: "pointer", borderRadius: "6px", textAlign: "left" }}>
           <Info size={14} /> {t("dash-view-details")}
@@ -107,7 +111,7 @@ const OrderDetailsModal = ({ order, onClose }) => {
     <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.8)", backdropFilter: "blur(4px)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
       <div className="premium-glass-card" onClick={e => e.stopPropagation()} style={{ width: "90%", maxWidth: "500px", borderRadius: "16px", overflow: "hidden", position: "relative" }}>
         <div style={{ padding: "24px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-          <h3 style={{ margin: 0, fontSize: "20px" }}>{t("dash-order-details")}{order.id}</h3>
+          <h3 style={{ margin: 0, fontSize: "20px" }}>{t("dash-order-details")}{orderNumber(order)}</h3>
           <p style={{ margin: "5px 0 0", color: "var(--color-hint)", fontSize: "14px" }}>{order.productName} {t("dash-customer-prefix")} {order.customerName}</p>
         </div>
         <div style={{ padding: "24px", maxHeight: "60vh", overflowY: "auto" }}>
@@ -158,7 +162,7 @@ export function FactoryDashboard() {
 
   const { rate, symbol } = CURRENCY_RATES[currency] || CURRENCY_RATES.USD;
 
-  const allFactoryOrders = orders.filter((o) => String(o.factoryId) === String(session.id));
+  const allFactoryOrders = orders.filter((o) => o.factoryPublicId && o.factoryPublicId === session.publicId);
   const factoryOrders = filterOrdersByTime(allFactoryOrders, timeRange);
 
   const handleStatusChange = async (orderId, newStatus) => {
@@ -327,8 +331,8 @@ export function FactoryDashboard() {
               factoryOrders.map((order) => {
                 const delivery = getDeliveryStatus(order.createdAt, order.status, t);
                 return (
-                <tr key={order.id} onContextMenu={(e) => handleContextMenu(e, order)} style={{ cursor: "context-menu" }} className="hoverable-row">
-                  <td style={{ fontWeight: "600" }}>{order.id}</td>
+                <tr key={order.publicId} onContextMenu={(e) => handleContextMenu(e, order)} style={{ cursor: "context-menu" }} className="hoverable-row">
+                  <td style={{ fontWeight: "600" }}>{orderNumber(order)}</td>
                   <td>{order.customerName}</td>
                   <td>{order.productName}</td>
                   <td>
@@ -626,8 +630,8 @@ export function StaffDashboard() {
                 {orders.map((order) => {
                   const delivery = getDeliveryStatus(order.createdAt, order.status, t);
                   return (
-                  <tr key={order.id} onContextMenu={(e) => handleContextMenu(e, order)} style={{ cursor: "context-menu" }} className="hoverable-row">
-                    <td style={{ fontWeight: "600" }}>{order.id}</td>
+                  <tr key={order.publicId} onContextMenu={(e) => handleContextMenu(e, order)} style={{ cursor: "context-menu" }} className="hoverable-row">
+                    <td style={{ fontWeight: "600" }}>{orderNumber(order)}</td>
                     <td>{order.customerName}</td>
                     <td>{order.productName}</td>
                     <td>{order.factoryName}</td>
@@ -685,7 +689,7 @@ export function StaffDashboard() {
               </thead>
               <tbody id="staffUsersBody">
                 {users.map((user) => (
-                  <tr key={user.id}>
+                  <tr key={user.publicId}>
                     <td style={{ fontWeight: "600" }}>{user.name}</td>
                     <td>{user.email}</td>
                     <td>

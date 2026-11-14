@@ -44,7 +44,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
 
     it("categoryController lança NotFoundProblem se categoria não for encontrada", async () => {
       vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
-      const req = { params: { id: "999" } } as unknown as Request;
+      const req = { params: { publicId: "categoria-inexistente" } } as unknown as Request;
       const res = mockResponse();
 
       await expect(categoryController.getCategoryById(req, res)).rejects.toThrow(NotFoundProblem);
@@ -52,14 +52,14 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
 
     it("designController lança NotFoundProblem se design não existir ou sem permissão", async () => {
       vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
-      const req = { params: { id: "des-999" }, user: { email: "user@test.com", id: 1 } } as unknown as Request;
+      const req = { params: { id: "des-999" }, user: { email: "user@test.com", publicId: "usuario-1" } } as unknown as Request;
       const res = mockResponse();
 
       await expect(designController.deleteDesign(req, res)).rejects.toThrow(NotFoundProblem);
     });
 
     it("orderController lança ForbiddenProblem se role não for autorizado", async () => {
-      const req = { user: { role: "guest", email: "guest@test.com", id: 1 }, query: {} } as unknown as Request;
+      const req = { user: { role: "guest", email: "guest@test.com", publicId: "usuario-1" }, query: {} } as unknown as Request;
       const res = mockResponse();
 
       await expect(orderController.getOrders(req, res)).rejects.toThrow(ForbiddenProblem);
@@ -67,7 +67,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
 
     it("paymentController lança NotFoundProblem se pedido não existir", async () => {
       vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
-      const req = { body: { orderId: 999 }, user: { id: 1, role: "client" } } as unknown as Request;
+      const req = { body: { orderPublicId: "pedido-inexistente" }, user: { publicId: "usuario-1", role: "client" } } as unknown as Request;
       const res = mockResponse();
 
       await expect(paymentController.createBilling(req, res)).rejects.toThrow(NotFoundProblem);
@@ -77,14 +77,18 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     // devolve zero linhas, e a resposta é a mesma do pedido inexistente.
     it("paymentController lança o mesmo NotFoundProblem se pedido pertencer a outro usuário", async () => {
       const query = vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
-      const req = { body: { orderId: 5 }, user: { id: 1, role: "client" } } as unknown as Request;
+      const req = { body: { orderPublicId: "pedido-5" }, user: { publicId: "usuario-1", role: "client" } } as unknown as Request;
       const res = mockResponse();
 
       await expect(paymentController.createBilling(req, res)).rejects.toThrow(
         new NotFoundProblem("Pedido não encontrado."),
       );
-      // O escopo vem do token: o id do usuário, sem a exceção de staff.
-      expect(query).toHaveBeenCalledWith(expect.stringMatching(/usuario_id = \$3/), [5, false, 1]);
+      // O escopo vem do token: o publicId do usuário, resolvido na própria
+      // consulta (ID-02), sem a exceção de staff.
+      expect(query).toHaveBeenCalledWith(
+        expect.stringMatching(/usuario_id = \(SELECT u\.id FROM usuarios u WHERE u\."publicId" = \$3\)/),
+        ["pedido-5", false, "usuario-1"],
+      );
     });
 
     it("paymentController lança BadRequestProblem se billingId estiver ausente no checkout simulado", async () => {
@@ -96,7 +100,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
 
     it("productController lança NotFoundProblem se produto não existir", async () => {
       vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
-      const req = { params: { id: "999" } } as unknown as Request;
+      const req = { params: { publicId: "produto-inexistente" } } as unknown as Request;
       const res = mockResponse();
 
       await expect(productController.getProductById(req, res)).rejects.toThrow(NotFoundProblem);
@@ -109,7 +113,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
         .mockResolvedValueOnce({ rows: [], rowCount: 0 } as any)
         .mockResolvedValueOnce({ rows: [{ quantidade: 2 }], rowCount: 1 } as any);
       const req = {
-        params: { produtoId: "1" },
+        params: { produtoPublicId: "produto-1" },
         body: { quantidade: 5, operacao: "subtract" },
       } as unknown as Request;
       const res = mockResponse();
@@ -121,7 +125,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
   describe("Critério de Aceite 2: Respostas de sucesso retornam o recurso sem envelope", () => {
     it("authController.register retorna { user, token } sem envelope success", async () => {
       const mockResult = {
-        user: { id: 1, name: "Maria", email: "maria@test.com", role: "client", factoryName: null, createdAt: null },
+        user: { publicId: "usuario-1", name: "Maria", email: "maria@test.com", role: "client", factoryName: null, createdAt: null },
         token: "jwt-token-123",
       };
       vi.spyOn(AuthService, "register").mockResolvedValueOnce(mockResult);
@@ -139,7 +143,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
 
     it("authController.login retorna { user, token } sem envelope success", async () => {
       const mockResult = {
-        user: { id: 1, name: "Maria", email: "maria@test.com", role: "client", factoryName: null, createdAt: null },
+        user: { publicId: "usuario-1", name: "Maria", email: "maria@test.com", role: "client", factoryName: null, createdAt: null },
         token: "jwt-token-123",
       };
       vi.spyOn(AuthService, "login").mockResolvedValueOnce(mockResult);
@@ -155,25 +159,26 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("authController.getMe retorna o usuário sem envelope success", async () => {
-      const mockUser = { id: 1, name: "Maria", email: "maria@test.com", role: "client", factoryName: null, createdAt: null };
-      vi.spyOn(AuthService, "getProfile").mockResolvedValueOnce(mockUser);
+      const mockUser = { publicId: "usuario-1", name: "Maria", email: "maria@test.com", role: "client", factoryName: null, createdAt: null };
+      const perfil = vi.spyOn(AuthService, "getProfile").mockResolvedValueOnce(mockUser);
 
-      const req = { user: { id: 1 } } as unknown as Request;
+      const req = { user: { publicId: "usuario-1" } } as unknown as Request;
       const res = mockResponse();
 
       await authController.getMe(req, res);
 
       const payload = (res.json as any).mock.calls[0][0];
       expect(payload).not.toHaveProperty("success");
-      expect(payload.id).toBe(1);
+      expect(perfil).toHaveBeenCalledWith("usuario-1");
+      expect(payload.publicId).toBe("usuario-1");
+      expect(payload).not.toHaveProperty("id");
       expect(payload.user).toEqual(mockUser);
     });
 
     it("categoryController.createCategory retorna a categoria criada sem envelope success", async () => {
       vi.spyOn(pool, "query")
         .mockResolvedValueOnce({ rows: [], rowCount: 0 } as any) // check existing
-        .mockResolvedValueOnce({ rows: [{ id: 10 }], rowCount: 1 } as any) // insert
-        .mockResolvedValueOnce({ rows: [{ id: 10, nome: "Esportivo", descricao: "Leve" }], rowCount: 1 } as any); // select
+        .mockResolvedValueOnce({ rows: [{ publicId: "categoria-10", nome: "Esportivo", descricao: "Leve" }], rowCount: 1 } as any); // insert ... RETURNING
 
       const req = { body: { nome: "Esportivo", descricao: "Leve" } } as Request;
       const res = mockResponse();
@@ -183,7 +188,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
       expect(res.status).toHaveBeenCalledWith(201);
       const payload = (res.json as any).mock.calls[0][0];
       expect(payload).not.toHaveProperty("success");
-      expect(payload.id).toBe(10);
+      expect(payload.publicId).toBe("categoria-10");
       expect(payload.nome).toBe("Esportivo");
     });
 
@@ -208,7 +213,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
         rowCount: 1,
       } as any);
 
-      const req = { user: { email: "user@test.com" } } as unknown as Request;
+      const req = { user: { email: "user@test.com", publicId: "usuario-1" } } as unknown as Request;
       const res = mockResponse();
 
       await designController.getDesigns(req, res);
@@ -224,12 +229,11 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
         .mockResolvedValueOnce({ rows: [{ count: "1" }], rowCount: 1 } as any)
         .mockResolvedValueOnce({
           rows: [{
-            id: 1,
             publicId: "01J00000000000000000000001",
             customerName: "Maria",
             customerEmail: "maria@test.com",
             productName: "Armação",
-            factoryId: 2,
+            factoryPublicId: "fabrica-2",
             factoryName: "Fábrica A",
             status: "Pending Payment",
             total: "350.00",
@@ -242,7 +246,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
         } as any);
 
       const req = {
-        user: { role: "client", email: "maria@test.com", id: 1 },
+        user: { role: "client", email: "maria@test.com", publicId: "usuario-1" },
         query: { page: "1", limit: "10" },
       } as unknown as Request;
       const res = mockResponse();
@@ -257,35 +261,35 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
 
     it("productController.getProductById retorna o produto sem envelope success", async () => {
       vi.spyOn(pool, "query").mockResolvedValueOnce({
-        rows: [{ id: 42, nome: "Armação Titanium", preco: 299.9 }],
+        rows: [{ publicId: "produto-42", nome: "Armação Titanium", preco: 299.9 }],
         rowCount: 1,
       } as any);
 
-      const req = { params: { id: "42" } } as unknown as Request;
+      const req = { params: { publicId: "produto-42" } } as unknown as Request;
       const res = mockResponse();
 
       await productController.getProductById(req, res);
 
       const payload = (res.json as any).mock.calls[0][0];
       expect(payload).not.toHaveProperty("success");
-      expect(payload.id).toBe(42);
+      expect(payload.publicId).toBe("produto-42");
       expect(payload.nome).toBe("Armação Titanium");
     });
 
     it("stockController.getStockByProduct retorna { estoque, alerta } sem envelope success", async () => {
       vi.spyOn(pool, "query").mockResolvedValueOnce({
-        rows: [{ id: 1, produto_id: 10, quantidade: 20, estoque_minimo: 5, nome: "Armação Titanium", preco: 299.9 }],
+        rows: [{ publicId: "estoque-1", produtoPublicId: "produto-10", quantidade: 20, estoque_minimo: 5, nome: "Armação Titanium", preco: 299.9 }],
         rowCount: 1,
       } as any);
 
-      const req = { params: { produtoId: "10" } } as unknown as Request;
+      const req = { params: { produtoPublicId: "produto-10" } } as unknown as Request;
       const res = mockResponse();
 
       await stockController.getStockByProduct(req, res);
 
       const payload = (res.json as any).mock.calls[0][0];
       expect(payload).not.toHaveProperty("success");
-      expect(payload.estoque.produto_id).toBe(10);
+      expect(payload.estoque.produtoPublicId).toBe("produto-10");
       expect(payload.alerta).toBe(false);
     });
   });

@@ -23,11 +23,11 @@ const router = express.Router();
 
 // Rotas públicas (qualquer pessoa pode ver produtos)
 router.get("/",    validateQuery(getProductsQuerySchema), getProducts);
-router.get("/:id", getProductById);
+router.get("/:publicId", getProductById);
 
 // Rotas protegidas (somente staff pode criar/editar/deletar)
 router.post(  "/",    routerGuard("staff"), validateBody(createProductSchema), createProduct);
-router.put(   "/:id", routerGuard("staff"), validateBody(updateProductSchema), updateProduct);
-router.delete("/:id", routerGuard("staff"), deleteProduct);
+router.put(   "/:publicId", routerGuard("staff"), validateBody(updateProductSchema), updateProduct);
+router.delete("/:publicId", routerGuard("staff"), deleteProduct);
 
 export default router;

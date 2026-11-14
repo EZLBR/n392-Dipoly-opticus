@@ -69,11 +69,12 @@ export function OrderProvider({ children }) {
     return { ok: false, error: translate("orders-sign-in-to-edit") };
   };
 
-  const createPaymentBilling = async (orderId) => {
+  // ID-02: o pedido é indicado pelo publicId.
+  const createPaymentBilling = async (orderPublicId) => {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        const data = await apiClient.post<any>("/payments/create-billing", { orderId });
+        const data = await apiClient.post<any>("/payments/create-billing", { orderPublicId });
         return { ok: true, ...data };
       } catch (e: any) {
         if (e instanceof ProblemError) {

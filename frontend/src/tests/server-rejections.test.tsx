@@ -12,7 +12,7 @@ import DesignsGallery from "../components/DesignsGallery";
 import { ProblemError, setNavigateHandler } from "../api/client";
 
 vi.mock("../components/ThreePreview", () => ({ default: () => null })); // No GPU needed for delete flow.
-const order = { id: 1, publicId: "order-a", factoryId: "owner-a", customerName: "Ana", productName: "Frame A", status: "Queued", total: 100 };
+const order = { publicId: "order-a", factoryPublicId: "owner-a", customerName: "Ana", productName: "Frame A", status: "Queued", total: 100 };
 const design = { id: "design-a", name: "Original design", model: "round", color: "#112233" };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const denied = (status = 403) => json({ title: "Operação recusada", detail: "Você não pode alterar este recurso.", status }, status);
@@ -22,7 +22,7 @@ function mockApi(mutate: (path: string, options: RequestInit) => Response | Prom
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (url, options = {}) => {
     const path = new URL(String(url)).pathname;
     if (options.method && options.method !== "GET") return mutate(path, options);
-    if (path.endsWith("/auth/me")) return json({ user: { id: "owner-a", name: "Ana", role, factoryName: "Factory A" } });
+    if (path.endsWith("/auth/me")) return json({ user: { publicId: "owner-a", name: "Ana", role, factoryName: "Factory A" } });
     if (path.endsWith("/auth/users")) return json({ users: [] });
     if (path.endsWith("/orders")) return readOrders();
     if (path.endsWith("/designs")) return json({ designs: [design] });

@@ -37,7 +37,7 @@ async function cadastrarCom(email: string) {
     .post("/api/auth/register")
     .send({ name: "Herdeiro do e-mail", email, password: "SenhaTeste123" });
   expect(res.status).toBe(201);
-  return { id: res.body.user.id as number, token: res.body.token as string };
+  return { publicId: res.body.user.publicId as string, token: res.body.token as string };
 }
 
 const corpoDeDesign = (id?: string) => ({
