@@ -13,6 +13,8 @@ model Categoria {
   descricao String?   @db.Text
   criadoEm  DateTime? @default(now()) @map("criado_em")
 
+  publicId String @unique @default(dbgenerated("gen_random_uuid()"))
+
   produtos Produto[]
 
   @@map("categorias")
@@ -144,7 +146,8 @@ model Estoque {
   estoqueMinimo Int?      @default(5) @map("estoque_minimo")
   atualizadoEm  DateTime? @default(now()) @map("atualizado_em")
 
-  version Int @default(0)
+  version  Int    @default(0)
+  publicId String @unique @default(dbgenerated("gen_random_uuid()"))
 
   produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 
@@ -172,6 +175,8 @@ model Pagamento {
   valor             Decimal          @db.Decimal(10, 2)
   referenciaExterna String?          @map("referencia_externa") @db.VarChar(255)
   criadoEm          DateTime?        @default(now()) @map("criado_em")
+
+  publicId String @unique @default(dbgenerated("gen_random_uuid()"))
 
   pedido Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
 
