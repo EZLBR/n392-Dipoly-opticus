@@ -15,6 +15,11 @@ import {
 // e o resultado do parse é o que se grava em custom_specs. Assim, o que é
 // cobrado é exatamente o que vai para a fábrica. Os demais campos do
 // Studio (cor, modelo, acabamento...) seguem como foram enviados.
+/** Campo de um valor desconhecido; nulo, indefinido ou primitivo sem o campo dá undefined. */
+function campo(valor: unknown, chave: string): unknown {
+  return valor == null ? undefined : (valor as Record<string, unknown>)[chave];
+}
+
 const customSpecsSchema = z.looseObject({
   isSunglasses: z.boolean({ message: "Informe se a lente é de sol (true ou false)." }),
   frameProfile: z.enum(PERFIS_DE_ARMACAO, { message: "Perfil de armação inválido." }),
@@ -27,17 +32,20 @@ const customSpecsSchema = z.looseObject({
     .max(TRATAMENTOS_DE_LENTE.length)
     .transform((tratamentos) => [...new Set(tratamentos)]),
 }).superRefine((specs, context) => {
-  // Campos fora dos de preço chegam como unknown no looseObject.
-  const documento = specs as Record<string, any>;
-  const hasUnapprovedArtwork = [documento, documento.config].some(document => {
-    const artwork = document?.artwork;
-    return artwork != null && (!Array.isArray(artwork.layers) || artwork.layers.length > 0);
+  // Campos fora dos de preço chegam como unknown no looseObject. TS-01: são
+  // lidos como unknown, sem any; um valor que não é objeto não tem campos.
+  const documentos: unknown[] = [specs, campo(specs, "config")];
+  const hasUnapprovedArtwork = documentos.some(document => {
+    const artwork = campo(document, "artwork");
+    if (artwork == null) return false;
+    const layers = campo(artwork, "layers");
+    return !Array.isArray(layers) || layers.length > 0;
   });
   if (hasUnapprovedArtwork) context.addIssue({ code: "custom", path: ["artwork"],
     message: "A compra de designs com arte aguarda validação da fábrica. Salve sua criação no Studio." });
-  const hasUnapprovedPattern = [documento, documento.config].some(document => {
-    const pattern = document?.surfacePattern;
-    return pattern != null && (pattern.version !== 1 || pattern.style !== "none");
+  const hasUnapprovedPattern = documentos.some(document => {
+    const pattern = campo(document, "surfacePattern");
+    return pattern != null && (campo(pattern, "version") !== 1 || campo(pattern, "style") !== "none");
   });
   if (hasUnapprovedPattern) context.addIssue({ code: "custom", path: ["surfacePattern"],
     message: "A compra de estampas aguarda validação da fábrica. Salve sua criação no Studio." });
