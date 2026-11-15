@@ -98,7 +98,7 @@ describe("pedidos — autorização de objeto (TEST-02)", () => {
         .set(...comToken(atacante.token))
         .send({
           productName: "Armacao",
-          factoryId: fabrica.id,
+          factoryPublicId: fabrica.publicId,
           factoryName: "Fabrica",
           customSpecs: especificacaoDoStudio(),
           usuarioId: vitima.id,
@@ -132,7 +132,7 @@ describe("pedidos — autorização de objeto (TEST-02)", () => {
           cartItems: [
             {
               productName: "Armacao",
-              factoryId: fabrica.id,
+              factoryPublicId: fabrica.publicId,
               factoryName: "Fabrica",
               customSpecs: especificacaoDoStudio(),
               quantity: 1,
@@ -156,7 +156,7 @@ describe("pedidos — autorização de objeto (TEST-02)", () => {
       const res = await request(app)
         .put(`/api/orders/${pedido.publicId}/status`)
         .set(...comToken(fabricaA.token))
-        .send({ status: "In production", factoryId: fabricaB.id, factory_id: fabricaB.id });
+        .send({ status: "In production", factoryPublicId: fabricaB.publicId, factory_id: fabricaB.id });
 
       expect(res.status).toBe(200);
       expect((await lerPedido(pedido.publicId))?.factoryId).toBe(fabricaA.id);

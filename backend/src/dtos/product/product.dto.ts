@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+// ID-02: a categoria é referenciada pelo publicId (UUID), nunca pelo id inteiro.
+const publicIdDaCategoria = z.string().trim().min(1, "Categoria inválida.").max(64, "Categoria inválida.");
+
 export const createProductSchema = z.object({
   nome: z
     .string({ message: "Nome é obrigatório." })
@@ -10,7 +13,7 @@ export const createProductSchema = z.object({
   preco: z.coerce
     .number({ message: "Preço é obrigatório." })
     .positive("Preço deve ser um número positivo."),
-  categoria_id: z.coerce.number().int().positive().optional().nullable(),
+  categoriaPublicId: publicIdDaCategoria.optional().nullable(),
   imagem_url: z.string().trim().max(500).optional().nullable(),
 });
 
@@ -26,7 +29,7 @@ export const updateProductSchema = z.object({
   preco: z.coerce
     .number({ message: "Preço é obrigatório." })
     .positive("Preço deve ser um número positivo."),
-  categoria_id: z.coerce.number().int().positive().optional().nullable(),
+  categoriaPublicId: publicIdDaCategoria.optional().nullable(),
   imagem_url: z.string().trim().max(500).optional().nullable(),
   ativo: z.boolean().optional(),
 });
@@ -34,7 +37,7 @@ export const updateProductSchema = z.object({
 export type UpdateProductDTO = z.infer<typeof updateProductSchema>;
 
 export const getProductsQuerySchema = z.object({
-  categoria_id: z.coerce.number().int().positive().optional(),
+  categoriaPublicId: publicIdDaCategoria.optional(),
   search: z.string().trim().optional(),
   page: z.coerce.number().int().positive().optional().default(1),
   limit: z.coerce.number().int().positive().max(100).optional().default(20),

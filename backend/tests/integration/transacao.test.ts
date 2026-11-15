@@ -131,15 +131,16 @@ describe("POST /api/orders/checkout-cart com o ROLLBACK falhando (CONC-03)", () 
     };
     const conexoes = quebrarRollback();
 
-    // A fábrica inexistente viola a chave estrangeira no INSERT, a transação
-    // tenta o ROLLBACK, e o ROLLBACK falha. O erro que chega ao cliente
-    // continua sendo o da chave estrangeira (409), não o do ROLLBACK.
+    // A fábrica inexistente faz o INSERT falhar dentro da transação (ID-02:
+    // recusada com 400 pelo publicId), a transação tenta o ROLLBACK, e o
+    // ROLLBACK falha. O erro que chega ao cliente continua sendo o original
+    // (400), não o do ROLLBACK.
     for (let tentativa = 0; tentativa < LIMITE_DO_POOL + 2; tentativa++) {
       const res = await request(app)
         .post("/api/orders/checkout-cart")
         .set(...comToken(cliente.token))
-        .send({ cartItems: [{ ...itemValido, factoryId: 999_999 }] });
-      esperarProblema(res, 409, "conflict");
+        .send({ cartItems: [{ ...itemValido, factoryPublicId: "fabrica-inexistente" }] });
+      esperarProblema(res, 400, "bad-request");
     }
 
     expect(conexoes).toHaveLength(LIMITE_DO_POOL + 2);
@@ -149,7 +150,7 @@ describe("POST /api/orders/checkout-cart com o ROLLBACK falhando (CONC-03)", () 
     const res = await request(app)
       .post("/api/orders/checkout-cart")
       .set(...comToken(cliente.token))
-      .send({ cartItems: [{ ...itemValido, factoryId: fabrica.id }] });
+      .send({ cartItems: [{ ...itemValido, factoryPublicId: fabrica.publicId }] });
     expect(res.status).toBe(200);
     expect(pool.totalCount).toBeLessThanOrEqual(LIMITE_DO_POOL);
   });

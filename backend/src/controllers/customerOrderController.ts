@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
-import { BadRequestProblem, NotFoundProblem, UnauthorizedProblem } from "../errors/problem.js";
+import { BadRequestProblem, NotFoundProblem } from "../errors/problem.js";
+import { publicIdDoUsuario } from "../utils/identidade.js";
 import { findCustomerOrder, listCustomerOrders } from "../services/customerOrders.js";
 
 function positiveInteger(value: unknown, fallback: number, max: number) {
@@ -10,13 +11,8 @@ function positiveInteger(value: unknown, fallback: number, max: number) {
   return Number(value);
 }
 
-function customerId(req: Request) {
-  const id = Number(req.user?.id);
-  if (!Number.isInteger(id) || id < 1 || id > 2_147_483_647) {
-    throw new UnauthorizedProblem("Sessão inválida.");
-  }
-  return id;
-}
+/** ID-02: o cliente é identificado pelo publicId do token. */
+const customerId = publicIdDoUsuario;
 
 export async function getCustomerOrders(req: Request, res: Response) {
   res.set("Cache-Control", "private, no-store");

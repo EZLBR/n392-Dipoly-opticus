@@ -1,6 +1,9 @@
 // ============================================================
 //   STOCK CONTROLLER — Gerenciamento de Estoque
 //   Rotas: /api/stock
+//
+//   ID-02: o produto é identificado pelo publicId na rota, resolvido na
+//   própria consulta, e as respostas não serializam ids inteiros.
 // ============================================================
 
 import pool from "../config/db.js";
@@ -8,6 +11,16 @@ import type { Request, Response } from "express";
 import { BadRequestProblem, ConflictProblem, NotFoundProblem } from "../errors/problem.js";
 import { parsePagination } from "../utils/pagination.js";
 import { LIMITE_QUANTIDADE_ESTOQUE, type UpdateStockDTO } from "../dtos/stock/stock.dto.js";
+
+/** Colunas públicas de um item de estoque (alias informado) e do seu produto (alias p). */
+const camposEstoque = (e: string) => `
+  ${e}."publicId",
+  p."publicId"    AS "produtoPublicId",
+  p.nome          AS produto_nome,
+  ${e}.quantidade,
+  ${e}.estoque_minimo,
+  ${e}.atualizado_em,
+  ${e}.version`;
 
 // ─────────────────────────────────────────────────────────
 //   LISTAR TODO O ESTOQUE
@@ -25,8 +38,8 @@ export async function getAllStock(req: Request, res: Response) {
 
   const { rows } = await pool.query(
     `SELECT
-      e.id,
-      e.produto_id,
+      e."publicId",
+      p."publicId"    AS "produtoPublicId",
       p.nome          AS produto_nome,
       p.preco         AS produto_preco,
       c.nome          AS categoria_nome,
@@ -62,17 +75,17 @@ export async function getAllStock(req: Request, res: Response) {
 
 // ─────────────────────────────────────────────────────────
 //   BUSCAR ESTOQUE DE UM PRODUTO
-//   GET /api/stock/product/:produtoId
+//   GET /api/stock/product/:produtoPublicId
 // ─────────────────────────────────────────────────────────
 export async function getStockByProduct(req: Request, res: Response) {
-  const { produtoId } = req.params;
+  const produtoPublicId = String(req.params.produtoPublicId);
 
   const { rows } = await pool.query(
-    `SELECT e.*, p.nome AS produto_nome, p.preco
+    `SELECT ${camposEstoque("e")}, p.preco
      FROM estoque e
      INNER JOIN produtos p ON p.id = e.produto_id
-     WHERE e.produto_id = $1`,
-    [produtoId]
+     WHERE p."publicId" = $1`,
+    [produtoPublicId]
   );
 
   if (rows.length === 0) {
@@ -89,7 +102,7 @@ export async function getStockByProduct(req: Request, res: Response) {
 
 // ─────────────────────────────────────────────────────────
 //   ATUALIZAR ESTOQUE
-//   PUT /api/stock/product/:produtoId
+//   PUT /api/stock/product/:produtoPublicId
 //   Body: { quantidade, estoque_minimo, operacao }
 //   operacao: 'set' (define valor) | 'add' (adiciona) | 'subtract' (subtrai)
 // ─────────────────────────────────────────────────────────
@@ -107,7 +120,7 @@ const OPERACOES_DE_ESTOQUE = {
 } as const;
 
 export async function updateStock(req: Request, res: Response) {
-  const { produtoId } = req.params;
+  const produtoPublicId = String(req.params.produtoPublicId);
   const { quantidade, estoque_minimo, operacao } = req.body as UpdateStockDTO;
   const { novaQuantidade, guarda } = OPERACOES_DE_ESTOQUE[operacao];
 
@@ -117,21 +130,23 @@ export async function updateStock(req: Request, res: Response) {
           SET quantidade     = ${novaQuantidade},
               estoque_minimo = COALESCE($2, estoque_minimo),
               version        = version + 1
-        WHERE produto_id = $3 AND ${guarda}
+        WHERE produto_id = (SELECT id FROM produtos WHERE "publicId" = $3) AND ${guarda}
        RETURNING *
      )
-     SELECT a.*, p.nome AS produto_nome
+     SELECT ${camposEstoque("a")}
        FROM atualizado a
        INNER JOIN produtos p ON p.id = a.produto_id`,
-    [quantidade, estoque_minimo ?? null, produtoId]
+    [quantidade, estoque_minimo ?? null, produtoPublicId]
   );
 
   if (atualizados.length === 0) {
     // O UPDATE já decidiu, de forma atômica. Esta leitura serve só para
     // escolher a resposta: produto inexistente ou guarda que barrou.
     const { rows: atual } = await pool.query<{ quantidade: number }>(
-      "SELECT quantidade FROM estoque WHERE produto_id = $1",
-      [produtoId]
+      `SELECT e.quantidade FROM estoque e
+         INNER JOIN produtos p ON p.id = e.produto_id
+        WHERE p."publicId" = $1`,
+      [produtoPublicId]
     );
 
     if (atual.length === 0) {
@@ -162,7 +177,7 @@ export async function updateStock(req: Request, res: Response) {
 export async function getStockAlerts(req: Request, res: Response) {
   const { rows } = await pool.query(
     `SELECT
-      e.produto_id,
+      p."publicId"   AS "produtoPublicId",
       p.nome         AS produto_nome,
       e.quantidade,
       e.estoque_minimo,

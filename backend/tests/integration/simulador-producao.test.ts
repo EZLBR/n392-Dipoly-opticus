@@ -70,7 +70,7 @@ describe("simulador de pagamento (SEC-06)", () => {
     it("as demais rotas de pagamento continuam registradas", async () => {
       const app = await criarAppEmProducao();
 
-      esperarProblema(await request(app).post("/api/payments/create-billing").send({ orderId: 1 }), 401, "unauthorized");
+      esperarProblema(await request(app).post("/api/payments/create-billing").send({ orderPublicId: "qualquer" }), 401, "unauthorized");
       esperarProblema(await request(app).get("/api/payments"), 401, "unauthorized");
     });
   });

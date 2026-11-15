@@ -22,9 +22,9 @@ router.use(routerGuard());
 // Staff e factory podem ver o estoque
 router.get("/",                          routerGuard("staff", "factory"), getAllStock);
 router.get("/alerts",                    routerGuard("staff", "factory"), getStockAlerts);
-router.get("/product/:produtoId",        routerGuard("staff", "factory"), getStockByProduct);
+router.get("/product/:produtoPublicId",  routerGuard("staff", "factory"), getStockByProduct);
 
 // Apenas staff pode modificar o estoque
-router.put("/product/:produtoId",        routerGuard("staff"), validateBody(updateStockSchema), updateStock);
+router.put("/product/:produtoPublicId",  routerGuard("staff"), validateBody(updateStockSchema), updateStock);
 
 export default router;

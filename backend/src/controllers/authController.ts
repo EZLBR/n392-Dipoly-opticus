@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { AuthService } from "../services/authService.js";
 import { BadRequestProblem } from "../errors/problem.js";
 import { parsePagination } from "../utils/pagination.js";
+import { publicIdDoUsuario } from "../utils/identidade.js";
 
 export async function register(req: Request, res: Response) {
   const result = await AuthService.register(req.body);
@@ -14,7 +15,7 @@ export async function login(req: Request, res: Response) {
 }
 
 export async function getMe(req: Request, res: Response) {
-  const user = await AuthService.getProfile(Number(req.user!.id));
+  const user = await AuthService.getProfile(publicIdDoUsuario(req));
   return res.json({ ...user, user });
 }
 
@@ -29,11 +30,11 @@ export async function getUsers(req: Request, res: Response) {
 }
 
 export async function updateUser(req: Request, res: Response) {
-  await AuthService.updateUser(Number(req.params.id), req.body);
+  await AuthService.updateUser(String(req.params.publicId), req.body);
   return res.json({ message: "Usuário atualizado com sucesso." });
 }
 
 export async function deleteUser(req: Request, res: Response) {
-  await AuthService.deleteUser(Number(req.params.id));
+  await AuthService.deleteUser(String(req.params.publicId));
   return res.json({ message: "Usuário removido com sucesso." });
 }

@@ -16,7 +16,7 @@ if (!configuredJwtSecret) {
 const JWT_SECRET: string = configuredJwtSecret;
 
 function toUserResponse(user: {
-  id: number;
+  publicId: string;
   nome: string;
   email: string;
   role: string | null;
@@ -24,7 +24,7 @@ function toUserResponse(user: {
   criadoEm: Date | null;
 }): UserResponseDTO {
   return {
-    id: user.id,
+    publicId: user.publicId,
     name: user.nome,
     email: user.email,
     role: user.role ?? "client",
@@ -88,9 +88,9 @@ export class AuthService {
     return { user: userResponse, token };
   }
 
-  static async getProfile(userId: number): Promise<UserResponseDTO> {
+  static async getProfile(publicId: string): Promise<UserResponseDTO> {
     const user = await prisma.usuario.findUnique({
-      where: { id: userId },
+      where: { publicId },
     });
 
     if (!user) {
@@ -123,37 +123,30 @@ export class AuthService {
     };
   }
 
-  static async updateUser(userId: number, dto: UpdateUserDTO): Promise<void> {
+  // ID-02: o publicId é resolvido na própria escrita; zero linhas = 404.
+  static async updateUser(publicId: string, dto: UpdateUserDTO): Promise<void> {
     const { name, factoryName } = dto;
 
-    const existing = await prisma.usuario.findUnique({
-      where: { id: userId },
-    });
-
-    if (!existing) {
-      throw new NotFoundProblem("Usuário não encontrado.");
-    }
-
-    await prisma.usuario.update({
-      where: { id: userId },
+    const { count } = await prisma.usuario.updateMany({
+      where: { publicId },
       data: {
         nome: name,
         factoryName: factoryName ?? null,
       },
     });
-  }
 
-  static async deleteUser(userId: number): Promise<void> {
-    const existing = await prisma.usuario.findUnique({
-      where: { id: userId },
-    });
-
-    if (!existing) {
+    if (count === 0) {
       throw new NotFoundProblem("Usuário não encontrado.");
     }
+  }
 
-    await prisma.usuario.delete({
-      where: { id: userId },
+  static async deleteUser(publicId: string): Promise<void> {
+    const { count } = await prisma.usuario.deleteMany({
+      where: { publicId },
     });
+
+    if (count === 0) {
+      throw new NotFoundProblem("Usuário não encontrado.");
+    }
   }
 }

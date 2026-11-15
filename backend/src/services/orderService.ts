@@ -9,7 +9,8 @@ import { BadRequestProblem, ForbiddenProblem, NotFoundProblem } from "../errors/
 
 /** Identidade já autenticada, vinda do token. Nunca do corpo da requisição. */
 export interface Ator {
-  id: number;
+  /** ID-02: identificador público do usuário, vindo do token. */
+  publicId: string;
   role: string;
 }
 
@@ -66,7 +67,7 @@ export class OrderService {
       where: {
         publicId,
         // Fábrica só alcança os próprios pedidos. Staff não recebe filtro.
-        ...(ehStaff ? {} : { factoryId: ator.id }),
+        ...(ehStaff ? {} : { fabrica: { is: { publicId: ator.publicId } } }),
       },
       data: {
         status: statusPrisma,
@@ -85,7 +86,7 @@ export class OrderService {
     const pedido = await prisma.pedido.findFirst({
       where: {
         publicId,
-        ...(ehStaff ? {} : { factoryId: ator.id }),
+        ...(ehStaff ? {} : { fabrica: { is: { publicId: ator.publicId } } }),
       },
       select: {
         publicId: true,

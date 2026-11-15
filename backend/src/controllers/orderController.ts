@@ -9,7 +9,9 @@ import { getAbacateToken, isSimulatedPaymentGateway } from "../config/env.js";
 import { gerarBillingId } from "../utils/billingId.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
 import type { Request, Response } from "express";
-import { BadRequestProblem, ConflictProblem, ForbiddenProblem, ServiceUnavailableProblem } from "../errors/problem.js";
+import { BadRequestProblem, ConflictProblem, ForbiddenProblem, ServiceUnavailableProblem, UnauthorizedProblem } from "../errors/problem.js";
+import { publicIdDoUsuario, usuarioPorPublicId } from "../utils/identidade.js";
+import type { PoolClient } from "pg";
 import { parsePagination } from "../utils/pagination.js";
 import {
   PAGAMENTO_INDISPONIVEL,
@@ -29,63 +31,105 @@ import type {
 } from "../dtos/order/order.dto.js";
 
 // ─────────────────────────────────────────────────────────
+//   ID-02: identificadores públicos
+//
+//   O cliente vem do publicId do token e a fábrica, do factoryPublicId do
+//   corpo. Os dois são resolvidos dentro do próprio INSERT; as respostas
+//   expõem publicId e factoryPublicId, nunca ids inteiros.
+// ─────────────────────────────────────────────────────────
+
+/** Colunas públicas de um pedido (alias p), com a fábrica (alias f). */
+const CAMPOS_PEDIDO = `
+  p."publicId",
+  p.customer_name   AS "customerName",
+  p.customer_email  AS "customerEmail",
+  p.product_name    AS "productName",
+  f."publicId"      AS "factoryPublicId",
+  p.factory_name    AS "factoryName",
+  p.status,
+  p.total,
+  p.custom_specs    AS "customSpecs",
+  p.abacate_billing_id AS "abacateBillingId",
+  DATE(p.criado_em)    AS "createdAt",
+  DATE(p.atualizado_em) AS "updatedAt"`;
+
+const JUNCAO_FABRICA = "LEFT JOIN usuarios f ON f.id = p.factory_id";
+
+interface NovoPedido {
+  usuarioPublicId: string;
+  customerName: string;
+  customerEmail: string;
+  productName: string;
+  factoryPublicId?: string;
+  factoryName: string;
+  total: string;
+  customSpecs: string;
+  billingId: string | null;
+}
+
+/**
+ * Insere um pedido resolvendo cliente e fábrica pelos publicIds na própria
+ * consulta. Sem factoryPublicId, usa a fábrica padrão (a mais antiga); com
+ * um que não seja de fábrica, nada é inserido e a resposta é 400.
+ */
+async function inserirPedido(conexao: Pick<PoolClient, "query">, pedido: NovoPedido) {
+  const { rows } = await conexao.query<{ id: number; publicId: string }>(
+    `INSERT INTO pedidos
+       (usuario_id, customer_name, customer_email, product_name,
+        factory_id, factory_name, total, custom_specs, status, abacate_billing_id)
+     SELECT u.id, $2, $3, $4,
+            (SELECT f.id FROM usuarios f
+              WHERE f.role = 'factory' AND ($5::text IS NULL OR f."publicId" = $5::text)
+              ORDER BY f.id LIMIT 1),
+            $6, $7, $8, 'Pending Payment', $9
+       FROM usuarios u
+      WHERE u."publicId" = $1
+        AND ($5::text IS NULL OR EXISTS (
+              SELECT 1 FROM usuarios f WHERE f.role = 'factory' AND f."publicId" = $5::text))
+     RETURNING id, "publicId"`,
+    [
+      pedido.usuarioPublicId, pedido.customerName, pedido.customerEmail, pedido.productName,
+      pedido.factoryPublicId ?? null, pedido.factoryName, pedido.total, pedido.customSpecs,
+      pedido.billingId,
+    ]
+  );
+
+  if (rows.length === 0) {
+    if (pedido.factoryPublicId) throw new BadRequestProblem("Fábrica não encontrada.");
+    throw new UnauthorizedProblem("Sessão inválida.");
+  }
+  return rows[0];
+}
+
+// ─────────────────────────────────────────────────────────
 //   CRIAR PEDIDO
 //   POST /api/orders
 // ─────────────────────────────────────────────────────────
 export async function createOrder(req: Request, res: Response) {
   // 🔐 Security Fix: 'status' is completely ignored from req.body to prevent payment bypass.
-  const { productName, factoryId, factoryName, customSpecs, quantity } = req.body as CreateOrderDTO;
+  const { productName, factoryPublicId, factoryName, customSpecs, quantity } = req.body as CreateOrderDTO;
 
   // O preço vem das especificações, calculado no servidor (SEC-05). A
   // quantidade gravada é a cobrada, nunca a que vier em customSpecs.
   const { total } = precoDoItem(customSpecs, quantity);
   const especificacaoGravada = { ...customSpecs, quantity };
 
-  const customerName  = req.user!.name;
-  const customerEmail = req.user!.email;
-  const usuarioId     = req.user!.id;
-
-  let finalFactoryId = Number(factoryId);
-  if (isNaN(finalFactoryId)) {
-    const { rows: fRows } = await pool.query("SELECT id FROM usuarios WHERE role = 'factory' LIMIT 1");
-    finalFactoryId = fRows.length > 0 ? fRows[0].id : null;
-  }
-
-  const { rows: result } = await pool.query(
-    `INSERT INTO pedidos
-     (usuario_id, customer_name, customer_email, product_name,
-      factory_id, factory_name, total, custom_specs, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-    [
-      usuarioId,
-      customerName,
-      customerEmail,
-      productName,
-      finalFactoryId,
-      factoryName,
-      centavosParaDecimal(total),
-      JSON.stringify(especificacaoGravada),
-      "Pending Payment" // 🔒 Trava de Segurança
-    ]
-  );
-
-  const pedidoId = result[0].id;
+  // O status inicial é sempre "Pending Payment" (🔒 trava de segurança).
+  const criado = await inserirPedido(pool, {
+    usuarioPublicId: publicIdDoUsuario(req),
+    customerName:    req.user!.name ?? "",
+    customerEmail:   req.user!.email ?? "",
+    productName,
+    factoryPublicId,
+    factoryName,
+    total:           centavosParaDecimal(total),
+    customSpecs:     JSON.stringify(especificacaoGravada),
+    billingId:       null,
+  });
 
   const { rows } = await pool.query(
-    `SELECT
-      id,
-      customer_name   AS "customerName",
-      customer_email  AS "customerEmail",
-      product_name    AS "productName",
-      factory_id      AS "factoryId",
-      factory_name    AS "factoryName",
-      status,
-      total,
-      custom_specs    AS "customSpecs",
-      abacate_billing_id AS "abacateBillingId",
-      DATE(criado_em) AS "createdAt"
-     FROM pedidos WHERE id = $1`,
-    [pedidoId]
+    `SELECT ${CAMPOS_PEDIDO} FROM pedidos p ${JUNCAO_FABRICA} WHERE p."publicId" = $1`,
+    [criado.publicId]
   );
 
   const pedido = rows[0];
@@ -99,23 +143,8 @@ export async function createOrder(req: Request, res: Response) {
 //   GET /api/orders
 // ─────────────────────────────────────────────────────────
 export async function getOrders(req: Request, res: Response) {
-  const { role, id } = req.user!;
-
-  const selectFields = `
-    id,
-    "publicId",
-    customer_name   AS "customerName",
-    customer_email  AS "customerEmail",
-    product_name    AS "productName",
-    factory_id      AS "factoryId",
-    factory_name    AS "factoryName",
-    status,
-    total,
-    custom_specs    AS "customSpecs",
-    abacate_billing_id AS "abacateBillingId",
-    DATE(criado_em)    AS "createdAt",
-    DATE(atualizado_em) AS "updatedAt"
-  `;
+  const { role } = req.user!;
+  const publicId = publicIdDoUsuario(req);
 
   const pagination = parsePagination(req.query);
   if (!pagination.isValid) {
@@ -127,26 +156,28 @@ export async function getOrders(req: Request, res: Response) {
   let totalCount = 0;
 
   if (role === "client") {
-    const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos WHERE usuario_id = $1`, [id]);
+    const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos WHERE usuario_id = ${usuarioPorPublicId("$1")}`, [publicId]);
     totalCount = parseInt(countRes.rows[0].count);
     const result = await pool.query(
-      `SELECT ${selectFields} FROM pedidos WHERE usuario_id = $1 ORDER BY criado_em DESC LIMIT $2 OFFSET $3`,
-      [id, limit, offset]
+      `SELECT ${CAMPOS_PEDIDO} FROM pedidos p ${JUNCAO_FABRICA}
+        WHERE p.usuario_id = ${usuarioPorPublicId("$1")} ORDER BY p.criado_em DESC LIMIT $2 OFFSET $3`,
+      [publicId, limit, offset]
     );
     rows = result.rows;
   } else if (role === "factory") {
-    const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos WHERE factory_id = $1`, [id]);
+    const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos WHERE factory_id = ${usuarioPorPublicId("$1")}`, [publicId]);
     totalCount = parseInt(countRes.rows[0].count);
     const result = await pool.query(
-      `SELECT ${selectFields} FROM pedidos WHERE factory_id = $1 ORDER BY criado_em DESC LIMIT $2 OFFSET $3`,
-      [id, limit, offset]
+      `SELECT ${CAMPOS_PEDIDO} FROM pedidos p ${JUNCAO_FABRICA}
+        WHERE p.factory_id = ${usuarioPorPublicId("$1")} ORDER BY p.criado_em DESC LIMIT $2 OFFSET $3`,
+      [publicId, limit, offset]
     );
     rows = result.rows;
   } else if (role === "staff") {
     const countRes = await pool.query(`SELECT COUNT(*) FROM pedidos`);
     totalCount = parseInt(countRes.rows[0].count);
     const result = await pool.query(
-      `SELECT ${selectFields} FROM pedidos ORDER BY criado_em DESC LIMIT $1 OFFSET $2`,
+      `SELECT ${CAMPOS_PEDIDO} FROM pedidos p ${JUNCAO_FABRICA} ORDER BY p.criado_em DESC LIMIT $1 OFFSET $2`,
       [limit, offset]
     );
     rows = result.rows;
@@ -184,7 +215,7 @@ export async function updateOrderStatus(req: Request, res: Response) {
   const pedido = await OrderService.updateStatus({
     publicId,
     status,
-    ator: { id: Number(req.user!.id), role: String(req.user!.role) },
+    ator: { publicId: publicIdDoUsuario(req), role: String(req.user!.role) },
   });
 
   sendOrderStatusEmail(
@@ -218,56 +249,41 @@ export async function checkoutCart(req: Request, res: Response) {
     throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
   }
 
-  const customerName  = req.user!.name;
-  const customerEmail = req.user!.email;
-  const usuarioId     = Number(req.user!.id);
+  const customerName    = req.user!.name ?? "";
+  const customerEmail   = req.user!.email ?? "";
+  const usuarioPublicId = publicIdDoUsuario(req);
   const consolidatedBillingId = gerarBillingId("sim");
 
   const createdOrders = await emTransacao(async (client) => {
     const criados = [];
-    let finalFactoryIdCache = null;
 
     for (const item of cartItems) {
-      const { productName, factoryId, factoryName, customSpecs, quantity } = item;
+      const { productName, factoryPublicId, factoryName, customSpecs, quantity } = item;
 
       const specsWithQty    = { ...customSpecs, quantity };
       // O preço vem das especificações, calculado no servidor (SEC-05).
       const preco           = precoDoItem(customSpecs, quantity);
 
-      let finalFactoryId = Number(factoryId);
-      if (isNaN(finalFactoryId)) {
-        if (!finalFactoryIdCache) {
-          const { rows: fRows } = await client.query("SELECT id FROM usuarios WHERE role = 'factory' LIMIT 1");
-          finalFactoryIdCache = fRows.length > 0 ? fRows[0].id : null;
-        }
-        finalFactoryId = finalFactoryIdCache;
-      }
+      const criado = await inserirPedido(client, {
+        usuarioPublicId,
+        customerName,
+        customerEmail,
+        productName,
+        factoryPublicId,
+        factoryName,
+        total:       centavosParaDecimal(preco.total),
+        customSpecs: JSON.stringify(specsWithQty),
+        billingId:   consolidatedBillingId,
+      });
 
-      const { rows: result } = await client.query(
-        `INSERT INTO pedidos
-         (usuario_id, customer_name, customer_email, product_name,
-          factory_id, factory_name, total, custom_specs, status, abacate_billing_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending Payment', $9) RETURNING id`,
-        [
-          usuarioId,
-          customerName,
-          customerEmail,
-          productName,
-          finalFactoryId,
-          factoryName,
-          centavosParaDecimal(preco.total),
-          JSON.stringify(specsWithQty),
-          consolidatedBillingId
-        ]
-      );
-
+      // O id interno só circula no servidor (guarda da tentativa); o gateway
+      // recebe o publicId.
       criados.push({
-        id: result[0].id,
+        id: criado.id,
+        publicId: criado.publicId,
         productName,
         quantity,
         precoUnitarioEmCentavos: preco.unitario,
-        factoryId,
-        factoryName
       });
     }
     return criados;
@@ -288,7 +304,7 @@ export async function checkoutCart(req: Request, res: Response) {
       // O gateway cobra o preço unitário calculado no servidor, em centavos.
       const cobranca = await solicitarCobranca(ABACATE_TOKEN!, {
         products: createdOrders.map((pedido) => ({
-          externalId: String(pedido.id),
+          externalId: pedido.publicId,
           name:       pedido.productName,
           quantity:   pedido.quantity,
           price:      pedido.precoUnitarioEmCentavos
@@ -304,7 +320,7 @@ export async function checkoutCart(req: Request, res: Response) {
         // conciliação, nunca para o desfazimento abaixo.
         try {
           const associada = await concluirTentativaDeCheckout({
-            pedidoIds, usuarioId, billingIdProvisorio: consolidatedBillingId,
+            pedidoIds, usuarioPublicId, billingIdProvisorio: consolidatedBillingId,
             resultado: { tipo: "associar", billingId: cobranca.billingId, simulado: false },
           });
           if (!associada) throw new ConflictProblem("Os pedidos mudaram enquanto a cobrança era criada. Atualize seus pedidos antes de pagar.");
@@ -333,7 +349,7 @@ export async function checkoutCart(req: Request, res: Response) {
         throw new ServiceUnavailableProblem(PAGAMENTO_NAO_CONFIRMADO);
       }
       const desfeita = await concluirTentativaDeCheckout({
-        pedidoIds, usuarioId, billingIdProvisorio: consolidatedBillingId,
+        pedidoIds, usuarioPublicId, billingIdProvisorio: consolidatedBillingId,
         resultado: { tipo: "desfazer" },
       });
       if (!desfeita) {
@@ -344,7 +360,7 @@ export async function checkoutCart(req: Request, res: Response) {
     }
 
     const simulada = await concluirTentativaDeCheckout({
-      pedidoIds, usuarioId, billingIdProvisorio: consolidatedBillingId,
+      pedidoIds, usuarioPublicId, billingIdProvisorio: consolidatedBillingId,
       resultado: { tipo: "associar", billingId: consolidatedBillingId, simulado: true },
     });
     if (!simulada) throw new ServiceUnavailableProblem(PAGAMENTO_NAO_CONFIRMADO);

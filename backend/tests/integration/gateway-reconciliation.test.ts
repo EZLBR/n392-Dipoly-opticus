@@ -29,7 +29,7 @@ async function cenario() {
   const dono = await criarUsuario();
   const fabrica = await criarUsuario("factory");
   const app = await producao();
-  const cartItems = [1, 2].map(n => ({ productName: `Armação ${n}`, factoryId: fabrica.id,
+  const cartItems = [1, 2].map(n => ({ productName: `Armação ${n}`, factoryPublicId: fabrica.publicId,
     factoryName: "Fábrica", quantity: 1, customSpecs: especificacaoDoStudio() }));
   return { app, dono, cartItems };
 }
@@ -90,9 +90,9 @@ it.each(["carrinho", "pedido"])("resultado incerto também não ativa simulador 
   vi.stubEnv("ABACATE_TOKEN", "token-de-teste");
   vi.spyOn(globalThis, "fetch").mockResolvedValue(resposta(500, false));
   const res = fluxo === "pedido"
-    ? await request(appDeTeste).post("/api/payments/create-billing").set(...comToken(dono.token)).send({ orderId: pedido.id })
+    ? await request(appDeTeste).post("/api/payments/create-billing").set(...comToken(dono.token)).send({ orderPublicId: pedido.publicId })
     : await request(appDeTeste).post("/api/orders/checkout-cart").set(...comToken(dono.token)).send({ cartItems: [{
-        productName: "Armação", factoryId: fabrica.id, factoryName: "Fábrica", quantity: 1, customSpecs: especificacaoDoStudio(),
+        productName: "Armação", factoryPublicId: fabrica.publicId, factoryName: "Fábrica", quantity: 1, customSpecs: especificacaoDoStudio(),
       }] });
   expect(res.status).toBe(503);
   expect(res.body).not.toHaveProperty("checkoutUrl");

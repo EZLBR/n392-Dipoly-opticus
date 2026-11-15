@@ -63,7 +63,7 @@ describe("geração do billingId", () => {
     const res = await request(app)
       .post("/api/payments/create-billing")
       .set(...comToken(cliente.token))
-      .send({ orderId: pedido.id });
+      .send({ orderPublicId: pedido.publicId });
 
     expect(res.status).toBe(200);
     expect(res.body.isSimulated).toBe(true);
@@ -88,8 +88,8 @@ describe("geração do billingId", () => {
       .set(...comToken(cliente.token))
       .send({
         cartItems: [
-          { productName: "A", factoryId: fabrica.id, factoryName: "F", customSpecs: especificacaoDoStudio(), quantity: 1 },
-          { productName: "B", factoryId: fabrica.id, factoryName: "F", customSpecs: especificacaoDoStudio(), quantity: 1 },
+          { productName: "A", factoryPublicId: fabrica.publicId, factoryName: "F", customSpecs: especificacaoDoStudio(), quantity: 1 },
+          { productName: "B", factoryPublicId: fabrica.publicId, factoryName: "F", customSpecs: especificacaoDoStudio(), quantity: 1 },
         ],
       });
 

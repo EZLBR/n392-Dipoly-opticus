@@ -23,6 +23,7 @@ import {
   UnauthorizedProblem,
 } from "../errors/problem.js";
 import { parsePagination } from "../utils/pagination.js";
+import { publicIdDoUsuario, usuarioPorPublicId } from "../utils/identidade.js";
 import logger from "../utils/logger.js";
 import { emTransacao } from "../config/transacao.js";
 
@@ -42,7 +43,9 @@ import type { CreateBillingDTO } from "../dtos/payment/payment.dto.js";
 
 /** Só as colunas de que a cobrança precisa: nada de `SELECT *`. */
 interface PedidoCobravel {
+  /** Interno: usado só nas escritas deste servidor, nunca na resposta. */
   id: number;
+  publicId: string;
   total: string;
   product_name: string;
   customer_name: string;
@@ -55,19 +58,20 @@ interface PedidoCobravel {
 //   POST /api/payments/create-billing
 // ─────────────────────────────────────────────────────────
 export async function createBilling(req: Request, res: Response) {
-  const { orderId } = req.body as CreateBillingDTO;
+  const { orderPublicId } = req.body as CreateBillingDTO;
 
   // BOLA-03: a posse é parte da própria consulta, e não uma comparação em
   // memória depois de ler o pedido. Staff é a exceção explícita na cláusula.
   // Pedido inexistente e pedido alheio caem no mesmo 404 (BOLA-02): 403 fica
   // reservado à falta de papel RBAC, sem revelar a existência.
-  const escopo = [req.user!.role === "staff", req.user!.id];
+  // ID-02: pedido e dono são resolvidos pelos publicIds na própria cláusula.
+  const escopo = [req.user!.role === "staff", publicIdDoUsuario(req)];
 
   const { rows } = await pool.query<PedidoCobravel>(
-    `SELECT id, total, product_name, customer_name, customer_email, abacate_billing_id
+    `SELECT id, "publicId", total, product_name, customer_name, customer_email, abacate_billing_id
        FROM pedidos
-      WHERE id = $1 AND ($2::boolean OR usuario_id = $3)`,
-    [orderId, ...escopo]
+      WHERE "publicId" = $1 AND ($2::boolean OR usuario_id = ${usuarioPorPublicId("$3")})`,
+    [orderPublicId, ...escopo]
   );
 
   if (rows.length === 0) {
@@ -96,7 +100,7 @@ export async function createBilling(req: Request, res: Response) {
     // mutação, e não só para o SELECT que a precedeu.
     const { rowCount } = await pool.query(
       `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true, status = 'Pending Payment'
-        WHERE id = $2 AND ($3::boolean OR usuario_id = $4)`,
+        WHERE id = $2 AND ($3::boolean OR usuario_id = ${usuarioPorPublicId("$4")})`,
       [mockBillingId, order.id, ...escopo]
     );
 
@@ -104,13 +108,13 @@ export async function createBilling(req: Request, res: Response) {
       throw new NotFoundProblem("Pedido não encontrado.");
     }
 
-    const mockCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${mockBillingId}&orderId=${orderId}&returnTo=${encodeURIComponent(frontendOrigin)}`;
+    const mockCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${mockBillingId}&orderPublicId=${encodeURIComponent(order.publicId)}&returnTo=${encodeURIComponent(frontendOrigin)}`;
 
     return res.json({ checkoutUrl: mockCheckoutUrl, isSimulated: true });
   }
 
   const cobranca = await solicitarCobranca(ABACATE_TOKEN!, {
-    products:      [{ externalId: String(order.id), name: order.product_name, quantity: 1, price: amountInCents }],
+    products:      [{ externalId: order.publicId, name: order.product_name, quantity: 1, price: amountInCents }],
     returnUrl:     `${frontendOrigin}/`,
     completionUrl: `${frontendOrigin}/`,
     customer:      { name: order.customer_name, email: order.customer_email, taxId: "00000000000" }
@@ -208,8 +212,8 @@ export async function getPayments(req: Request, res: Response) {
 
   const { rows } = await pool.query(
     `SELECT
-      pg.id,
-      pg.pedido_id,
+      pg."publicId",
+      pd."publicId"         AS "pedidoPublicId",
       pg.metodo,
       pg.status,
       pg.valor,
@@ -327,8 +331,9 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
   }
 
   const { rows: orders } = await pool.query(
-    "SELECT * FROM pedidos WHERE abacate_billing_id = $1 AND usuario_id = $2 AND pagamento_simulado = true",
-    [billingId, req.user!.id]
+    `SELECT * FROM pedidos
+      WHERE abacate_billing_id = $1 AND usuario_id = ${usuarioPorPublicId("$2")} AND pagamento_simulado = true`,
+    [billingId, publicIdDoUsuario(req)]
   );
 
   if (orders.length === 0) {
@@ -412,7 +417,7 @@ export async function confirmSimulatedPayment(req: Request, res: Response) {
   }
 
   // A identidade vem exclusivamente do token validado por `protect`.
-  const usuarioId = req.user!.id;
+  const usuarioPublicId = publicIdDoUsuario(req);
 
   await emTransacao(async (client) => {
     // Autorização na cláusula WHERE: só o dono, e só enquanto o pedido
@@ -423,11 +428,11 @@ export async function confirmSimulatedPayment(req: Request, res: Response) {
       `UPDATE pedidos
           SET status = 'Queued'
         WHERE abacate_billing_id = $1
-          AND usuario_id = $2
+          AND usuario_id = ${usuarioPorPublicId("$2")}
           AND pagamento_simulado = true
           AND status = 'Pending Payment'
       RETURNING id`,
-      [billingId, usuarioId]
+      [billingId, usuarioPublicId]
     );
 
     if (rowCount === 0) {

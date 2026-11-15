@@ -59,7 +59,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
       const cliente = await criarUsuario("client");
       const pedido = await criarPedido({ dono: cliente });
 
-      const res = await request(app).post("/api/payments/create-billing").send({ orderId: pedido.id });
+      const res = await request(app).post("/api/payments/create-billing").send({ orderPublicId: pedido.publicId });
 
       esperarProblema(res, 401, "unauthorized");
     });
@@ -71,7 +71,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
       const res = await request(app)
         .post("/api/payments/create-billing")
         .set(...comToken(cliente.token))
-        .send({ orderId: pedido.id });
+        .send({ orderPublicId: pedido.publicId });
 
       expect(res.status).toBe(200);
     });
@@ -85,7 +85,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
       const res = await request(app)
         .post("/api/payments/create-billing")
         .set(...comToken(atacante.token))
-        .send({ orderId: pedido.id });
+        .send({ orderPublicId: pedido.publicId });
 
       esperarProblema(res, 404, "not-found");
       expect(await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })).toEqual(antes);
@@ -102,11 +102,11 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
         const alheio = await request(app)
           .post("/api/payments/create-billing")
           .set(...comToken(atacante.token))
-          .send({ orderId: pedido.id });
+          .send({ orderPublicId: pedido.publicId });
         const inexistente = await request(app)
           .post("/api/payments/create-billing")
           .set(...comToken(atacante.token))
-          .send({ orderId: 999_999 });
+          .send({ orderPublicId: "00000000-0000-4000-8000-000000000000" });
 
         esperarProblema(alheio, 404, "not-found");
         esperarProblema(inexistente, 404, "not-found");
@@ -124,7 +124,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
       const res = await request(app)
         .post("/api/payments/create-billing")
         .set(...comToken(staff.token))
-        .send({ orderId: pedido.id });
+        .send({ orderPublicId: pedido.publicId });
 
       expect(res.status).toBe(200);
       expect(res.body.checkoutUrl).toEqual(expect.any(String));
@@ -146,7 +146,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
         const res = await request(app)
           .post("/api/payments/create-billing")
           .set(...comToken(cliente.token))
-          .send({ orderId: pedido.id });
+          .send({ orderPublicId: pedido.publicId });
 
         expect(res.status).toBe(200);
         expect(res.body.isSimulated).toBe(true);
@@ -164,7 +164,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
         const res = await request(app)
           .post("/api/payments/create-billing")
           .set(...comToken(fabrica.token))
-          .send({ orderId: pedido.id });
+          .send({ orderPublicId: pedido.publicId });
 
         esperarProblema(res, 404, "not-found");
         expect(res.body.detail).toBe("Pedido não encontrado.");
@@ -177,7 +177,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
         const res = await request(app)
           .post("/api/payments/create-billing")
           .set(...comToken(staff.token))
-          .send({ orderId: 999_999 });
+          .send({ orderPublicId: "00000000-0000-4000-8000-000000000000" });
 
         esperarProblema(res, 404, "not-found");
         expect(res.body.detail).toBe("Pedido não encontrado.");
@@ -194,7 +194,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
         const res = await request(app)
           .post("/api/payments/create-billing")
           .set(...comToken(atacante.token))
-          .send({ orderId: pedido.id });
+          .send({ orderPublicId: pedido.publicId });
 
         esperarProblema(res, 404, "not-found");
         expect(gateway).not.toHaveBeenCalled();
@@ -212,7 +212,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
         const res = await request(app)
           .post("/api/payments/create-billing")
           .set(...comToken(cliente.token))
-          .send({ orderId: pedido.id });
+          .send({ orderPublicId: pedido.publicId });
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ checkoutUrl: "https://gateway.invalid/pagar/bill_do_dono", isSimulated: false });
@@ -220,7 +220,8 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
         // As colunas explícitas da consulta chegam ao gateway e ao registro do pagamento.
         const cobranca = JSON.parse(String(gateway.mock.calls[0][1]?.body));
         expect(cobranca.products).toEqual([
-          { externalId: String(pedido.id), name: lido.productName, quantity: 1, price: 45_000 },
+          // ID-02: o gateway recebe o publicId, nunca o id sequencial.
+          { externalId: pedido.publicId, name: lido.productName, quantity: 1, price: 45_000 },
         ]);
         expect(cobranca.customer).toMatchObject({ name: lido.customerName, email: lido.customerEmail });
         expect(await cobrancaGravada(pedido.id)).toEqual({ abacateBillingId: "bill_do_dono", pagamentoSimulado: false });

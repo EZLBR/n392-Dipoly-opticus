@@ -8,7 +8,10 @@
 import prisma from "../../src/config/prisma.js";
 
 export interface EstoqueDeTeste {
+  /** Id interno, para releitura direta no banco. */
   produtoId: number;
+  /** Identificador público do produto (ID-02), usado nas rotas. */
+  produtoPublicId: string;
   quantidade: number;
   estoqueMinimo: number | null;
 }
@@ -27,16 +30,16 @@ export async function criarProdutoComEstoque(
       preco: "199.90",
       estoque: { create: { quantidade, estoqueMinimo } },
     },
-    select: { id: true },
+    select: { id: true, publicId: true },
   });
 
-  return { produtoId: produto.id, quantidade, estoqueMinimo };
+  return { produtoId: produto.id, produtoPublicId: produto.publicId, quantidade, estoqueMinimo };
 }
 
 /** Releitura direta do banco, para provar o que a requisição gravou — ou não gravou. */
-export async function lerEstoque(produtoId: number) {
-  return prisma.estoque.findUniqueOrThrow({
-    where: { produtoId },
+export async function lerEstoque(produtoPublicId: string) {
+  return prisma.estoque.findFirstOrThrow({
+    where: { produto: { publicId: produtoPublicId } },
     select: { quantidade: true, estoqueMinimo: true },
   });
 }

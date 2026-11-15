@@ -19,11 +19,11 @@ const router = express.Router();
 
 // Rotas públicas
 router.get("/",    getCategories);
-router.get("/:id", getCategoryById);
+router.get("/:publicId", getCategoryById);
 
 // Somente staff gerencia categorias
 router.post(  "/",    routerGuard("staff"), validateBody(createCategorySchema), createCategory);
-router.put(   "/:id", routerGuard("staff"), validateBody(updateCategorySchema), updateCategory);
-router.delete("/:id", routerGuard("staff"), deleteCategory);
+router.put(   "/:publicId", routerGuard("staff"), validateBody(updateCategorySchema), updateCategory);
+router.delete("/:publicId", routerGuard("staff"), deleteCategory);
 
 export default router;

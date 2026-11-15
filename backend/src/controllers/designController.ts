@@ -6,7 +6,8 @@
 import { randomUUID } from "node:crypto";
 import pool from "../config/db.js";
 import type { Request, Response } from "express";
-import { NotFoundProblem } from "../errors/problem.js";
+import { NotFoundProblem, UnauthorizedProblem } from "../errors/problem.js";
+import { publicIdDoUsuario, usuarioPorPublicId } from "../utils/identidade.js";
 import type { SaveDesignDTO } from "../dtos/design/design.dto.js";
 import { resolveStudioConfig } from "../services/designConfig.js";
 import { emTransacao } from "../config/transacao.js";
@@ -24,6 +25,9 @@ import { emTransacao } from "../config/transacao.js";
 // mutável (o staff pode trocá-lo) e deixou de existir em saved_designs: com
 // ele como escopo, quem herdasse o e-mail antigo herdava os designs
 // (docs/decisions/ADR-0002-designs-escopados-por-usuario-id.md).
+//
+// ID-02: o token traz o publicId do usuário; o usuario_id é resolvido
+// dentro de cada consulta, nunca numa busca separada.
 
 const DESIGN_NAO_ENCONTRADO = "Design não encontrado ou sem permissão.";
 
@@ -38,7 +42,7 @@ export async function createDesign(req: Request, res: Response) {
     top_bar, bridge_style, frame_profile, temple_open, published, config
   } = req.body as SaveDesignDTO;
 
-  const usuarioId = req.user!.id;
+  const usuarioPublicId = publicIdDoUsuario(req);
 
   // O identificador é sempre do servidor: UUID v4, nunca valor do cliente.
   const id = randomUUID();
@@ -48,14 +52,21 @@ export async function createDesign(req: Request, res: Response) {
       (id, usuario_id, name, model, color,
        is_sunglasses, anti_reflective, temple_style,
        top_bar, bridge_style, frame_profile, temple_open, published, studio_config)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb) RETURNING id`,
+     SELECT $1, u.id, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb
+       FROM usuarios u WHERE u."publicId" = $2
+     RETURNING id`,
     [
-      id, usuarioId, name, model, color,
+      id, usuarioPublicId, name, model, color,
       Boolean(is_sunglasses), Boolean(anti_reflective), temple_style || "standard",
       Boolean(top_bar), bridge_style || "keyhole", frame_profile || "medium",
       temple_open || 0.00, Boolean(published), config ? JSON.stringify(config) : null
     ]
   );
+
+  // Token válido de um usuário que não existe mais: nada foi gravado.
+  if (result.length === 0) {
+    throw new UnauthorizedProblem("Sessão inválida.");
+  }
 
   return res.status(201).json({
     message: "Design salvo com sucesso.",
@@ -76,14 +87,14 @@ export async function updateDesign(req: Request, res: Response) {
     top_bar, bridge_style, frame_profile, temple_open, published
   } = payload;
 
-  const usuarioId = req.user!.id;
+  const usuarioPublicId = publicIdDoUsuario(req);
 
   await emTransacao(async (conexao) => {
     // O documento atual entra na fusão das edições legadas. FOR UPDATE
     // segura a linha até a escrita, para outra edição não se intercalar.
     const { rows: existing } = await conexao.query<{ studio_config: unknown }>(
-      "SELECT studio_config FROM saved_designs WHERE id = $1 AND usuario_id = $2 FOR UPDATE",
-      [id, usuarioId]
+      `SELECT studio_config FROM saved_designs WHERE id = $1 AND usuario_id = ${usuarioPorPublicId("$2")} FOR UPDATE`,
+      [id, usuarioPublicId]
     );
 
     if (existing.length === 0) {
@@ -98,13 +109,13 @@ export async function updateDesign(req: Request, res: Response) {
         top_bar = $7, bridge_style = $8, frame_profile = $9,
         temple_open = $10, published = $11, updated_at = CURRENT_TIMESTAMP,
         studio_config = COALESCE($14::jsonb, studio_config)
-       WHERE id = $12 AND usuario_id = $13`,
+       WHERE id = $12 AND usuario_id = ${usuarioPorPublicId("$13")}`,
       [
         name, document ? `${document.frontModel}_front_${document.templeModel}_temples` : model, document?.color ?? color,
         document?.isSunglasses ?? Boolean(is_sunglasses), document ? document.lensTreatments.includes("anti_reflective") : Boolean(anti_reflective), temple_style || "standard",
         Boolean(top_bar), bridge_style || "keyhole", document?.frameProfile ?? frame_profile ?? "medium",
         document?.templeOpen ?? temple_open ?? 0.00, Boolean(published),
-        id, usuarioId, document ? JSON.stringify(document) : null
+        id, usuarioPublicId, document ? JSON.stringify(document) : null
       ]
     );
   }, { traceId: req.requestId });
@@ -117,11 +128,11 @@ export async function updateDesign(req: Request, res: Response) {
 //   GET /api/designs
 // ─────────────────────────────────────────────────────────
 export async function getDesigns(req: Request, res: Response) {
-  const usuarioId = req.user!.id;
+  const usuarioPublicId = publicIdDoUsuario(req);
 
   const { rows } = await pool.query(
-    "SELECT * FROM saved_designs WHERE usuario_id = $1 ORDER BY created_at DESC",
-    [usuarioId]
+    `SELECT * FROM saved_designs WHERE usuario_id = ${usuarioPorPublicId("$1")} ORDER BY created_at DESC`,
+    [usuarioPublicId]
   );
 
   const designs = rows.map(row => ({
@@ -151,11 +162,11 @@ export async function getDesigns(req: Request, res: Response) {
 // ─────────────────────────────────────────────────────────
 export async function deleteDesign(req: Request, res: Response) {
   const { id }    = req.params;
-  const usuarioId = req.user!.id;
+  const usuarioPublicId = publicIdDoUsuario(req);
 
   const { rowCount } = await pool.query(
-    "DELETE FROM saved_designs WHERE id = $1 AND usuario_id = $2",
-    [id, usuarioId]
+    `DELETE FROM saved_designs WHERE id = $1 AND usuario_id = ${usuarioPorPublicId("$2")}`,
+    [id, usuarioPublicId]
   );
 
   if (rowCount === 0) {
