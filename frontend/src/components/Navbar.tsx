@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, startTransition } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { roleKey, useTranslation } from "../contexts/LanguageContext";
-import { Moon, Sun, Globe, LogOut, Menu, X } from "lucide-react";
+import { Moon, Sun, Globe, LogOut, Menu, X, Lock } from "lucide-react";
 
 export default function Navbar({ currentView, setView }) {
-  const { session, logout } = useAuth();
+  const { session, sessionLoading, logout } = useAuth();
   const { cart } = useCart();
   const { t, language, setLanguage } = useTranslation();
   const [darkMode, setDarkMode] = useState(() => {
@@ -46,6 +46,31 @@ export default function Navbar({ currentView, setView }) {
     setMenuOpen(false);
   };
 
+  // FE-08: visitantes veem as áreas privadas marcadas com cadeado; ao clicar,
+  // o RequireAuth leva ao login e depois de volta ao destino.
+  const isVisitor = !session && !sessionLoading;
+  const loginRequiredTitle = isVisitor ? t("nav-login-required") : undefined;
+  const privateMark = isVisitor ? (
+    <>
+      <Lock size={12} aria-hidden="true" style={{ marginLeft: "5px", verticalAlign: "middle" }} />
+      <span style={{ position: "absolute", width: "1px", height: "1px", overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>
+        {` (${t("nav-login-required")})`}
+      </span>
+    </>
+  ) : null;
+
+  // A navegação do React Router roda como transição. O logout entra na mesma
+  // transição para que a ida ao Explorer e o fim da sessão sejam aplicados
+  // juntos; senão o guard da rota privada atual veria a sessão encerrada
+  // primeiro e trataria o logout como sessão expirada (indo para o login).
+  const handleLogout = () => {
+    setMenuOpen(false);
+    startTransition(() => {
+      setView("marketplace");
+      logout();
+    });
+  };
+
   return (
     <header className="navbar">
       <div className="navbar-top-row">
@@ -81,24 +106,30 @@ export default function Navbar({ currentView, setView }) {
                 href="#"
                 className={currentView === "create" ? "active" : ""}
                 onClick={(e) => handleNavClick("create", e)}
+                title={loginRequiredTitle}
               >
                 {t("nav-studio")}
+                {privateMark}
               </a>
               <a
                 href="#"
                 className={currentView === "designs" ? "active" : ""}
                 onClick={(e) => handleNavClick("designs", e)}
+                title={loginRequiredTitle}
               >
                 {t("nav-my-designs")}
+                {privateMark}
               </a>
               <a
                 href="#"
                 className={currentView === "cart" ? "active" : ""}
                 onClick={(e) => handleNavClick("cart", e)}
                 style={{ display: "inline-flex", alignItems: "center" }}
+                title={loginRequiredTitle}
               >
                 {t("nav-cart")}
-                {cart && cart.length > 0 && (
+                {privateMark}
+                {session && cart && cart.length > 0 && (
                   <span className="cart-badge" style={{
                     marginLeft: "6px",
                     background: "#ff0055",
@@ -145,12 +176,12 @@ export default function Navbar({ currentView, setView }) {
 
         <div className="navbar-actions">
           <div id="sessionArea">
-            {session ? (
+            {sessionLoading ? null : session ? (
               <div className="session-box">
                 <span>
                   {session.name} &middot; {t(roleKey(session.role)).toUpperCase()}
                 </span>
-                <button className="btn logout-btn" id="logoutBtn" type="button" onClick={logout}>
+                <button className="btn logout-btn" id="logoutBtn" type="button" onClick={handleLogout}>
                   <LogOut size={14} style={{ marginRight: "4px", verticalAlign: "middle" }} />
                   {t("nav-logout")}
                 </button>

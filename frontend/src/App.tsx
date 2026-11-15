@@ -8,6 +8,8 @@ import { Check, X, AlertTriangle } from "lucide-react";
 import { FactoryDashboard, StaffDashboard } from "./components/Dashboards";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { setNavigateHandler } from "./utils/api";
+import RequireAuth from "./components/RequireAuth";
+import { FACTORY_ROLES, ORDER_ROLES, STAFF_ROLES, STUDIO_ROLES } from "./routes/access";
 
 // Lazy Loading para os componentes pesados
 const Marketplace = lazy(() => import("./components/Marketplace"));
@@ -17,7 +19,7 @@ const AuthPage = lazy(() => import("./components/AuthPage"));
 const Cart = lazy(() => import("./components/Cart"));
 const CustomerOrders = lazy(() => import("./components/CustomerOrders"));
 
-function AppContent() {
+export function AppContent() {
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const { session, authWarning, clearAuthWarning } = useAuth();
   const { clearCart } = useCart();
@@ -42,19 +44,11 @@ function AppContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Controle de permissões (Roles) e proteção de rotas
+  // A proteção de rotas privadas fica no RequireAuth (FE-08). Aqui só resta a
+  // regra de produto da fábrica, que trabalha exclusivamente no seu painel.
   useEffect(() => {
-    if (!session) {
-      if (location.pathname === "/factory-dashboard" || location.pathname === "/staff-dashboard") {
-        navigate("/");
-      }
-    } else {
-      if (session.role === "factory" && location.pathname !== "/factory-dashboard") {
-        navigate("/factory-dashboard");
-      }
-      if (session.role === "staff" && location.pathname === "/factory-dashboard") {
-        navigate("/staff-dashboard");
-      }
+    if (session?.role === "factory" && location.pathname !== "/factory-dashboard") {
+      navigate("/factory-dashboard", { replace: true });
     }
   }, [session, location.pathname, navigate]);
 
@@ -137,14 +131,14 @@ function AppContent() {
           <ErrorBoundary>
             <Routes>
               <Route path="/" element={<Marketplace setView={setViewLegacy} />} />
-              <Route path="/designs" element={<DesignsGallery setView={setViewLegacy} />} />
-              <Route path="/create" element={<CreatorStudio setView={setViewLegacy} />} />
-              <Route path="/cart" element={<Cart setView={setViewLegacy} />} />
-              <Route path="/orders" element={<CustomerOrders />} />
-              <Route path="/orders/:publicId" element={<CustomerOrders />} />
-              <Route path="/login" element={<AuthPage setView={setViewLegacy} />} />
-              <Route path="/factory-dashboard" element={<FactoryDashboard />} />
-              <Route path="/staff-dashboard" element={<StaffDashboard />} />
+              <Route path="/login" element={<AuthPage />} />
+              <Route path="/designs" element={<RequireAuth roles={STUDIO_ROLES}><DesignsGallery setView={setViewLegacy} /></RequireAuth>} />
+              <Route path="/create" element={<RequireAuth roles={STUDIO_ROLES}><CreatorStudio setView={setViewLegacy} /></RequireAuth>} />
+              <Route path="/cart" element={<RequireAuth roles={STUDIO_ROLES}><Cart setView={setViewLegacy} /></RequireAuth>} />
+              <Route path="/orders" element={<RequireAuth roles={ORDER_ROLES}><CustomerOrders /></RequireAuth>} />
+              <Route path="/orders/:publicId" element={<RequireAuth roles={ORDER_ROLES}><CustomerOrders /></RequireAuth>} />
+              <Route path="/factory-dashboard" element={<RequireAuth roles={FACTORY_ROLES}><FactoryDashboard /></RequireAuth>} />
+              <Route path="/staff-dashboard" element={<RequireAuth roles={STAFF_ROLES}><StaffDashboard /></RequireAuth>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </ErrorBoundary>
