@@ -813,11 +813,17 @@ body.page-create .navbar .nav-menu.open {
   min-width: 0;
 }
 
+.studio-image-crop label {
+  display: block;
+  margin-bottom: 8px;
+}
+
 .studio-image-crop-preview {
   position: relative;
-  display: inline-block;
+  display: block;
+  width: fit-content;
   max-width: 100%;
-  align-self: start;
+  margin-bottom: 10px;
   line-height: 0;
 }
 
