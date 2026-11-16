@@ -1,6 +1,7 @@
 import type { SaveDesignDTO } from "../dtos/design/design.dto.js";
 import { studioConfigSchema } from "../dtos/design/studio-config.dto.js";
 import { BadRequestProblem } from "../errors/problem.js";
+import { StudioImageProblem } from "../errors/studioImageProblem.js";
 
 /** Keep legacy updates visible to modern clients without discarding their customizations. */
 export function resolveStudioConfig(payload: SaveDesignDTO, previous: unknown) {
@@ -12,6 +13,9 @@ export function resolveStudioConfig(payload: SaveDesignDTO, previous: unknown) {
     const surfacePattern = config.surfacePattern ?? existing.data.surfacePattern;
     const priorArt = existing.data.artwork;
     let artwork = config.artwork;
+    if (priorArt.version === 3 && artwork.version < 3) {
+      throw new StudioImageProblem("studio-image-upgrade");
+    }
     if (artwork.version === 1 && priorArt.version === 2) {
       // Version 1 clients cannot see version 2 artwork. Merge visible edits without
       // treating absent layers as deletions, and keep the existing stacking order.
