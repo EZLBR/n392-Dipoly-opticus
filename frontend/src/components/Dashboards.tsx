@@ -99,7 +99,7 @@ const OrderContextMenu = ({ menu, role, onClose, onUpdateStatus, onViewDetails }
           <p style={{ padding: "4px 12px", margin: 0, fontSize: "12px", color: "var(--color-hint)" }}>{t("dash-no-status-change")}</p>
         )}
         {statuses.map(s => (
-          <button key={s} className="menu-btn hoverable-row" onClick={() => { onUpdateStatus(menu.order.publicId, s); onClose(); }} style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "8px 12px", background: "none", border: "none", color: "var(--text-color)", cursor: "pointer", borderRadius: "6px", textAlign: "left" }}>
+          <button key={s} className="menu-btn hoverable-row" onClick={() => { onUpdateStatus(menu.order.publicId, s, menu.order.version); onClose(); }} style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "8px 12px", background: "none", border: "none", color: "var(--text-color)", cursor: "pointer", borderRadius: "6px", textAlign: "left" }}>
             <ChevronRight size={14} /> {statusLabel(s, t)}
           </button>
         ))}
@@ -170,9 +170,9 @@ export function FactoryDashboard() {
   const allFactoryOrders = orders.filter((o) => o.factoryPublicId && o.factoryPublicId === session.publicId);
   const factoryOrders = filterOrdersByTime(allFactoryOrders, timeRange);
 
-  const handleStatusChange = async (orderId, newStatus) => {
+  const handleStatusChange = async (orderId, newStatus, version) => {
     setOrderError("");
-    const result = await updateOrderStatus(orderId, newStatus);
+    const result = await updateOrderStatus(orderId, newStatus, version);
     if (!result.ok) setOrderError(result.error);
   };
 
@@ -405,9 +405,9 @@ export function StaffDashboard() {
 
   const orders = filterOrdersByTime(allStaffOrders, timeRange);
 
-  const handleStatusChange = async (orderId, newStatus) => {
+  const handleStatusChange = async (orderId, newStatus, version) => {
     setOrderError("");
-    const result = await updateOrderStatus(orderId, newStatus);
+    const result = await updateOrderStatus(orderId, newStatus, version);
     if (!result.ok) setOrderError(result.error);
   };
 

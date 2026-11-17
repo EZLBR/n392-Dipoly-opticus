@@ -51,13 +51,20 @@ export class OrderService {
    * linha cujo status atual pode chegar ao destino, segundo a máquina de
    * estados de domain/pedidoStatus.ts. Assim duas atualizações simultâneas
    * não furam a regra.
+   *
+   * A trava otimista (CONC-02) é a terceira guarda: só casa a linha que
+   * ainda está na versão que o cliente leu. Quem decidiu olhando um pedido
+   * desatualizado recebe 409 e recarrega, em vez de sobrescrever a mudança
+   * de outra pessoa. O trigger do banco avança a versão a cada escrita.
    */
   static async updateStatus(params: {
     publicId: string;
     status: StatusDoPedido;
+    /** Versão do pedido que o cliente leu antes de decidir a mudança. */
+    version: number;
     ator: Ator;
   }) {
-    const { publicId, status, ator } = params;
+    const { publicId, status, version, ator } = params;
 
     // 403 é falta de papel — nunca falta de posse.
     if (!PAPEIS_PERMITIDOS.includes(ator.role)) {
@@ -77,22 +84,24 @@ export class OrderService {
 
     const origens = origensPermitidas(status, ator.role).map(rotulo => STATUS_POR_ROTULO[rotulo]);
     const { count } = origens.length === 0 ? { count: 0 } : await prisma.pedido.updateMany({
-      where: { ...escopo, status: { in: origens } },
-      data: {
-        status: statusPrisma,
-        atualizadoEm: new Date(),
-        // Prepara a trava otimista do CONC-02: toda escrita avança a versão.
-        version: { increment: 1 },
-      },
+      where: { ...escopo, status: { in: origens }, version },
+      // A versão avança no trigger pedidos_version_trigger, não aqui.
+      data: { status: statusPrisma, atualizadoEm: new Date() },
     });
 
     if (count === 0) {
-      // Nada mudou: o pedido não é visível para o ator, ou a transição não
-      // vale. Só quem enxerga o pedido recebe o motivo; pedido inexistente e
-      // pedido de outra fábrica continuam caindo no mesmo 404.
-      const atual = await prisma.pedido.findFirst({ where: escopo, select: { status: true } });
+      // Nada mudou: o pedido não é visível para o ator, a versão lida ficou
+      // velha, ou a transição não vale. Só quem enxerga o pedido recebe o
+      // motivo; pedido inexistente e pedido de outra fábrica continuam caindo
+      // no mesmo 404.
+      const atual = await prisma.pedido.findFirst({ where: escopo, select: { status: true, version: true } });
       if (!atual) {
         throw new NotFoundProblem("Pedido não encontrado.");
+      }
+      // Versão velha vem antes da transição: o cliente decidiu olhando um
+      // status que talvez nem seja mais o atual.
+      if (atual.version !== version) {
+        throw new ConflictProblem("O pedido foi alterado por outra pessoa. Recarregue e tente novamente.");
       }
       const recusa = atual.status ? recusaDaTransicao(ROTULO_POR_STATUS[atual.status], status, ator.role) : null;
       if (recusa?.tipo === "papel") {

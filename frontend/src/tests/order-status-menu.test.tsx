@@ -6,6 +6,7 @@ import { LanguageProvider } from "../contexts/LanguageContext";
 import { FactoryDashboard, StaffDashboard } from "../components/Dashboards";
 
 // FEAT-03: o menu do painel só oferece as transições que o servidor aceita.
+// CONC-02: e envia a versão do pedido que estava na tela.
 const updateOrderStatus = vi.fn(async () => ({ ok: true }));
 let orders: Array<Record<string, unknown>> = [];
 vi.mock("../contexts/OrderContext", () => ({ useOrder: () => ({ orders, updateOrderStatus }) }));
@@ -17,6 +18,7 @@ const order = (status: string) => ({
   factoryPublicId: "factory-a",
   factoryName: "Factory A",
   status,
+  version: 3,
   total: "450.00",
   createdAt: new Date().toISOString(),
 });
@@ -57,7 +59,7 @@ describe("order status menu (FEAT-03)", () => {
     openMenu(FactoryDashboard, "factory");
     expect(offered()).toEqual(["In production", "Delivered"]);
     fireEvent.click(screen.getByRole("button", { name: "In production" }));
-    expect(updateOrderStatus).toHaveBeenCalledWith(orders[0].publicId, "In production");
+    expect(updateOrderStatus).toHaveBeenCalledWith(orders[0].publicId, "In production", 3);
   });
 
   it("adds cancellation for staff and nothing after delivery", () => {
