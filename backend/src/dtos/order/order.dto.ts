@@ -6,6 +6,7 @@ import {
   QUANTIDADE_MAXIMA_POR_ITEM,
   TRATAMENTOS_DE_LENTE,
 } from "../../domain/pricing.js";
+import { STATUS_DO_PEDIDO } from "../../domain/pedidoStatus.js";
 
 // O cliente não envia preço: o total vem de precoUnitarioEmCentavos() a
 // partir das especificações (SEC-05). Um `total` no corpo é descartado
@@ -78,10 +79,7 @@ export const createOrderSchema = z.object({
 export type CreateOrderDTO = z.infer<typeof createOrderSchema>;
 
 export const updateOrderStatusSchema = z.object({
-  status: z
-    .enum(["Pending Payment", "Queued", "In production", "Delivered", "Cancelled"], {
-      message: "Informe um status válido.",
-    }),
+  status: z.enum(STATUS_DO_PEDIDO, { message: "Informe um status válido." }),
 });
 
 export type UpdateOrderStatusDTO = z.infer<typeof updateOrderStatusSchema>;
