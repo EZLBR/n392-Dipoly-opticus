@@ -315,6 +315,7 @@ export default function Cart({ setView }) {
                       padding: "4px"
                     }}>
                       <button
+                        aria-label={t("cart-decrease-quantity")}
                         onClick={() => handleQtyChange(item.id, item.quantity || 1, -1)}
                         style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex", padding: "6px" }}
                         disabled={(item.quantity || 1) <= 1}
@@ -325,6 +326,7 @@ export default function Cart({ setView }) {
                         {item.quantity || 1}
                       </span>
                       <button
+                        aria-label={t("cart-increase-quantity")}
                         onClick={() => handleQtyChange(item.id, item.quantity || 1, 1)}
                         style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex", padding: "6px" }}
                       >
@@ -338,6 +340,7 @@ export default function Cart({ setView }) {
 
                     <button
                       className="btn"
+                      aria-label={t("cart-remove-item")}
                       onClick={() => {
                         removeFromCart(item.id);
                         showToast(t("cart-item-removed"));
