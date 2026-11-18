@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Lock } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
@@ -19,9 +19,9 @@ export default function AuthPage() {
 
   const [googlePending, setGooglePending] = useState(false);
   const [googleError, setGoogleError] = useState("");
-  const handledGoogleCallback = useRef<string | null>(null);
+  const handledGoogleCallback = React.useRef<string | null>(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (handledGoogleCallback.current === location.search) return;
     const callback = readGoogleCallback(location.search);
     if (!callback) return;
