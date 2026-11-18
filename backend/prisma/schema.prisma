@@ -31,12 +31,13 @@ model Usuario {
   nome        String    @db.VarChar(255)
   email       String    @unique @db.VarChar(255)
   senhaHash   String    @map("senha_hash") @db.VarChar(255)
-  googleSubject String? @unique @map("google_subject") @db.VarChar(255)
   role        Role?     @default(client)
   factoryName String?   @map("factory_name") @db.VarChar(255)
   criadoEm    DateTime? @default(now()) @map("criado_em")
 
   publicId String @unique @default(dbgenerated("gen_random_uuid()"))
+
+  googleSubject String? @unique @map("google_subject") @db.VarChar(255)
 
   pedidos        Pedido[]      @relation("UsuarioPedidos")
   pedidosFabrica Pedido[]      @relation("FactoryPedidos")

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
-import { CodeChallengeMethod, OAuth2Client } from "google-auth-library";
+import { CodeChallengeMethod, OAuth2Client, type TokenPayload } from "google-auth-library";
 import { env } from "../config/env.js";
 import prisma from "../config/prisma.js";
 import type { GoogleExchangeDTO, GoogleStartDTO } from "../dtos/auth/google.dto.js";
@@ -37,21 +37,20 @@ export async function signInWithGoogle(input: GoogleExchangeDTO) {
   const { clientId, clientSecret, redirectUri } = providerConfig();
   const client = new OAuth2Client({ clientId, clientSecret, redirectUri });
   const invalid = () => new BadRequestProblem("Credencial do Google inválida ou expirada.");
-  const payload = await (async () => {
-    try {
-      const { tokens } = await client.getToken({ code: input.code, codeVerifier: input.verifier });
-      if (!tokens.id_token) throw invalid();
-      const ticket = await verifier.verifyIdToken({ idToken: tokens.id_token, audience: clientId });
-      return ticket.getPayload();
-    } catch {
-      throw invalid();
-    }
-  })();
+  let payload: (TokenPayload & { nonce?: string }) | undefined;
+  try {
+    const { tokens } = await client.getToken({ code: input.code, codeVerifier: input.verifier });
+    if (!tokens.id_token) throw invalid();
+    const ticket = await verifier.verifyIdToken({ idToken: tokens.id_token, audience: clientId });
+    payload = ticket.getPayload();
+  } catch {
+    throw invalid();
+  }
 
   const email = loginSchema.shape.email.safeParse(payload?.email);
   if (!email.success || !payload?.email_verified || !payload.sub || payload.sub.length > 255
       || !payload.exp || payload.exp * 1000 <= Date.now()
-      || (payload as { nonce?: string }).nonce !== input.nonce) throw invalid();
+      || payload.nonce !== input.nonce) throw invalid();
 
   const linked = await prisma.usuario.findUnique({ where: { googleSubject: payload.sub } });
   if (linked) return AuthService.issueSession(linked);

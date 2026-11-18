@@ -17,20 +17,6 @@ export default function AuthPage() {
     navigate(loginRedirectTarget(requestedPath, role), { replace: true });
   const [activeTab, setActiveTab] = useState("login");
 
-  // Login form state
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [loginLoading, setLoginLoading] = useState(false);
-
-  // Signup form state
-  const [signupName, setSignupName] = useState("");
-  const [signupEmail, setSignupEmail] = useState("");
-  const [signupPassword, setSignupPassword] = useState("");
-  const [signupConfirm, setSignupConfirm] = useState("");
-  const [signupError, setSignupError] = useState("");
-  const [signupSuccess, setSignupSuccess] = useState("");
-
   const [googlePending, setGooglePending] = useState(false);
   const [googleError, setGoogleError] = useState("");
   const handledGoogleCallback = useRef<string | null>(null);
@@ -67,6 +53,20 @@ export default function AuthPage() {
       setGooglePending(false);
     }
   };
+
+  // Login form state
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  // Signup form state
+  const [signupName, setSignupName] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupConfirm, setSignupConfirm] = useState("");
+  const [signupError, setSignupError] = useState("");
+  const [signupSuccess, setSignupSuccess] = useState("");
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
