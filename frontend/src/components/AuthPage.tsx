@@ -162,9 +162,9 @@ export default function AuthPage() {
                 onChange={(e) => setLoginPassword(e.target.value)}
                 required
               />
+              <p><Link to="/forgot-password">{t("auth-forgot-title")}</Link></p>
             </div>
 
-            <p><Link to="/forgot-password">{t("auth-forgot-title")}</Link></p>
             {loginError && <p style={{ color: "#ef4444", fontSize: "14px", margin: "0 0 16px 0" }}>{loginError}</p>}
 
             <button
