@@ -59,6 +59,15 @@ export function createApp(options: AppOptions = {}) {
   app.use(requestId());
 
   if (enableRateLimit) {
+    for (const [path, limit] of [["forgot-password", 5], ["reset-password", 10]] as const) {
+      app.use(`/api/auth/${path}`, rateLimit({
+        windowMs: 15 * 60 * 1000,
+        limit,
+        handler: (_req, _res, next) => {
+          next(new TooManyRequestsProblem("Muitas tentativas. Tente novamente mais tarde."));
+        },
+      }));
+    }
     app.use(
       "/api/auth/login",
       rateLimit({
