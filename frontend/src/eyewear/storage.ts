@@ -1,5 +1,6 @@
 import { normalizeConfig, type EyewearConfig } from "./config";
 import type { SavedDesign } from "../types/domain";
+import { isPublicId } from "../utils/publicId";
 
 export const ANONYMOUS_STUDIO_OWNER = "anonymous";
 export const STUDIO_OWNER_KEY = "opticus_studio_owner";
@@ -20,6 +21,34 @@ export function switchStudioOwner(
   }
   storage.setItem(STUDIO_OWNER_KEY, nextOwner);
 }
+export function migrateStudioIdentifiers(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
+  const designs = readJSON<SavedDesign[]>(storage, "opticus_designs", []);
+  const valid = designs.filter(design => design && isPublicId(design.id)
+    && (design.remoteId == null || isPublicId(design.remoteId)));
+  if (valid.length !== designs.length) storage.setItem("opticus_designs", JSON.stringify(valid));
+
+  const active = storage.getItem("opticus_active_design_id");
+  const legacyIndex = storage.getItem("opticus_active_design");
+  const selectedId = active ?? (legacyIndex !== null && /^\d+$/.test(legacyIndex)
+    ? designs[Number(legacyIndex)]?.id : undefined);
+  if (selectedId && valid.some(design => design.id === selectedId)) {
+    if (active !== selectedId) storage.setItem("opticus_active_design_id", selectedId);
+  } else if (active !== null) {
+    storage.removeItem("opticus_active_design_id");
+  }
+  if (legacyIndex !== null) storage.removeItem("opticus_active_design");
+
+  const product = storage.getItem("opticus_active_product");
+  if (product !== null && !isPublicId(product)) {
+    storage.removeItem("opticus_active_product");
+    storage.removeItem("opticus_active_product_config");
+  }
+  const draft = readJSON<{ source?: string } | null>(storage, "opticus_creator_draft", null);
+  if (typeof draft?.source === "string" && /^(design|product):\d+$/.test(draft.source)) {
+    storage.removeItem("opticus_creator_draft");
+  }
+}
+
 export interface StudioDraft {
   config: EyewearConfig;
   source: string;

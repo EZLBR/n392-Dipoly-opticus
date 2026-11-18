@@ -14,7 +14,7 @@ function AccountControls() {
   const { session, designs, login, logout, saveDesign } = useAuth();
   const [saveError, setSaveError] = React.useState("");
   return <>
-    <output aria-label="account">{session?.id || "anonymous"}</output>
+    <output aria-label="account">{session?.publicId || "anonymous"}</output>
     <output aria-label="designs">{designs.map(d => d.name).join(",")}</output>
     <button onClick={() => login("a@example.invalid", "Password123")}>Login A</button>
     <button onClick={() => login("b@example.invalid", "Password123")}>Login B</button>
@@ -38,7 +38,7 @@ function mockApi(designsForA?: Promise<Response>) {
     if (String(url).endsWith("/auth/login")) {
       const email = JSON.parse(String(options?.body)).email;
       const id = email.startsWith("a@") ? "A" : "B";
-      return json({ success: true, token: `token-${id}`, user: { id, email, name: id, role: "client" } });
+      return json({ success: true, token: `token-${id}`, user: { publicId: id, email, name: id, role: "client" } });
     }
     if (String(url).endsWith("/designs")) {
       if (options?.method === "POST") throw new TypeError("Failed to fetch");

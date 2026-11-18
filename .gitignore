@@ -56,3 +56,6 @@ coverage/
 
 # Contexto local do Claude Code (não versionar)
 CLAUDE.md
+
+/frontend/test-results/
+/frontend/playwright-report/
