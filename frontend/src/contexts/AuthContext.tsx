@@ -2,6 +2,34 @@ import React, { createContext, useContext, useState, useEffect, useRef } from "r
 import { ANONYMOUS_STUDIO_OWNER, STUDIO_OWNER_KEY, mergeSavedDesigns, readJSON, switchStudioOwner } from "../eyewear/storage";
 import { apiClient, ProblemError, setAuthErrorHandler } from "../api/client";
 import { localizeProblem, translate } from "./LanguageContext";
+import type { AuthResult, DesignFields, SavedDesign, SignUpInput, User } from "../types/domain";
+
+type SessionResponse = { user: User; token: string } | (User & { token: string });
+type UpdateUser = Pick<SignUpInput, "name"> & { factoryName?: string | null };
+type UserMutation = { ok: true } | { ok: false; message?: string };
+
+interface AuthContextValue {
+  session: User | null;
+  sessionLoading: boolean;
+  sessionToken: string | null;
+  studioOwner: string | undefined;
+  studioSessionChanged: boolean;
+  setSession: React.Dispatch<React.SetStateAction<User | null>>;
+  users: User[];
+  designs: SavedDesign[];
+  isBackendConnected: boolean;
+  authWarning: string | null;
+  clearAuthWarning: () => void;
+  setAuthWarning: React.Dispatch<React.SetStateAction<string | null>>;
+  login: (email: string, password: string) => Promise<AuthResult>;
+  signup: (input: SignUpInput) => Promise<AuthResult>;
+  logout: () => void;
+  saveDesign: (design: DesignFields & { id?: string | null }) => Promise<SavedDesign>;
+  deleteDesign: (designId: string) => Promise<void>;
+  deleteBackendDesign: (designId: string) => Promise<void>;
+  updateUser: (userId: string, input: UpdateUser) => Promise<UserMutation>;
+  deleteUser: (userId: string) => Promise<UserMutation>;
+}
 
 // O token vai explícito quando a resposta precisa ser conferida contra a
 // sessão que fez a requisição (BUG #82): se a sessão mudar no meio do
@@ -11,12 +39,12 @@ const comToken = (token?: string | null) =>
 const mensagemDoProblema = (erro: unknown) =>
   erro instanceof ProblemError ? localizeProblem(erro.problem) : undefined;
 
-const AuthContext = createContext<any>(undefined);
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-export function AuthProvider({ children }) {
-  const [designs, setDesigns] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [session, setSession] = useState(null);
+export function AuthProvider({ children }: React.PropsWithChildren) {
+  const [designs, setDesigns] = useState<SavedDesign[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [session, setSession] = useState<User | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
   const [authWarning, setAuthWarning] = useState<string | null>(null);
@@ -38,7 +66,7 @@ export function AuthProvider({ children }) {
     switchStudioOwner(localStorage, owner);
     ownerRef.current = owner;
     setStudioOwner(owner);
-    setDesigns(readJSON(localStorage, "opticus_designs", []));
+    setDesigns(readJSON<SavedDesign[]>(localStorage, "opticus_designs", []));
   };
   const endSession = () => {
     if (ownerRef.current && ownerRef.current !== localStorage.getItem(STUDIO_OWNER_KEY)) {
@@ -51,7 +79,7 @@ export function AuthProvider({ children }) {
     setSession(null);
     setUsers([]);
   };
-  const startSession = (user, token: string) => {
+  const startSession = (user: User, token: string) => {
     changeStudioOwner("user:" + String(user.publicId ?? user.id));
     authTokenRef.current = token;
     setStudioSessionChanged(false);
@@ -79,9 +107,9 @@ export function AuthProvider({ children }) {
 
   const fetchBackendUsers = async (token?: string) => {
     try {
-      const data = await apiClient.get<any>("/auth/users", comToken(token));
+      const data = await apiClient.get<{ users: User[] } | User[]>("/auth/users", comToken(token));
       if (token === localStorage.getItem("opticus_token")) {
-        setUsers(data.users || data);
+        setUsers(Array.isArray(data) ? data : data.users);
       }
     } catch (e) {
       console.error("Failed to load backend users:", e);
@@ -92,10 +120,10 @@ export function AuthProvider({ children }) {
     const owner = ownerRef.current;
     if (owner !== localStorage.getItem(STUDIO_OWNER_KEY) || token !== localStorage.getItem("opticus_token")) return;
     try {
-      const data = await apiClient.get<any>("/designs", comToken(token));
+      const data = await apiClient.get<{ designs: SavedDesign[] } | SavedDesign[]>("/designs", comToken(token));
       if (owner === ownerRef.current && isCurrentStudioSession() && token === authTokenRef.current) {
-        const remote = (data.designs || data).map(design => ({ ...design, remoteId: String(design.id) }));
-        const merged = mergeSavedDesigns(remote, readJSON(localStorage, "opticus_designs", []));
+        const remote = (Array.isArray(data) ? data : data.designs).map(design => ({ ...design, remoteId: String(design.id) }));
+        const merged = mergeSavedDesigns(remote, readJSON<SavedDesign[]>(localStorage, "opticus_designs", []));
         setDesigns(merged);
         localStorage.setItem("opticus_designs", JSON.stringify(merged));
       }
@@ -110,9 +138,9 @@ export function AuthProvider({ children }) {
       authTokenRef.current = token;
       if (token) {
         try {
-          const data = await apiClient.get<any>("/auth/me", comToken(token));
+          const data = await apiClient.get<{ user: User } | User>("/auth/me", comToken(token));
           if (localStorage.getItem("opticus_token") !== token) return;
-          startSession(data.user || data, token);
+          startSession("user" in data ? data.user : data, token);
           fetchBackendUsers(token);
           return;
         } catch (e) {
@@ -137,10 +165,10 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener("storage", changed);
   }, []);
 
-  const login = async (email, password) => {
+  const login = async (email: string, password: string): Promise<AuthResult> => {
     try {
-      const data = await apiClient.post<any>("/auth/login", { email, password });
-      const userData = data.user || data;
+      const data = await apiClient.post<SessionResponse>("/auth/login", { email, password });
+      const userData = "user" in data ? data.user : data;
       startSession(userData, data.token);
       return { ok: true, role: userData.role };
     } catch (err) {
@@ -153,10 +181,10 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const signup = async ({ name, email, password }) => {
+  const signup = async ({ name, email, password }: SignUpInput): Promise<AuthResult> => {
     try {
-      const data = await apiClient.post<any>("/auth/register", { name, email, password });
-      const userData = data.user || data;
+      const data = await apiClient.post<SessionResponse>("/auth/register", { name, email, password });
+      const userData = "user" in data ? data.user : data;
       startSession(userData, data.token);
       return { ok: true, role: userData.role };
     } catch (err) {
@@ -171,7 +199,7 @@ export function AuthProvider({ children }) {
 
   const logout = endSession;
 
-  const saveDesign = async (designData) => {
+  const saveDesign = async (designData: DesignFields & { id?: string | null }): Promise<SavedDesign> => {
     const token = authTokenRef.current;
     const owner = ownerRef.current;
     if (!owner) throw new Error("Aguarde o carregamento da sessão.");
@@ -183,17 +211,17 @@ export function AuthProvider({ children }) {
     // BOLA-04: the server generates the id on creation and PUT only changes a
     // design that already exists there. A draft that never synced is created;
     // one with a proven remote identity (same rule as deletion) is updated.
-    const known = localId ? readJSON(localStorage, "opticus_designs", []).find(item => String(item.id) === localId) : undefined;
+    const known = localId ? readJSON<SavedDesign[]>(localStorage, "opticus_designs", []).find(item => String(item.id) === localId) : undefined;
     const remoteId = known && (known.remoteId || known.syncStatus !== "local") ? String(known.remoteId || known.id) : null;
     let finalId = localId || `design-${Date.now()}`;
-    let syncStatus = "local";
+    let syncStatus: SavedDesign["syncStatus"] = "local";
     if (token) {
       try {
         const fields = { ...designData };
         delete fields.id;
         const data = remoteId
-          ? await apiClient.put<any>(`/designs/${encodeURIComponent(remoteId)}`, fields, comToken(token))
-          : await apiClient.post<any>("/designs", fields, comToken(token));
+          ? await apiClient.put<{ id?: string; design?: { id?: string } }>(`/designs/${encodeURIComponent(remoteId)}`, fields, comToken(token))
+          : await apiClient.post<{ id?: string; design?: { id?: string } }>("/designs", fields, comToken(token));
         const savedId = data?.id ?? data?.design?.id;
         if (typeof savedId !== "string" || !savedId.trim()) {
           throw new Error("Resposta inválida ao salvar o design. Não foi possível confirmar o salvamento.");
@@ -211,17 +239,17 @@ export function AuthProvider({ children }) {
     if (owner !== ownerRef.current || token !== authTokenRef.current || !isCurrentStudioSession()) {
       throw new Error("A sessão mudou durante o salvamento. Abra o Studio novamente.");
     }
-    const cached = readJSON(localStorage, "opticus_designs", []);
+    const cached = readJSON<SavedDesign[]>(localStorage, "opticus_designs", []);
     // A synced draft takes the server's id: replace the entry under its local id, not append a copy.
     const existingIndex = cached.findIndex(item => String(item.id) === (localId ?? String(finalId)));
-    const previousDesign = existingIndex >= 0 ? cached[existingIndex] : {};
+    const previousDesign = cached[existingIndex];
     const newDesign = {
       ...previousDesign,
       ...designData,
       id: finalId,
       syncStatus,
       ...(syncStatus === "synced" ? { remoteId: finalId } : {}),
-      createdAt: previousDesign.createdAt || previousDesign.created_at || designData.createdAt || new Date().toISOString(),
+      createdAt: previousDesign?.createdAt || previousDesign?.created_at || designData.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
     const updatedDesigns = existingIndex >= 0 ? cached.map((item, i) => i === existingIndex ? newDesign : item) : [...cached, newDesign];
@@ -232,7 +260,7 @@ export function AuthProvider({ children }) {
     return newDesign;
   };
 
-  const deleteDesign = async (designId) => {
+  const deleteDesign = async (designId: string) => {
     const token = authTokenRef.current;
     const owner = ownerRef.current;
     const checkSession = () => {
@@ -241,7 +269,7 @@ export function AuthProvider({ children }) {
       }
     };
     checkSession();
-    const cached = readJSON(localStorage, "opticus_designs", []);
+    const cached = readJSON<SavedDesign[]>(localStorage, "opticus_designs", []);
     const originalIndex = cached.findIndex(item => String(item.id) === String(designId));
     const design = cached[originalIndex];
     if (!design) throw new Error("Design não encontrado neste dispositivo. Atualize a página.");
@@ -254,7 +282,7 @@ export function AuthProvider({ children }) {
       checkSession();
     }
     // Reread after awaits: do not overwrite newer edits from the same account.
-    const next = readJSON(localStorage, "opticus_designs", []).filter(item => String(item.id) !== String(designId));
+    const next = readJSON<SavedDesign[]>(localStorage, "opticus_designs", []).filter(item => String(item.id) !== String(designId));
     localStorage.setItem("opticus_designs", JSON.stringify(next));
     setDesigns(next);
     const activeId = localStorage.getItem("opticus_active_design_id");
@@ -270,7 +298,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const updateUser = async (userId, dataToUpdate) => {
+  const updateUser = async (userId: string, dataToUpdate: UpdateUser): Promise<UserMutation> => {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
@@ -286,7 +314,7 @@ export function AuthProvider({ children }) {
     return { ok: false, message: "Serviço de usuários indisponível." };
   };
 
-  const deleteUser = async (userId) => {
+  const deleteUser = async (userId: string): Promise<UserMutation> => {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
@@ -331,5 +359,7 @@ export function AuthProvider({ children }) {
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (!context) throw new Error("useAuth must be used within an AuthProvider");
+  return context;
 }

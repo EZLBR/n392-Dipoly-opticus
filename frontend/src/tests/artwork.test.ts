@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { normalizeConfig } from "../eyewear/config";
 import { mergeSavedDesigns } from "../eyewear/storage";
 
-const layer = { id: "text-1", text: "Opticus", zone: "temple-right", font: "sans", color: "#112233", x: 0.2, y: 0, size: 0.7, rotation: 10 };
+const layer = { id: "text-1", text: "Opticus", zone: "temple-right" as const, font: "sans" as const, color: "#112233", x: 0.2, y: 0, size: 0.7, rotation: 10 };
 
 describe("versioned Studio artwork", () => {
   it("preserves text layers on a serialized design round trip", () => {
