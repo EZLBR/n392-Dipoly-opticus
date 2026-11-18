@@ -7,7 +7,10 @@ import { LanguageProvider } from './contexts/LanguageContext'
 import { CartProvider } from './contexts/CartContext'
 import { OrderProvider } from './contexts/OrderContext'
 
-createRoot(document.getElementById('root')).render(
+const root = document.getElementById('root')
+if (!root) throw new Error('Missing root element')
+
+createRoot(root).render(
   <StrictMode>
     <AuthProvider>
       <OrderProvider>

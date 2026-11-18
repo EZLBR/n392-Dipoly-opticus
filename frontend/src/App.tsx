@@ -69,7 +69,7 @@ export function AppContent() {
   }, [location.pathname]);
 
   // Função legado de compatibilidade para os componentes que ainda esperam `setView`
-  const setViewLegacy = (viewName) => {
+  const setViewLegacy = (viewName: string) => {
     if (viewName === "marketplace") navigate("/");
     else navigate(`/${viewName}`);
   };

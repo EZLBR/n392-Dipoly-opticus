@@ -30,7 +30,7 @@ export default function AuthPage() {
   const [signupError, setSignupError] = useState("");
   const [signupSuccess, setSignupSuccess] = useState("");
 
-  const handleLoginSubmit = async (e) => {
+  const handleLoginSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoginError("");
     setLoginLoading(true);
@@ -50,7 +50,7 @@ export default function AuthPage() {
     }
   };
 
-  const handleSignupSubmit = async (e) => {
+  const handleSignupSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSignupError("");
     setSignupSuccess("");

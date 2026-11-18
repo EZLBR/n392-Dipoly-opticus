@@ -11,7 +11,9 @@ import { normalizeConfig, label } from "../eyewear/config";
 import { hasUnapprovedCustomization } from "../eyewear/artwork";
 import { ProblemError } from "../api/client";
 
-export default function DesignsGallery({ setView }) {
+import type { SavedDesign } from "../types/domain";
+
+export default function DesignsGallery({ setView }: { setView: (view: string) => void }) {
   const { session, designs, deleteDesign } = useAuth();
   const { addToCart } = useCart();
   const { t, language } = useTranslation();
@@ -19,14 +21,14 @@ export default function DesignsGallery({ setView }) {
   // Guest-created local drafts remain usable; authenticated remote designs keep the login gate.
   const visibleDesigns = session ? designs : designs.filter(design => design.syncStatus === "local");
 
-  const handleOpenDesign = (index) => {
+  const handleOpenDesign = (index: number) => {
     localStorage.setItem("opticus_active_design", String(index));
     localStorage.setItem("opticus_active_design_id", String(designs[index].id));
     localStorage.removeItem("opticus_active_product");
     setView("create");
   };
 
-  const handleDelete = async (index) => {
+  const handleDelete = async (index: number) => {
     const design = designs[index];
     setDeleteError("");
     try {
@@ -37,7 +39,7 @@ export default function DesignsGallery({ setView }) {
     }
   };
 
-  const handleAddToCart = (design) => {
+  const handleAddToCart = (design: SavedDesign) => {
     const config = normalizeConfig(design);
     if (hasUnapprovedCustomization(config)) return;
     const price = calculateBasePrice(config);
@@ -100,7 +102,7 @@ export default function DesignsGallery({ setView }) {
               <p style={{ color: "var(--color-hint)" }}>{t("designs-empty-intro")}</p>
             </div>
           ) : (
-            visibleDesigns.map((design) => {
+            visibleDesigns.map((design: SavedDesign) => {
               const index = designs.indexOf(design);
               const config = normalizeConfig(design);
               const shape = label(config.frontModel, language);

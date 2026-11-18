@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import type { ProblemDetails } from "../api/client";
 import { screenCopy } from "../i18n/screen-copy";
 
-const translations = {
+const translations: Record<"en" | "pt", Record<string, string>> = {
   en: {
     "dash-spec-model": "Model",
     "dash-spec-frontModel": "Frame model",

@@ -28,15 +28,15 @@ describe("versioned Studio artwork", () => {
     const result = mergeSavedDesigns([
       { id: "saved", config: { frameMaterial: "gold", artwork: { version: 1, layers: [layer] } } },
     ], [{ id: "saved", config: { frameMaterial: "wood" } }]);
-    expect(result[0].config.frameMaterial).toBe("gold");
-    expect(result[0].config.artwork.layers).toEqual([layer]);
+    expect(result[0].config?.frameMaterial).toBe("gold");
+    expect(result[0].config?.artwork?.layers).toEqual([layer]);
   });
 
   it("preserves a known unsynced edit of an existing remote design", () => {
     const result = mergeSavedDesigns([
       { id: "saved", config: normalizeConfig() },
     ], [{ id: "saved", syncStatus: "local", config: normalizeConfig({ artwork: { version: 1, layers: [layer] } }) }]);
-    expect(result[0].config.artwork.layers).toEqual([layer]);
+    expect(result[0].config?.artwork?.layers).toEqual([layer]);
     expect(result[0].syncStatus).toBe("local");
   });
 });
