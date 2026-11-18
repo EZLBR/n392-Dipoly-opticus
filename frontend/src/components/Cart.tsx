@@ -82,30 +82,20 @@ export default function Cart({ setView }) {
     try {
       const result = await checkoutCart(cart);
 
-      if (result && (result.ok || result.checkoutUrl || result.isOffline || result.success)) {
-        if (result.isOffline) {
-          showToast(t("toast-offline-checkout"));
-          setTimeout(() => {
-            setView("marketplace");
-          }, 2000);
-        } else if (result.checkoutUrl) {
-          if (result.isSimulated) {
-            if (token !== localStorage.getItem("opticus_token")) return;
-            const url = result.checkoutUrl;
-            const html = await fetchSimulatedCheckoutHtml(url, language);
-            const billingId = result.billingId || new URL(url).searchParams.get("billingId") || "";
-            if (token === localStorage.getItem("opticus_token")) {
-              setSimulatedCheckout({ html, owner: String(session.publicId), token, billingId, url, language });
-            }
-          } else {
-            window.location.href = result.checkoutUrl;
-          }
+      if (result.ok === false) {
+        alert(result.error || t("cart-an-error-occurred-during-checkout-initialization"));
+        return;
+      }
+      if (token !== localStorage.getItem("opticus_token")) return;
+      const url = result.checkoutUrl;
+      if (result.isSimulated) {
+        const html = await fetchSimulatedCheckoutHtml(url, language);
+        const billingId = result.billingId || new URL(url).searchParams.get("billingId") || "";
+        if (token === localStorage.getItem("opticus_token")) {
+          setSimulatedCheckout({ html, owner: String(session.publicId), token, billingId, url, language });
         }
-      } else {
-        alert(
-          result?.error ||
-          (t("cart-an-error-occurred-during-checkout-initialization"))
-        );
+      } else if (url) {
+        window.location.href = url;
       }
     } catch (err) {
       console.error("Checkout process failed:", err);

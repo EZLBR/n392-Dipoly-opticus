@@ -37,7 +37,7 @@ export default function Marketplace({
   const [materials, setMaterials] = useState<string[]>([]);
   const [sort, setSort] = useState("featured");
   const [favorites, setFavorites] = useState<string[]>(() =>
-    readJSON(localStorage, "opticus_favorites", []).filter(
+    readJSON<(string | number)[]>(localStorage, "opticus_favorites", []).filter(
       (id: unknown) => typeof id === "string",
     ),
   );
