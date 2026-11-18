@@ -37,6 +37,8 @@ model Usuario {
 
   publicId String @unique @default(dbgenerated("gen_random_uuid()"))
 
+  googleSubject String? @unique @map("google_subject") @db.VarChar(255)
+
   pedidos        Pedido[]      @relation("UsuarioPedidos")
   pedidosFabrica Pedido[]      @relation("FactoryPedidos")
   savedDesigns   SavedDesign[]

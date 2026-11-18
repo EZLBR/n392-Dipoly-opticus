@@ -60,7 +60,7 @@ export function createApp(options: AppOptions = {}) {
 
   if (enableRateLimit) {
     app.use(
-      "/api/auth/login",
+      ["/api/auth/login", "/api/auth/google"],
       rateLimit({
         windowMs: 15 * 60 * 1000,
         max: 15,
