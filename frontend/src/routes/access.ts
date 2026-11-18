@@ -1,4 +1,4 @@
-// FE-08: somente o Explorer (/) e a autenticação (/login) são públicos.
+// FE-08: o Explorer e as telas de autenticação e recuperação são públicos.
 // Toda rota privada é declarada aqui com os papéis que podem acessá-la; o
 // guard das rotas e o redirecionamento pós-login usam a mesma tabela.
 
