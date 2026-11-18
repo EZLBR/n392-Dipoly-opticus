@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
-import { ANONYMOUS_STUDIO_OWNER, STUDIO_OWNER_KEY, mergeSavedDesigns, readJSON, switchStudioOwner } from "../eyewear/storage";
+import { ANONYMOUS_STUDIO_OWNER, STUDIO_OWNER_KEY, mergeSavedDesigns, migrateStudioIdentifiers, readJSON, switchStudioOwner } from "../eyewear/storage";
 import { apiClient, ProblemError, setAuthErrorHandler } from "../api/client";
 import { localizeProblem, translate } from "./LanguageContext";
+import { isPublicId } from "../utils/publicId";
 import type { AuthResult, DesignFields, SavedDesign, SignUpInput, User } from "../types/domain";
 
 type SessionResponse = { user: User; token: string } | (User & { token: string });
@@ -27,8 +28,8 @@ interface AuthContextValue {
   saveDesign: (design: DesignFields & { id?: string | null }) => Promise<SavedDesign>;
   deleteDesign: (designId: string) => Promise<void>;
   deleteBackendDesign: (designId: string) => Promise<void>;
-  updateUser: (userId: string, input: UpdateUser) => Promise<UserMutation>;
-  deleteUser: (userId: string) => Promise<UserMutation>;
+  updateUser: (publicId: string, input: UpdateUser) => Promise<UserMutation>;
+  deleteUser: (publicId: string) => Promise<UserMutation>;
 }
 
 // O token vai explícito quando a resposta precisa ser conferida contra a
@@ -64,6 +65,7 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
 
   const changeStudioOwner = (owner: string) => {
     switchStudioOwner(localStorage, owner);
+    migrateStudioIdentifiers(localStorage);
     ownerRef.current = owner;
     setStudioOwner(owner);
     setDesigns(readJSON<SavedDesign[]>(localStorage, "opticus_designs", []));
@@ -80,13 +82,15 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
     setUsers([]);
   };
   const startSession = (user: User, token: string) => {
-    changeStudioOwner("user:" + String(user.publicId ?? user.id));
+    if (!isPublicId(user.publicId)) throw new Error("Resposta de sessão sem identificador público.");
+    changeStudioOwner("user:" + user.publicId);
     authTokenRef.current = token;
     setStudioSessionChanged(false);
     localStorage.setItem("opticus_token", token);
     setSession(user);
     setIsBackendConnected(true);
     fetchBackendDesigns(token);
+    if (user.role === "staff") fetchBackendUsers(token);
   };
 
   const clearAuthWarning = () => setAuthWarning(null);
@@ -122,7 +126,7 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
     try {
       const data = await apiClient.get<{ designs: SavedDesign[] } | SavedDesign[]>("/designs", comToken(token));
       if (owner === ownerRef.current && isCurrentStudioSession() && token === authTokenRef.current) {
-        const remote = (Array.isArray(data) ? data : data.designs).map(design => ({ ...design, remoteId: String(design.id) }));
+        const remote = (Array.isArray(data) ? data : data.designs).filter(design => isPublicId(design.id)).map(design => ({ ...design, remoteId: design.id }));
         const merged = mergeSavedDesigns(remote, readJSON<SavedDesign[]>(localStorage, "opticus_designs", []));
         setDesigns(merged);
         localStorage.setItem("opticus_designs", JSON.stringify(merged));
@@ -141,7 +145,6 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
           const data = await apiClient.get<{ user: User } | User>("/auth/me", comToken(token));
           if (localStorage.getItem("opticus_token") !== token) return;
           startSession("user" in data ? data.user : data, token);
-          fetchBackendUsers(token);
           return;
         } catch (e) {
           console.error("Não foi possível validar a sessão no backend:", e);
@@ -207,12 +210,13 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
       invalidateLocalSession();
       throw new Error("A sessão mudou em outra aba. Atualize a página antes de salvar.");
     }
-    const localId = designData.id ? String(designData.id) : null;
+    const localId = isPublicId(designData.id) ? designData.id : null;
     // BOLA-04: the server generates the id on creation and PUT only changes a
     // design that already exists there. A draft that never synced is created;
     // one with a proven remote identity (same rule as deletion) is updated.
     const known = localId ? readJSON<SavedDesign[]>(localStorage, "opticus_designs", []).find(item => String(item.id) === localId) : undefined;
-    const remoteId = known && (known.remoteId || known.syncStatus !== "local") ? String(known.remoteId || known.id) : null;
+    const remoteIdentity = known?.remoteId ?? (known?.syncStatus !== "local" ? known?.id : null);
+    const remoteId = isPublicId(remoteIdentity) ? remoteIdentity : null;
     let finalId = localId || `design-${Date.now()}`;
     let syncStatus: SavedDesign["syncStatus"] = "local";
     if (token) {
@@ -223,7 +227,7 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
           ? await apiClient.put<{ id?: string; design?: { id?: string } }>(`/designs/${encodeURIComponent(remoteId)}`, fields, comToken(token))
           : await apiClient.post<{ id?: string; design?: { id?: string } }>("/designs", fields, comToken(token));
         const savedId = data?.id ?? data?.design?.id;
-        if (typeof savedId !== "string" || !savedId.trim()) {
+        if (!isPublicId(savedId)) {
           throw new Error("Resposta inválida ao salvar o design. Não foi possível confirmar o salvamento.");
         }
         finalId = savedId;
@@ -254,7 +258,6 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
     };
     const updatedDesigns = existingIndex >= 0 ? cached.map((item, i) => i === existingIndex ? newDesign : item) : [...cached, newDesign];
     localStorage.setItem("opticus_designs", JSON.stringify(updatedDesigns));
-    localStorage.setItem("opticus_active_design", String(existingIndex >= 0 ? existingIndex : updatedDesigns.length - 1));
     localStorage.setItem("opticus_active_design_id", String(finalId));
     setDesigns(updatedDesigns);
     return newDesign;
@@ -276,7 +279,9 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
     // Offline edits keep their proven remote identity; only never-synced drafts are local-only.
     if (design.remoteId || design.syncStatus !== "local") {
       if (!token) throw new Error("Entre na sua conta novamente para excluir o design.");
-      await apiClient.delete(`/designs/${designId}`, comToken(token));
+      const remoteId = design.remoteId ?? design.id;
+      if (!isPublicId(remoteId)) throw new Error("Identificador de design inválido. Atualize a página.");
+      await apiClient.delete(`/designs/${encodeURIComponent(remoteId)}`, comToken(token));
       checkSession();
       await fetchBackendDesigns(token);
       checkSession();
@@ -285,24 +290,18 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
     const next = readJSON<SavedDesign[]>(localStorage, "opticus_designs", []).filter(item => String(item.id) !== String(designId));
     localStorage.setItem("opticus_designs", JSON.stringify(next));
     setDesigns(next);
-    const activeId = localStorage.getItem("opticus_active_design_id");
-    const activeIndex = localStorage.getItem("opticus_active_design");
-    if (activeId === String(designId) || (!activeId && activeIndex !== null && Number(activeIndex) === originalIndex)) {
-      localStorage.removeItem("opticus_active_design");
+    if (localStorage.getItem("opticus_active_design_id") === designId) {
       localStorage.removeItem("opticus_active_design_id");
-    } else if (activeId) {
-      const index = next.findIndex(item => String(item.id) === activeId);
-      if (index >= 0) localStorage.setItem("opticus_active_design", String(index));
-    } else if (activeIndex !== null && Number(activeIndex) > originalIndex) {
-      localStorage.setItem("opticus_active_design", String(Number(activeIndex) - 1));
     }
+    localStorage.removeItem("opticus_active_design");
   };
 
-  const updateUser = async (userId: string, dataToUpdate: UpdateUser): Promise<UserMutation> => {
+  const updateUser = async (publicId: string, dataToUpdate: UpdateUser): Promise<UserMutation> => {
     const token = localStorage.getItem("opticus_token");
+    if (!isPublicId(publicId)) return { ok: false, message: translate("api-not-found") };
     if (isBackendConnected && token) {
       try {
-        await apiClient.put(`/auth/users/${userId}`, dataToUpdate, comToken(token));
+        await apiClient.put(`/auth/users/${encodeURIComponent(publicId)}`, dataToUpdate, comToken(token));
         fetchBackendUsers(token);
         return { ok: true };
       } catch (e) {
@@ -314,11 +313,12 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
     return { ok: false, message: "Serviço de usuários indisponível." };
   };
 
-  const deleteUser = async (userId: string): Promise<UserMutation> => {
+  const deleteUser = async (publicId: string): Promise<UserMutation> => {
     const token = localStorage.getItem("opticus_token");
+    if (!isPublicId(publicId)) return { ok: false, message: translate("api-not-found") };
     if (isBackendConnected && token) {
       try {
-        await apiClient.delete(`/auth/users/${userId}`, comToken(token));
+        await apiClient.delete(`/auth/users/${encodeURIComponent(publicId)}`, comToken(token));
         fetchBackendUsers(token);
         return { ok: true };
       } catch (e) {

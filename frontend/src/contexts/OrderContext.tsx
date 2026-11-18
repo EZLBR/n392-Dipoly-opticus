@@ -4,12 +4,13 @@ import { apiClient, ProblemError } from "../api/client";
 import { localizeProblem, translate } from "./LanguageContext";
 
 import type { Billing, BillingResult, Order } from "../types/domain";
+import { isPublicId } from "../utils/publicId";
 
 interface OrderContextValue {
   orders: Order[];
   setOrders: React.Dispatch<React.SetStateAction<Order[]>>;
   fetchBackendOrders: (token?: string | null) => Promise<OrderResult>;
-  updateOrderStatus: (orderId: string, status: string) => Promise<OrderResult>;
+  updateOrderStatus: (publicId: string, status: string) => Promise<OrderResult>;
   createPaymentBilling: (orderPublicId: string) => Promise<BillingResult>;
 }
 
@@ -29,7 +30,11 @@ export function OrderProvider({ children }: React.PropsWithChildren) {
       const localOrders = localStorage.getItem("opticus_orders");
       if (localOrders === null) return [];
       const parsed = JSON.parse(localOrders);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed) && parsed.every(order =>
+        order && isPublicId(order.publicId)
+          && (order.factoryPublicId == null || isPublicId(order.factoryPublicId))
+          && !("id" in order) && !("factoryId" in order),
+      )) return parsed;
     } catch {
       // Invalid JSON or unavailable browser storage: never fail during render.
     }
@@ -65,11 +70,12 @@ export function OrderProvider({ children }: React.PropsWithChildren) {
     }
   }, [isBackendConnected]);
 
-  const updateOrderStatus = async (orderId: string, newStatus: string): Promise<OrderResult> => {
+  const updateOrderStatus = async (publicId: string, newStatus: string): Promise<OrderResult> => {
+    if (!isPublicId(publicId)) return { ok: false, error: translate("api-not-found") };
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        await apiClient.put(`/orders/${orderId}/status`, { status: newStatus }, { headers: { Authorization: `Bearer ${token}` } });
+        await apiClient.put(`/orders/${encodeURIComponent(publicId)}/status`, { status: newStatus }, { headers: { Authorization: `Bearer ${token}` } });
         return await fetchBackendOrders(token);
       } catch (e) {
         return orderFailure(e);
@@ -81,6 +87,7 @@ export function OrderProvider({ children }: React.PropsWithChildren) {
 
   // ID-02: o pedido é indicado pelo publicId.
   const createPaymentBilling = async (orderPublicId: string): Promise<BillingResult> => {
+    if (!isPublicId(orderPublicId)) return { ok: false, error: translate("api-not-found") };
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {

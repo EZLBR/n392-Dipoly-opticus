@@ -6,6 +6,8 @@ import { normalizeConfig } from "../eyewear/config";
 import { hasUnapprovedCustomization } from "../eyewear/artwork";
 
 import type { Billing, BillingResult, CartItem } from "../types/domain";
+import { readJSON } from "../eyewear/storage";
+import { isPublicId } from "../utils/publicId";
 
 interface CartContextValue {
   cart: CartItem[];
@@ -21,14 +23,12 @@ const CartContext = createContext<CartContextValue | undefined>(undefined);
 export function CartProvider({ children }: React.PropsWithChildren) {
   const { isBackendConnected } = useAuth();
 
-  const [cart, setCart] = useState<CartItem[]>(() => {
-    try {
-      const localCart = localStorage.getItem("opticus_cart");
-      return localCart ? JSON.parse(localCart) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [cart, setCart] = useState<CartItem[]>(() =>
+    readJSON<Array<CartItem & { factoryId?: unknown }>>(localStorage, "opticus_cart", [])
+      .filter(item => item && isPublicId(item.id) &&
+        (item.factoryPublicId === undefined || isPublicId(item.factoryPublicId)))
+      .map(({ factoryId: _legacy, ...item }) => item),
+  );
 
   useEffect(() => {
     localStorage.setItem("opticus_cart", JSON.stringify(cart));
@@ -62,7 +62,10 @@ export function CartProvider({ children }: React.PropsWithChildren) {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        const data = await apiClient.post<Billing>("/orders/checkout-cart", { cartItems });
+        const items = cartItems.map(({ productName, factoryPublicId, factoryName, customSpecs, quantity }) => ({
+          productName, factoryPublicId, factoryName, customSpecs, quantity,
+        }));
+        const data = await apiClient.post<Billing>("/orders/checkout-cart", { cartItems: items });
         return { ok: true, ...data };
       } catch (e) {
         if (e instanceof ProblemError) {
