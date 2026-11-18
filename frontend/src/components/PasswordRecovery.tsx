@@ -5,7 +5,7 @@ import { apiClient, ProblemError } from "../api/client";
 import { localizeProblem, useTranslation } from "../contexts/LanguageContext";
 
 export default function PasswordRecovery() {
-  const { t, lang } = useTranslation();
+  const { t, language } = useTranslation();
   const { pathname, hash } = useLocation();
   const resetting = pathname === "/reset-password";
   const [token] = useState(() => new URLSearchParams(hash.slice(1)).get("token"));
@@ -24,11 +24,13 @@ export default function PasswordRecovery() {
     setError("");
     try {
       if (resetting) await apiClient.post("/auth/reset-password", { token, password: value });
-      else await apiClient.post("/auth/forgot-password", { email: value }, { headers: { "Accept-Language": lang } });
+      else await apiClient.post("/auth/forgot-password", { email: value }, { headers: { "Accept-Language": language } });
       setValue("");
       setDone(true);
     } catch (failure) {
-      const message = failure instanceof ProblemError ? localizeProblem(failure.problem) : t("auth-recovery-error");
+      const message = resetting && failure instanceof ProblemError && failure.status === 400
+        ? t("auth-reset-invalid")
+        : failure instanceof ProblemError ? localizeProblem(failure.problem, language) : t("auth-recovery-error");
       setError(message);
     } finally {
       setPending(false);
