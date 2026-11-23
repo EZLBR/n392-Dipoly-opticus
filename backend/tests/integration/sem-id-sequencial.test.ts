@@ -117,8 +117,6 @@ describe("ID-02: nenhum payload expõe o id sequencial", () => {
     await registrar("GET /orders/mine", request(app).get("/api/orders/mine").set(...como(cliente)));
     await registrar("GET /orders/mine/:publicId", request(app)
       .get(`/api/orders/mine/${pedido.body.publicId}`).set(...como(cliente)));
-    await registrar("PUT /orders/:publicId/status", request(app)
-      .put(`/api/orders/${pedido.body.publicId}/status`).set(...como(fabrica)).send({ status: "Pending Payment" }));
 
     // ── Cobrança e pagamento ───────────────────────────────
     const cobranca = await registrar("POST /payments/create-billing", request(app)
@@ -126,6 +124,9 @@ describe("ID-02: nenhum payload expõe o id sequencial", () => {
     const billingId = new URL(cobranca.body.checkoutUrl).searchParams.get("billingId");
     await registrar("POST /payments/confirm-simulated-payment", request(app)
       .post("/api/payments/confirm-simulated-payment").set(...como(cliente)).send({ billingId }));
+    // FEAT-03: a fábrica só move o pedido depois que o pagamento o leva a Queued.
+    await registrar("PUT /orders/:publicId/status", request(app)
+      .put(`/api/orders/${pedido.body.publicId}/status`).set(...como(fabrica)).send({ status: "In production" }));
     const pagamentos = await registrar("GET /payments", request(app).get("/api/payments").set(...como(staff)));
     expect(pagamentos.body.pagamentos[0]).toMatchObject({ pedidoPublicId: pedido.body.publicId });
 

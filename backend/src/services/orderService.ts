@@ -5,7 +5,8 @@
 
 import { PedidoStatus } from "@prisma/client";
 import prisma from "../config/prisma.js";
-import { BadRequestProblem, ForbiddenProblem, NotFoundProblem } from "../errors/problem.js";
+import { origensPermitidas, recusaDaTransicao, type StatusDoPedido } from "../domain/pedidoStatus.js";
+import { BadRequestProblem, ConflictProblem, ForbiddenProblem, NotFoundProblem } from "../errors/problem.js";
 
 /** Identidade já autenticada, vinda do token. Nunca do corpo da requisição. */
 export interface Ator {
@@ -18,7 +19,7 @@ export interface Ator {
  * Status como o cliente os envia (com espaço) e como o Prisma os representa.
  * O enum do banco usa @map, então a tradução precisa ser explícita aqui.
  */
-const STATUS_POR_ROTULO: Record<string, PedidoStatus> = {
+const STATUS_POR_ROTULO: Record<StatusDoPedido, PedidoStatus> = {
   "Pending Payment": PedidoStatus.Pending_Payment,
   Queued: PedidoStatus.Queued,
   "In production": PedidoStatus.In_production,
@@ -26,7 +27,9 @@ const STATUS_POR_ROTULO: Record<string, PedidoStatus> = {
   Cancelled: PedidoStatus.Cancelled,
 };
 
-export const STATUS_VALIDOS = Object.keys(STATUS_POR_ROTULO);
+const ROTULO_POR_STATUS = Object.fromEntries(
+  Object.entries(STATUS_POR_ROTULO).map(([rotulo, status]) => [status, rotulo]),
+) as Record<PedidoStatus, StatusDoPedido>;
 
 /** Papéis autorizados a mover o status de um pedido. */
 const PAPEIS_PERMITIDOS = ["factory", "staff"];
@@ -43,10 +46,15 @@ export class OrderService {
    *
    * `staff` é exceção explícita: enxerga qualquer pedido. A regra está na
    * cláusula, não espalhada em condicionais.
+   *
+   * A transição (FEAT-03) também é guarda do próprio UPDATE: só casa a
+   * linha cujo status atual pode chegar ao destino, segundo a máquina de
+   * estados de domain/pedidoStatus.ts. Assim duas atualizações simultâneas
+   * não furam a regra.
    */
   static async updateStatus(params: {
     publicId: string;
-    status: string;
+    status: StatusDoPedido;
     ator: Ator;
   }) {
     const { publicId, status, ator } = params;
@@ -61,14 +69,15 @@ export class OrderService {
       throw new BadRequestProblem("Status inválido.");
     }
 
-    const ehStaff = ator.role === "staff";
+    const escopo = {
+      publicId,
+      // Fábrica só alcança os próprios pedidos. Staff não recebe filtro.
+      ...(ator.role === "staff" ? {} : { fabrica: { is: { publicId: ator.publicId } } }),
+    };
 
-    const { count } = await prisma.pedido.updateMany({
-      where: {
-        publicId,
-        // Fábrica só alcança os próprios pedidos. Staff não recebe filtro.
-        ...(ehStaff ? {} : { fabrica: { is: { publicId: ator.publicId } } }),
-      },
+    const origens = origensPermitidas(status, ator.role).map(rotulo => STATUS_POR_ROTULO[rotulo]);
+    const { count } = origens.length === 0 ? { count: 0 } : await prisma.pedido.updateMany({
+      where: { ...escopo, status: { in: origens } },
       data: {
         status: statusPrisma,
         atualizadoEm: new Date(),
@@ -77,17 +86,25 @@ export class OrderService {
       },
     });
 
-    // Pedido inexistente e pedido de outra fábrica caem aqui do mesmo jeito.
     if (count === 0) {
-      throw new NotFoundProblem("Pedido não encontrado.");
+      // Nada mudou: o pedido não é visível para o ator, ou a transição não
+      // vale. Só quem enxerga o pedido recebe o motivo; pedido inexistente e
+      // pedido de outra fábrica continuam caindo no mesmo 404.
+      const atual = await prisma.pedido.findFirst({ where: escopo, select: { status: true } });
+      if (!atual) {
+        throw new NotFoundProblem("Pedido não encontrado.");
+      }
+      const recusa = atual.status ? recusaDaTransicao(ROTULO_POR_STATUS[atual.status], status, ator.role) : null;
+      if (recusa?.tipo === "papel") {
+        throw new ForbiddenProblem(recusa.motivo);
+      }
+      // Sem motivo, o status mudou entre a tentativa e esta leitura.
+      throw new ConflictProblem(recusa?.motivo ?? "O pedido mudou durante a atualização. Recarregue e tente novamente.");
     }
 
     // A leitura também é escopada, para não reabrir pela porta dos fundos.
     const pedido = await prisma.pedido.findFirst({
-      where: {
-        publicId,
-        ...(ehStaff ? {} : { fabrica: { is: { publicId: ator.publicId } } }),
-      },
+      where: escopo,
       select: {
         publicId: true,
         status: true,
