@@ -36,3 +36,50 @@ export const updateStockSchema = z.object({
 });
 
 export type UpdateStockDTO = z.infer<typeof updateStockSchema>;
+
+/** Campos comuns de um item de estoque na resposta. Nunca ids internos. */
+interface StockItemBaseDTO {
+  publicId: string;
+  produtoPublicId: string;
+  produto_nome: string;
+  quantidade: number;
+  estoque_minimo: number | null;
+  atualizado_em: Date | null;
+}
+
+export interface StockListItemDTO extends StockItemBaseDTO {
+  /** DECIMAL como texto de duas casas, sem passar por float. */
+  produto_preco: string;
+  categoria_nome: string | null;
+  /** null quando o produto não tem estoque mínimo definido. */
+  alerta_baixo_estoque: boolean | null;
+}
+
+export interface PaginatedStockDTO {
+  estoque: StockListItemDTO[];
+  alertas: number;
+  produtos_criticos: string[];
+  pagination: { page: number; limit: number; totalItems: number; totalPages: number };
+}
+
+export interface StockByProductDTO {
+  estoque: StockItemBaseDTO & { version: number; preco: string };
+  alerta: boolean;
+}
+
+export interface StockUpdatedDTO {
+  estoque: StockItemBaseDTO & { version: number };
+  alerta: boolean;
+  message: string;
+}
+
+export interface StockAlertsDTO {
+  alertas: Array<{
+    produtoPublicId: string;
+    produto_nome: string;
+    quantidade: number;
+    estoque_minimo: number;
+    deficit: number;
+  }>;
+  total: number;
+}

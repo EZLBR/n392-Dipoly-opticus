@@ -19,6 +19,7 @@ import { AuthService } from "../../../src/services/authService.js";
 import { CategoryService } from "../../../src/services/categoryService.js";
 import { OrderService } from "../../../src/services/orderService.js";
 import { ProductService } from "../../../src/services/productService.js";
+import { StockService } from "../../../src/services/stockService.js";
 
 function mockResponse() {
   const res: Partial<Response> = {};
@@ -108,12 +109,12 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
       await expect(productController.getProductById(req, res)).rejects.toThrow(NotFoundProblem);
     });
 
-    // CONC-01: a baixa é um UPDATE atômico com guarda no WHERE. Se a guarda
-    // barra (nenhuma linha afetada) e o produto existe, a resposta é 409.
+    // CONC-01: a guarda da baixa está no StockService e é coberta contra o
+    // banco em estoque-concorrencia.test.ts. Aqui, o controller propaga o 409.
     it("stockController lança ConflictProblem se a baixa resultaria em estoque negativo", async () => {
-      vi.spyOn(pool, "query")
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 } as any)
-        .mockResolvedValueOnce({ rows: [{ quantidade: 2 }], rowCount: 1 } as any);
+      vi.spyOn(StockService, "update").mockRejectedValueOnce(
+        new ConflictProblem("Estoque insuficiente. Disponível: 2 unidades."),
+      );
       const req = {
         params: { produtoPublicId: "produto-1" },
         body: { quantidade: 5, operacao: "subtract" },
@@ -291,10 +292,19 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("stockController.getStockByProduct retorna { estoque, alerta } sem envelope success", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({
-        rows: [{ publicId: "estoque-1", produtoPublicId: "produto-10", quantidade: 20, estoque_minimo: 5, nome: "Armação Titanium", preco: 299.9 }],
-        rowCount: 1,
-      } as any);
+      vi.spyOn(StockService, "getByProduct").mockResolvedValueOnce({
+        estoque: {
+          publicId: "estoque-1",
+          produtoPublicId: "produto-10",
+          produto_nome: "Armação Titanium",
+          quantidade: 20,
+          estoque_minimo: 5,
+          atualizado_em: new Date(),
+          version: 0,
+          preco: "299.90",
+        },
+        alerta: false,
+      });
 
       const req = { params: { produtoPublicId: "produto-10" } } as unknown as Request;
       const res = mockResponse();
