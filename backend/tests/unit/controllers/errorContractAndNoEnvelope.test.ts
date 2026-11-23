@@ -18,6 +18,7 @@ import pool from "../../../src/config/db.js";
 import { AuthService } from "../../../src/services/authService.js";
 import { CategoryService } from "../../../src/services/categoryService.js";
 import { OrderService } from "../../../src/services/orderService.js";
+import { ProductService } from "../../../src/services/productService.js";
 
 function mockResponse() {
   const res: Partial<Response> = {};
@@ -100,7 +101,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("productController lança NotFoundProblem se produto não existir", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
+      vi.spyOn(ProductService, "getByPublicId").mockRejectedValueOnce(new NotFoundProblem("Produto não encontrado."));
       const req = { params: { publicId: "produto-inexistente" } } as unknown as Request;
       const res = mockResponse();
 
@@ -264,10 +265,19 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("productController.getProductById retorna o produto sem envelope success", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({
-        rows: [{ publicId: "produto-42", nome: "Armação Titanium", preco: 299.9 }],
-        rowCount: 1,
-      } as any);
+      vi.spyOn(ProductService, "getByPublicId").mockResolvedValueOnce({
+        publicId: "produto-42",
+        nome: "Armação Titanium",
+        descricao: null,
+        preco: "299.90",
+        categoriaPublicId: null,
+        categoria_nome: null,
+        imagem_url: null,
+        ativo: true,
+        criado_em: new Date(),
+        estoque_quantidade: 0,
+        estoque_minimo: 5,
+      });
 
       const req = { params: { publicId: "produto-42" } } as unknown as Request;
       const res = mockResponse();
