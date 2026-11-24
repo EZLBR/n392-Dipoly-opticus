@@ -59,6 +59,14 @@ Variável pública do frontend:
 VITE_API_URL=http://localhost:5000/api
 ```
 
+### Teste ponta a ponta de designs e pedidos
+
+Com as dependências dos dois pacotes instaladas, rode `npx playwright install chromium`
+em `frontend`. Defina `OPTICUS_E2E_DATABASE_URL` com um banco PostgreSQL local
+dedicado e terminado em `_test`. Depois rode `npm run test:e2e` em `frontend`.
+O teste usa uma API real, aplica as migrations, prepara dados de exemplo,
+cria uma conta de teste e confirma um pagamento simulado.
+
 ### Studio: textos na armação
 
 Abra o Studio e selecione **04 — Arte**. É possível adicionar até seis textos
@@ -163,6 +171,23 @@ npx prisma db seed
 ```
 
 Consulte [backend/.env.example](backend/.env.example) para configurar PostgreSQL, JWT, CORS e integrações.
+
+### Login com Google
+
+Crie um cliente OAuth 2.0 do tipo **Aplicativo da Web** na [Google Cloud](https://developers.google.com/identity/protocols/oauth2/web-server).
+Cadastre a origem do frontend e o URI de redirecionamento exato que termina em `/login`.
+Para desenvolvimento com Vite, use `http://localhost:5173/login`. Para Docker local,
+o padrão é `http://localhost:8080/login`. Em produção, cadastre a origem HTTPS real.
+
+Defina `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` e `FRONTEND_URL` no ambiente do
+backend. O servidor deriva o retorno de `FRONTEND_URL`. Use o `.env` da raiz
+para Compose. O segredo fica no backend. Se as credenciais estiverem ausentes,
+a interface informa que o Google está indisponível e o login por senha segue disponível.
+
+Para validar com um cliente real, entre como cliente pela primeira vez, saia,
+entre novamente com o mesmo Google e confirme que a conta é a mesma. Repita
+a partir de uma rota privada permitida e cancele na tela do Google para conferir
+a mensagem de retorno. Um e-mail já cadastrado via senha pede login pela conta existente.
 
 ### 5. Pagamentos e simulador
 

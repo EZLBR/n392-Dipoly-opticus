@@ -2,13 +2,21 @@
 // calculado pelo servidor (backend/src/domain/pricing.ts), que ignora o
 // total enviado pelo navegador. Ao mudar esta regra, mude a do servidor
 // também: um teste do backend compara as duas em todas as combinações.
+interface PriceOptions {
+  isSunglasses?: boolean;
+  frameProfile?: string;
+  lensTreatments?: readonly string[];
+  frameMaterial?: string;
+  lensMaterial?: string;
+}
+
 export function calculateBasePrice({
   isSunglasses = false,
   frameProfile = "standard",
   lensTreatments = [],
   frameMaterial = "acetate",
   lensMaterial = "cr39"
-} = {}) {
+}: PriceOptions = {}) {
   let basePrice = 180;
 
   if (isSunglasses) basePrice += 40;

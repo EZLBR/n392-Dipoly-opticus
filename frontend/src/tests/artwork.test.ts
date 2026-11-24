@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { normalizeConfig } from "../eyewear/config";
 import { mergeSavedDesigns } from "../eyewear/storage";
 
-const layer = { id: "text-1", text: "Opticus", zone: "temple-right", font: "sans", color: "#112233", x: 0.2, y: 0, size: 0.7, rotation: 10 };
+const layer = { id: "text-1", text: "Opticus", zone: "temple-right" as const, font: "sans" as const, color: "#112233", x: 0.2, y: 0, size: 0.7, rotation: 10 };
 
 describe("versioned Studio artwork", () => {
   it("preserves text layers on a serialized design round trip", () => {
@@ -28,15 +28,15 @@ describe("versioned Studio artwork", () => {
     const result = mergeSavedDesigns([
       { id: "saved", config: { frameMaterial: "gold", artwork: { version: 1, layers: [layer] } } },
     ], [{ id: "saved", config: { frameMaterial: "wood" } }]);
-    expect(result[0].config.frameMaterial).toBe("gold");
-    expect(result[0].config.artwork.layers).toEqual([layer]);
+    expect(result[0].config?.frameMaterial).toBe("gold");
+    expect(result[0].config?.artwork?.layers).toEqual([layer]);
   });
 
   it("preserves a known unsynced edit of an existing remote design", () => {
     const result = mergeSavedDesigns([
       { id: "saved", config: normalizeConfig() },
     ], [{ id: "saved", syncStatus: "local", config: normalizeConfig({ artwork: { version: 1, layers: [layer] } }) }]);
-    expect(result[0].config.artwork.layers).toEqual([layer]);
+    expect(result[0].config?.artwork?.layers).toEqual([layer]);
     expect(result[0].syncStatus).toBe("local");
   });
 });

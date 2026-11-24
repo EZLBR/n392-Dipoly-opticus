@@ -16,7 +16,10 @@ import * as productController from "../../../src/controllers/productController.j
 import * as stockController from "../../../src/controllers/stockController.js";
 import pool from "../../../src/config/db.js";
 import { AuthService } from "../../../src/services/authService.js";
+import { CategoryService } from "../../../src/services/categoryService.js";
 import { OrderService } from "../../../src/services/orderService.js";
+import { ProductService } from "../../../src/services/productService.js";
+import { StockService } from "../../../src/services/stockService.js";
 
 function mockResponse() {
   const res: Partial<Response> = {};
@@ -35,7 +38,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
 
   describe("Critério de Aceite 1: Controllers lançam erros de domínio", () => {
     it("categoryController lança ConflictProblem se categoria já existe", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 } as any);
+      vi.spyOn(CategoryService, "create").mockRejectedValueOnce(new ConflictProblem("Já existe uma categoria com esse nome."));
       const req = { body: { nome: "Óculos de Sol", descricao: "Teste" } } as Request;
       const res = mockResponse();
 
@@ -43,7 +46,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("categoryController lança NotFoundProblem se categoria não for encontrada", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
+      vi.spyOn(CategoryService, "getByPublicId").mockRejectedValueOnce(new NotFoundProblem("Categoria não encontrada."));
       const req = { params: { publicId: "categoria-inexistente" } } as unknown as Request;
       const res = mockResponse();
 
@@ -99,19 +102,19 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("productController lança NotFoundProblem se produto não existir", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
+      vi.spyOn(ProductService, "getByPublicId").mockRejectedValueOnce(new NotFoundProblem("Produto não encontrado."));
       const req = { params: { publicId: "produto-inexistente" } } as unknown as Request;
       const res = mockResponse();
 
       await expect(productController.getProductById(req, res)).rejects.toThrow(NotFoundProblem);
     });
 
-    // CONC-01: a baixa é um UPDATE atômico com guarda no WHERE. Se a guarda
-    // barra (nenhuma linha afetada) e o produto existe, a resposta é 409.
+    // CONC-01: a guarda da baixa está no StockService e é coberta contra o
+    // banco em estoque-concorrencia.test.ts. Aqui, o controller propaga o 409.
     it("stockController lança ConflictProblem se a baixa resultaria em estoque negativo", async () => {
-      vi.spyOn(pool, "query")
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 } as any)
-        .mockResolvedValueOnce({ rows: [{ quantidade: 2 }], rowCount: 1 } as any);
+      vi.spyOn(StockService, "update").mockRejectedValueOnce(
+        new ConflictProblem("Estoque insuficiente. Disponível: 2 unidades."),
+      );
       const req = {
         params: { produtoPublicId: "produto-1" },
         body: { quantidade: 5, operacao: "subtract" },
@@ -176,9 +179,12 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("categoryController.createCategory retorna a categoria criada sem envelope success", async () => {
-      vi.spyOn(pool, "query")
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 } as any) // check existing
-        .mockResolvedValueOnce({ rows: [{ publicId: "categoria-10", nome: "Esportivo", descricao: "Leve" }], rowCount: 1 } as any); // insert ... RETURNING
+      vi.spyOn(CategoryService, "create").mockResolvedValueOnce({
+        publicId: "categoria-10",
+        nome: "Esportivo",
+        descricao: "Leve",
+        criado_em: new Date(),
+      });
 
       const req = { body: { nome: "Esportivo", descricao: "Leve" } } as Request;
       const res = mockResponse();
@@ -260,10 +266,19 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("productController.getProductById retorna o produto sem envelope success", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({
-        rows: [{ publicId: "produto-42", nome: "Armação Titanium", preco: 299.9 }],
-        rowCount: 1,
-      } as any);
+      vi.spyOn(ProductService, "getByPublicId").mockResolvedValueOnce({
+        publicId: "produto-42",
+        nome: "Armação Titanium",
+        descricao: null,
+        preco: "299.90",
+        categoriaPublicId: null,
+        categoria_nome: null,
+        imagem_url: null,
+        ativo: true,
+        criado_em: new Date(),
+        estoque_quantidade: 0,
+        estoque_minimo: 5,
+      });
 
       const req = { params: { publicId: "produto-42" } } as unknown as Request;
       const res = mockResponse();
@@ -277,10 +292,19 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("stockController.getStockByProduct retorna { estoque, alerta } sem envelope success", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({
-        rows: [{ publicId: "estoque-1", produtoPublicId: "produto-10", quantidade: 20, estoque_minimo: 5, nome: "Armação Titanium", preco: 299.9 }],
-        rowCount: 1,
-      } as any);
+      vi.spyOn(StockService, "getByProduct").mockResolvedValueOnce({
+        estoque: {
+          publicId: "estoque-1",
+          produtoPublicId: "produto-10",
+          produto_nome: "Armação Titanium",
+          quantidade: 20,
+          estoque_minimo: 5,
+          atualizado_em: new Date(),
+          version: 0,
+          preco: "299.90",
+        },
+        alerta: false,
+      });
 
       const req = { params: { produtoPublicId: "produto-10" } } as unknown as Request;
       const res = mockResponse();

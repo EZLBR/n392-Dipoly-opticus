@@ -1,4 +1,6 @@
 import { normalizeConfig, type EyewearConfig } from "./config";
+import type { SavedDesign } from "../types/domain";
+import { isPublicId } from "../utils/publicId";
 
 export const ANONYMOUS_STUDIO_OWNER = "anonymous";
 export const STUDIO_OWNER_KEY = "opticus_studio_owner";
@@ -19,17 +21,45 @@ export function switchStudioOwner(
   }
   storage.setItem(STUDIO_OWNER_KEY, nextOwner);
 }
+export function migrateStudioIdentifiers(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
+  const designs = readJSON<SavedDesign[]>(storage, "opticus_designs", []);
+  const valid = designs.filter(design => design && isPublicId(design.id)
+    && (design.remoteId == null || isPublicId(design.remoteId)));
+  if (valid.length !== designs.length) storage.setItem("opticus_designs", JSON.stringify(valid));
+
+  const active = storage.getItem("opticus_active_design_id");
+  const legacyIndex = storage.getItem("opticus_active_design");
+  const selectedId = active ?? (legacyIndex !== null && /^\d+$/.test(legacyIndex)
+    ? designs[Number(legacyIndex)]?.id : undefined);
+  if (selectedId && valid.some(design => design.id === selectedId)) {
+    if (active !== selectedId) storage.setItem("opticus_active_design_id", selectedId);
+  } else if (active !== null) {
+    storage.removeItem("opticus_active_design_id");
+  }
+  if (legacyIndex !== null) storage.removeItem("opticus_active_design");
+
+  const product = storage.getItem("opticus_active_product");
+  if (product !== null && !isPublicId(product)) {
+    storage.removeItem("opticus_active_product");
+    storage.removeItem("opticus_active_product_config");
+  }
+  const draft = readJSON<{ source?: string } | null>(storage, "opticus_creator_draft", null);
+  if (typeof draft?.source === "string" && /^(design|product):\d+$/.test(draft.source)) {
+    storage.removeItem("opticus_creator_draft");
+  }
+}
+
 export interface StudioDraft {
   config: EyewearConfig;
   source: string;
   designId?: string;
   name?: string;
 }
-export function readJSON(
+export function readJSON<T>(
   storage: Pick<Storage, "getItem">,
   key: string,
-  fallback: any = null,
-) {
+  fallback: T,
+): T {
   try {
     const raw = storage.getItem(key);
     const parsed = raw ? JSON.parse(raw) : fallback;
@@ -48,7 +78,7 @@ export function restoreStudio(storage: Pick<Storage, "getItem">): StudioDraft {
 function readStudio(storage: Pick<Storage, "getItem">): StudioDraft {
   const active = storage.getItem("opticus_active_design"),
     product = storage.getItem("opticus_active_product");
-  const designs = readJSON(storage, "opticus_designs", []);
+  const designs = readJSON<SavedDesign[]>(storage, "opticus_designs", []);
   const activeId = storage.getItem("opticus_active_design_id");
   const design = Array.isArray(designs)
     ? activeId
@@ -62,7 +92,7 @@ function readStudio(storage: Pick<Storage, "getItem">): StudioDraft {
     : product
       ? "product:" + product
       : "new";
-  const draft = readJSON(storage, "opticus_creator_draft");
+  const draft = readJSON<{ config?: unknown; source?: string } | null>(storage, "opticus_creator_draft", null);
   if (
     draft?.config &&
     (draft.source === source || (!draft.source && source === "new"))
@@ -81,7 +111,7 @@ function readStudio(storage: Pick<Storage, "getItem">): StudioDraft {
       designId: design.id,
       name: design.name,
     };
-  const selectedProduct = readJSON(storage, "opticus_active_product_config");
+  const selectedProduct = readJSON<{ id: string; config?: unknown } | null>(storage, "opticus_active_product_config", null);
   if (product && selectedProduct?.id === product && selectedProduct.config)
     return { config: normalizeConfig(selectedProduct.config), source };
   if (product)
@@ -99,10 +129,10 @@ function readStudio(storage: Pick<Storage, "getItem">): StudioDraft {
     };
   return { config: normalizeConfig(), source };
 }
-export function mergeSavedDesigns(remote: any[], local: any[]) {
+export function mergeSavedDesigns(remote: SavedDesign[], local: SavedDesign[]): SavedDesign[] {
   // Appearance fields absent from the current API remain device-local; server fields still win.
   return remote
-    .map((design) => {
+    .map<SavedDesign>((design) => {
       const cached = local.find(
         (item) => String(item.id) === String(design.id),
       );

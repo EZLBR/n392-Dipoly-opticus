@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { AuthProvider, useAuth } from "../contexts/AuthContext";
 import { LanguageProvider } from "../contexts/LanguageContext";
 import { FactoryDashboard, StaffDashboard } from "../components/Dashboards";
+import type { Role } from "../routes/access";
 
 // FEAT-03: o menu do painel só oferece as transições que o servidor aceita.
 // CONC-02: e envia a versão do pedido que estava na tela.
@@ -23,12 +24,12 @@ const order = (status: string) => ({
   createdAt: new Date().toISOString(),
 });
 
-function Session({ role }: { role: string }) {
+function Session({ role }: { role: Role }) {
   const { setSession } = useAuth();
-  return <button onClick={() => setSession({ publicId: "factory-a", role, factoryName: "Factory A" })}>Authorize</button>;
+  return <button onClick={() => setSession({ publicId: "factory-a", name: "Factory A", email: "factory@exemplo.invalid", role, factoryName: "Factory A" })}>Authorize</button>;
 }
 
-function openMenu(Component: React.ComponentType, role: string) {
+function openMenu(Component: React.ComponentType, role: Role) {
   render(<AuthProvider><LanguageProvider><Session role={role} /><Component /></LanguageProvider></AuthProvider>);
   fireEvent.click(screen.getByText("Authorize"));
   fireEvent.contextMenu(screen.getByText("Armação teste"));

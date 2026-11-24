@@ -21,3 +21,26 @@ export const updateCategorySchema = z.object({
 });
 
 export type UpdateCategoryDTO = z.infer<typeof updateCategorySchema>;
+
+/** O que a API devolve de uma categoria. Nunca o id interno. */
+export interface CategoryResponseDTO {
+  publicId: string;
+  nome: string;
+  descricao: string | null;
+  criado_em: Date | null;
+}
+
+export interface CategoryListItemDTO extends CategoryResponseDTO {
+  total_produtos: string;
+}
+
+export interface CategoryDetailDTO extends CategoryResponseDTO {
+  produtos: Array<{
+    publicId: string;
+    nome: string;
+    /** DECIMAL como texto de duas casas, sem passar por float. */
+    preco: string;
+    imagem_url: string | null;
+    ativo: boolean | null;
+  }>;
+}

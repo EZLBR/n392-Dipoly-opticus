@@ -5,7 +5,7 @@ import { useCart } from "../contexts/CartContext";
 import { roleKey, useTranslation } from "../contexts/LanguageContext";
 import { Moon, Sun, Globe, LogOut, Menu, X, Lock } from "lucide-react";
 
-export default function Navbar({ currentView, setView }) {
+export default function Navbar({ currentView, setView }: { currentView: string; setView: (view: string) => void }) {
   const { session, sessionLoading, logout } = useAuth();
   const { cart } = useCart();
   const { t, language, setLanguage } = useTranslation();
@@ -40,7 +40,7 @@ export default function Navbar({ currentView, setView }) {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const handleNavClick = (view, e) => {
+  const handleNavClick = (view: string, e: React.MouseEvent) => {
     e.preventDefault();
     setView(view);
     setMenuOpen(false);

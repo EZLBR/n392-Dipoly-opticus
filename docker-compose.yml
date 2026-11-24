@@ -71,6 +71,8 @@ services:
     environment:
       DATABASE_URL: *database-url
       JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no .env (veja .env.example)}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       # Origem liberada no CORS: onde o navegador carrega o frontend.
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:${WEB_PORT:-8080}}
       # Obrigatória. Em produção (NODE_ENV=production na imagem) um token

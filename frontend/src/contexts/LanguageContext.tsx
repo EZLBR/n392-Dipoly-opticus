@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import type { ProblemDetails } from "../api/client";
 import { screenCopy } from "../i18n/screen-copy";
 
-const translations = {
+const translations: Record<"en" | "pt", Record<string, string>> = {
   en: {
     "dash-spec-model": "Model",
     "dash-spec-frontModel": "Frame model",
@@ -46,6 +46,11 @@ const translations = {
     "auth-forgot-done": "If your account exists, you will receive a reset link by email.",
     "auth-recovery-error": "Unable to continue. Try again.",
     "auth-google-unavailable": "Google sign-in is unavailable.",
+    "auth-google-loading": "Connecting to Google…",
+    "auth-google-cancelled": "Google sign-in was cancelled.",
+    "auth-google-invalid": "Google sign-in expired or could not be verified. Try again.",
+    "auth-google-conflict": "This email already has an Opticus account. Sign in with your password.",
+    "auth-google-error": "Could not connect to Google. Try again.",
     "auth-partner-unavailable": "Partner applications are unavailable.",
     "designs-published": "Published",
     "designs-private": "Private",
@@ -371,6 +376,9 @@ const translations = {
     "nav-login-required": "Sign in required",
     "auth-login-required": "Sign in to access this area. You will return to it right after.",
     "cart-title": "Shopping Cart",
+    "cart-decrease-quantity": "Decrease quantity",
+    "cart-increase-quantity": "Increase quantity",
+    "cart-remove-item": "Remove item",
     "cart-empty": "Your shopping cart is empty.",
     "cart-subtotal": "Subtotal",
     "cart-items": "items",
@@ -428,6 +436,11 @@ const translations = {
     "auth-forgot-done": "Se houver uma conta para este e-mail, você receberá um link de recuperação.",
     "auth-recovery-error": "Não foi possível continuar. Tente novamente.",
     "auth-google-unavailable": "O login com Google está indisponível.",
+    "auth-google-loading": "Conectando ao Google…",
+    "auth-google-cancelled": "O login com Google foi cancelado.",
+    "auth-google-invalid": "O login com Google expirou ou não pôde ser verificado. Tente novamente.",
+    "auth-google-conflict": "Este e-mail já tem uma conta Opticus. Entre com sua senha.",
+    "auth-google-error": "Não foi possível conectar ao Google. Tente novamente.",
     "auth-partner-unavailable": "As candidaturas para parceiros estão indisponíveis.",
     "designs-published": "Publicado",
     "designs-private": "Privado",
@@ -753,6 +766,9 @@ const translations = {
     "nav-login-required": "Requer login",
     "auth-login-required": "Entre na sua conta para acessar esta área. Você voltará para ela em seguida.",
     "cart-title": "Carrinho de Compras",
+    "cart-decrease-quantity": "Diminuir quantidade",
+    "cart-increase-quantity": "Aumentar quantidade",
+    "cart-remove-item": "Remover item",
     "cart-empty": "Seu carrinho de compras está vazio.",
     "cart-subtotal": "Subtotal",
     "cart-items": "itens",
@@ -769,7 +785,13 @@ const translations = {
   }
 };
 
-const LanguageContext = createContext<any>(undefined);
+interface LanguageContextValue {
+  language: Language;
+  setLanguage: (language: string) => void;
+  t: (key: string) => string;
+}
+
+const LanguageContext = createContext<LanguageContextValue | undefined>(undefined);
 
 export type Language = keyof typeof translations;
 
@@ -817,17 +839,17 @@ export function localizeProblem(problem: ProblemDetails, language: Language = ge
   return translate(problemTypes.has(key) ? key : problemKeys.get(problem.status) ?? "api-unknown", language);
 }
 
-export function LanguageProvider({ children }) {
+export function LanguageProvider({ children }: React.PropsWithChildren) {
   const [language, setLangState] = useState(getStoredLanguage);
 
-  const setLanguage = (lang) => {
+  const setLanguage = (lang: string) => {
     if (lang === "en" || lang === "pt") {
       setLangState(lang);
       localStorage.setItem("opticus_language", lang);
     }
   };
 
-  const t = (key) => {
+  const t = (key: string) => {
     return translate(key, language);
   };
 

@@ -5,25 +5,36 @@ import { localizeProblem, translate } from "./LanguageContext";
 import { normalizeConfig } from "../eyewear/config";
 import { hasUnapprovedCustomization } from "../eyewear/artwork";
 
-const CartContext = createContext<any>(undefined);
+import type { Billing, BillingResult, CartItem } from "../types/domain";
+import { readJSON } from "../eyewear/storage";
+import { isPublicId } from "../utils/publicId";
 
-export function CartProvider({ children }) {
+interface CartContextValue {
+  cart: CartItem[];
+  addToCart: (item: CartItem) => void;
+  removeFromCart: (itemId: string) => void;
+  updateCartQty: (itemId: string, quantity: number) => void;
+  clearCart: () => void;
+  checkoutCart: (items: CartItem[]) => Promise<BillingResult>;
+}
+
+const CartContext = createContext<CartContextValue | undefined>(undefined);
+
+export function CartProvider({ children }: React.PropsWithChildren) {
   const { isBackendConnected } = useAuth();
 
-  const [cart, setCart] = useState(() => {
-    try {
-      const localCart = localStorage.getItem("opticus_cart");
-      return localCart ? JSON.parse(localCart) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [cart, setCart] = useState<CartItem[]>(() =>
+    readJSON<Array<CartItem & { factoryId?: unknown }>>(localStorage, "opticus_cart", [])
+      .filter(item => item && isPublicId(item.id) &&
+        (item.factoryPublicId === undefined || isPublicId(item.factoryPublicId)))
+      .map(({ factoryId: _legacy, ...item }) => item),
+  );
 
   useEffect(() => {
     localStorage.setItem("opticus_cart", JSON.stringify(cart));
   }, [cart]);
 
-  const addToCart = (item) => {
+  const addToCart = (item: CartItem) => {
     if (hasUnapprovedCustomization(normalizeConfig(item.customSpecs))) return;
     setCart((prevCart) => {
       const existing = prevCart.find((i) => i.id === item.id);
@@ -34,11 +45,11 @@ export function CartProvider({ children }) {
     });
   };
 
-  const removeFromCart = (itemId) => {
+  const removeFromCart = (itemId: string) => {
     setCart((prevCart) => prevCart.filter((i) => i.id !== itemId));
   };
 
-  const updateCartQty = (itemId, qty) => {
+  const updateCartQty = (itemId: string, qty: number) => {
     if (qty < 1) return;
     setCart((prevCart) => prevCart.map((i) => i.id === itemId ? { ...i, quantity: qty } : i));
   };
@@ -47,13 +58,16 @@ export function CartProvider({ children }) {
     setCart([]);
   };
 
-  const checkoutCart = async (cartItems) => {
+  const checkoutCart = async (cartItems: CartItem[]): Promise<BillingResult> => {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        const data = await apiClient.post<any>("/orders/checkout-cart", { cartItems });
+        const items = cartItems.map(({ productName, factoryPublicId, factoryName, customSpecs, quantity }) => ({
+          productName, factoryPublicId, factoryName, customSpecs, quantity,
+        }));
+        const data = await apiClient.post<Billing>("/orders/checkout-cart", { cartItems: items });
         return { ok: true, ...data };
-      } catch (e: any) {
+      } catch (e) {
         if (e instanceof ProblemError) {
           return { ok: false, error: localizeProblem(e.problem) };
         }
@@ -75,5 +89,7 @@ export function CartProvider({ children }) {
 }
 
 export function useCart() {
-  return useContext(CartContext);
+  const context = useContext(CartContext);
+  if (!context) throw new Error("useCart must be used within a CartProvider");
+  return context;
 }
