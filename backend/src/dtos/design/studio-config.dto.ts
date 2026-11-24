@@ -36,9 +36,30 @@ const drawingLayerSchema = z.strictObject({
   zone: artworkZone,
   strokes: z.array(drawingStrokeSchema).max(32),
 });
+const cropSchema = z.strictObject({
+  x: z.number().min(0).lt(1),
+  y: z.number().min(0).lt(1),
+  width: z.number().positive().max(1),
+  height: z.number().positive().max(1),
+}).refine(rect => rect.x + rect.width <= 1 && rect.y + rect.height <= 1,
+  "O recorte deve estar dentro da imagem.");
+
+const imageLayerSchema = z.strictObject({
+  kind: z.literal("image"),
+  id: z.string().min(1).max(64),
+  assetId: z.uuidv4().transform(id => id.toLowerCase()),
+  zone: artworkZone,
+  x: z.number().min(-1).max(1),
+  y: z.number().min(-1).max(1),
+  size: z.number().min(0.25).max(1),
+  rotation: z.number().min(-30).max(30),
+  crop: cropSchema,
+});
+
 const artworkSchema = z.discriminatedUnion("version", [
   z.strictObject({ version: z.literal(1), layers: z.array(textLayerSchema).max(6) }),
   z.strictObject({ version: z.literal(2), layers: z.array(z.union([textLayerSchema, drawingLayerSchema])).max(6) }),
+  z.strictObject({ version: z.literal(3), layers: z.array(z.union([textLayerSchema, drawingLayerSchema, imageLayerSchema])).max(6) }),
 ]).refine(artwork => new Set(artwork.layers.map(layer => layer.id)).size === artwork.layers.length,
   "Camadas devem ter identificadores únicos.");
 

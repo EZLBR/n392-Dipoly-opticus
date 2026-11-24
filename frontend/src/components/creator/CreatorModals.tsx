@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useCreatorStudio } from "../../contexts/CreatorStudioContext";
 import { useAuth } from "../../contexts/AuthContext";
-import { localizeProblem, useTranslation } from "../../contexts/LanguageContext";
+import { useTranslation } from "../../contexts/LanguageContext";
 import { ProblemError } from "../../api/client";
+import { studioImageError } from "../../eyewear/private-images";
 
 interface SaveDesignModalProps {
   isOpen: boolean;
@@ -56,7 +57,7 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }: SaveDesignMo
       onOpenDesigns?.();
     } catch (error) {
       setError(
-        error instanceof ProblemError ? localizeProblem(error.problem, language)
+        error instanceof ProblemError ? studioImageError(error, language)
           : t("studio-save-unable-to-confirm-the-save-please"),
       );
     } finally {

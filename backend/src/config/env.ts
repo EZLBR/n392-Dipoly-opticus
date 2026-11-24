@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { readSmtpConfig } from "../utils/mailTransport.js";
 
 dotenv.config();
 
@@ -117,6 +118,8 @@ export const env = Object.freeze({
   ),
   ABACATE_TOKEN: readAbacateToken(process.env.ABACATE_TOKEN, nodeEnv),
   WEBHOOK_SECRET: readWebhookSecret(process.env.WEBHOOK_SECRET, nodeEnv),
+  // Falha cedo com SMTP parcial ou inválido; sem nenhuma variável, o modo é resolvido aqui.
+  SMTP_MODE: readSmtpConfig({ ...process.env, NODE_ENV: nodeEnv }).kind,
 });
 
 /**
