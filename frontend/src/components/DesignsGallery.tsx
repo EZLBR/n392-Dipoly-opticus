@@ -21,9 +21,8 @@ export default function DesignsGallery({ setView }: { setView: (view: string) =>
   // Guest-created local drafts remain usable; authenticated remote designs keep the login gate.
   const visibleDesigns = session ? designs : designs.filter(design => design.syncStatus === "local");
 
-  const handleOpenDesign = (index: number) => {
-    localStorage.setItem("opticus_active_design", String(index));
-    localStorage.setItem("opticus_active_design_id", String(designs[index].id));
+  const handleOpenDesign = (design: SavedDesign) => {
+    localStorage.setItem("opticus_active_design_id", design.id);
     localStorage.removeItem("opticus_active_product");
     setView("create");
   };
@@ -47,7 +46,6 @@ export default function DesignsGallery({ setView }: { setView: (view: string) =>
     const cartItem = {
       id: design.id || `design-${Date.now()}`,
       productName: design.name || t("designs-custom"),
-      factoryId: "factory-demo",
       factoryName: "Demo Factory",
       total: price,
       customSpecs: {
@@ -135,7 +133,7 @@ export default function DesignsGallery({ setView }: { setView: (view: string) =>
                     {design.syncStatus === "local" && <p style={{ fontSize: 12 }}>{t("designs-saved-on-this-device-not-synced")}</p>}
 
                     <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "10px" }}>
-                      <button className="btn" style={{ width: "100%", justifyContent: "center" }} onClick={() => handleOpenDesign(index)}>
+                      <button className="btn" style={{ width: "100%", justifyContent: "center" }} onClick={() => handleOpenDesign(design)}>
                         <Edit size={14} style={{ marginRight: "6px" }} /> {t("designs-edit")}
                       </button>
                       {hasUnapprovedCustomization(config) && <p style={{ fontSize: 12 }}>

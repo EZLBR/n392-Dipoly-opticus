@@ -59,6 +59,14 @@ Variável pública do frontend:
 VITE_API_URL=http://localhost:5000/api
 ```
 
+### Teste ponta a ponta de designs e pedidos
+
+Com as dependências dos dois pacotes instaladas, rode `npx playwright install chromium`
+em `frontend`. Defina `OPTICUS_E2E_DATABASE_URL` com um banco PostgreSQL local
+dedicado e terminado em `_test`. Depois rode `npm run test:e2e` em `frontend`.
+O teste usa uma API real, aplica as migrations, prepara dados de exemplo,
+cria uma conta de teste e confirma um pagamento simulado.
+
 ### Studio: textos na armação
 
 Abra o Studio e selecione **04 — Arte**. É possível adicionar até seis textos

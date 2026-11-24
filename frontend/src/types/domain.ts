@@ -3,7 +3,6 @@ import type { Role } from "../routes/access";
 
 export interface User {
   publicId: string;
-  id?: string | number;
   name: string;
   email: string;
   role: Role;
@@ -62,7 +61,6 @@ export interface CustomSpecs extends Partial<EyewearConfig> {
 export interface CartItem {
   id: string;
   productName: string;
-  factoryId?: string;
   factoryPublicId?: string;
   factoryName?: string;
   total: number | string;

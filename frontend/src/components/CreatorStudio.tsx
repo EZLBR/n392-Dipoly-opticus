@@ -51,7 +51,6 @@ function CreatorStudioInner({ setView, onOpenDesigns }: CreatorStudioProps) {
         label(config.frontModel, language) +
         " · " +
         label(config.frameMaterial, language),
-      factoryId: "factory-demo",
       factoryName: "Demo Factory",
       total: calculateBasePrice(config),
       quantity: 1,
