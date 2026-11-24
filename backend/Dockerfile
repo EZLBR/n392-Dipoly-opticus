@@ -49,13 +49,15 @@ COPY package.json package-lock.json ./
 # OPCIONAL do @prisma/client — o lockfile a marca como `devOptional`, e
 # `--omit=dev` sozinho a instala mesmo assim. Omitir os opcionais tira a
 # CLI e o motor de migrations da imagem final (49 MB → 18 MB de
-# node_modules). O único outro opcional da árvore é o pg-cloudflare, que
-# só serve em Cloudflare Workers.
+# node_modules). Os binários opcionais do Sharp são copiados do estágio
+# deps, que usa a mesma plataforma Alpine do runtime.
 #
 # --ignore-scripts: o postinstall do projeto chama `prisma generate`, e o
 # schema não existe neste estágio. O client já gerado, com o motor nativo,
 # é copiado do estágio de build.
 RUN npm ci --omit=dev --omit=optional --ignore-scripts
+COPY --from=deps /app/node_modules/@img ./node_modules/@img
+RUN node -e "require('sharp')"
 
 # ── migrate ──────────────────────────────────────────────────
 # Migrations são um passo próprio do deploy, nunca executado no boot da
@@ -71,12 +73,14 @@ CMD ["npx", "prisma", "migrate", "deploy"]
 # ── runtime ──────────────────────────────────────────────────
 FROM base AS runtime
 ENV NODE_ENV=production \
-    PORT=5000
+    PORT=5000 \
+    STUDIO_ASSET_DIR=/app/.studio-assets
 
 COPY package.json ./
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/dist ./dist
+RUN mkdir -m 700 /app/.studio-assets && chown node:node /app/.studio-assets
 
 # Os arquivos pertencem ao root e o processo roda como `node`: a aplicação
 # lê o próprio código, mas não consegue reescrevê-lo se for comprometida.

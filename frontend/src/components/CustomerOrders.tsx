@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import { isPublicId } from "../utils/publicId";
 import { apiClient, ProblemError } from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
 import { useTranslation } from "../contexts/LanguageContext";
@@ -206,6 +207,7 @@ export default function CustomerOrders() {
       {sessionLoading ? <p role="status">{t("orders-loading")}</p>
         : !session || !token ? <p><Link to="/login">{t("orders-sign-in")}</Link></p>
         : session.role !== "client" ? <p>{t("orders-forbidden")}</p>
+        : publicId !== undefined && !isPublicId(publicId) ? <p role="alert">{t("orders-not-found")}</p>
         : <OrderView key={JSON.stringify([token, publicId, page])} token={token} publicId={publicId} page={page} />}
     </section>
   );

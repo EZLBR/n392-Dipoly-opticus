@@ -1,22 +1,24 @@
 import React, { useState } from "react";
+import type { Order } from "../types/domain";
 import { useAuth } from "../contexts/AuthContext";
 import { useOrder } from "../contexts/OrderContext";
 import { roleKey, useTranslation } from "../contexts/LanguageContext";
 import { label } from "../eyewear/config";
-import { ShoppingBag, Users, Building, ShieldCheck, DollarSign, Clock, Info, CheckCircle, ChevronRight, Settings } from "lucide-react";
+import { nextStatuses } from "../utils/orderStatus";
+import { ShoppingBag, Users, Building, ShieldCheck, DollarSign, Clock, Info, ChevronRight, Settings } from "lucide-react";
 import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 // ID-02: a API identifica pedidos só pelo publicId (UUID). O painel mostra
 // um número curto derivado dele, em vez do id sequencial que deixou de vir.
 const orderNumber = (order: { publicId?: string }) => String(order.publicId ?? "").slice(0, 8).toUpperCase();
 
-const CURRENCY_RATES = {
+const CURRENCY_RATES: Readonly<Record<string, { rate: number; symbol: string }>> = {
   USD: { rate: 1, symbol: "$" },
   BRL: { rate: 5.15, symbol: "R$" },
   EUR: { rate: 0.92, symbol: "€" }
 };
 
-const STATUS_COLORS = {
+const STATUS_COLORS: Readonly<Record<string, string>> = {
   "Queued": "#eab308",
   "In production": "#3b82f6",
   "Delivered": "#22c55e",
@@ -29,7 +31,7 @@ const STATUS_KEYS = new Map([
 ]);
 const statusLabel = (status: string, t: (key: string) => string) => t(STATUS_KEYS.get(status) ?? "dash-status-unknown");
 
-const filterOrdersByTime = (orders, timeRange) => {
+const filterOrdersByTime = (orders: Order[], timeRange: string) => {
   if (timeRange === "total") return orders;
   const now = new Date();
   const todayStr = now.toISOString().split("T")[0]; // YYYY-MM-DD
@@ -50,7 +52,7 @@ const filterOrdersByTime = (orders, timeRange) => {
   });
 };
 
-const getDeliveryStatus = (createdAtStr, status, t: (key: string) => string) => {
+const getDeliveryStatus = (createdAtStr: Order["createdAt"], status: string, t: (key: string) => string) => {
   if (status === "Delivered") return { color: "#22c55e", label: statusLabel(status, t) };
   if (status === "Cancelled") return { color: "#ef4444", label: statusLabel(status, t) };
   if (!createdAtStr) return { color: "#6b7280", label: t("dash-unknown-date") };
@@ -66,10 +68,23 @@ const getDeliveryStatus = (createdAtStr, status, t: (key: string) => string) => 
   return { color: "#ef4444", label: t("dash-overdue") };
 };
 
-const OrderContextMenu = ({ menu, onClose, onUpdateStatus, onViewDetails }) => {
+type OrderMenu = { x: number; y: number; order: Order };
+
+interface OrderContextMenuProps {
+  menu: OrderMenu | null;
+  /** FEAT-03: o menu oferece só as transições aceitas para este papel. */
+  role: string;
+  onClose: () => void;
+  /** CONC-02: `version` é a versão do pedido mostrada na tela. */
+  onUpdateStatus: (publicId: string, status: string, version?: number) => void;
+  onViewDetails: (order: Order) => void;
+}
+
+const OrderContextMenu = ({ menu, role, onClose, onUpdateStatus, onViewDetails }: OrderContextMenuProps) => {
   const { t } = useTranslation();
   if (!menu) return null;
-  const statuses = ["Queued", "In production", "Delivered"];
+  // FEAT-03: só as transições que o servidor aceita para este papel.
+  const statuses = nextStatuses(menu.order.status, role);
 
   // Calcula se o menu vai vazar a tela para baixo (assumindo altura ~200px)
   const isTooLow = menu.y > window.innerHeight - 200;
@@ -93,9 +108,12 @@ const OrderContextMenu = ({ menu, onClose, onUpdateStatus, onViewDetails }) => {
           <Info size={14} /> {t("dash-view-details")}
         </button>
         <div style={{ padding: "8px 12px", fontSize: "11px", color: "var(--color-hint)", textTransform: "uppercase", marginTop: "4px" }}>{t("dash-change-status")}</div>
+        {statuses.length === 0 && (
+          <p style={{ padding: "4px 12px", margin: 0, fontSize: "12px", color: "var(--color-hint)" }}>{t("dash-no-status-change")}</p>
+        )}
         {statuses.map(s => (
-          <button key={s} className="menu-btn hoverable-row" onClick={() => { onUpdateStatus(menu.order.publicId, s); onClose(); }} style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "8px 12px", background: "none", border: "none", color: s === menu.order.status ? "var(--primary-accent)" : "var(--text-color)", cursor: "pointer", borderRadius: "6px", textAlign: "left" }}>
-            {s === menu.order.status ? <CheckCircle size={14} /> : <ChevronRight size={14} />} {statusLabel(s, t)}
+          <button key={s} className="menu-btn hoverable-row" onClick={() => { onUpdateStatus(menu.order.publicId, s, menu.order.version); onClose(); }} style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "8px 12px", background: "none", border: "none", color: "var(--text-color)", cursor: "pointer", borderRadius: "6px", textAlign: "left" }}>
+            <ChevronRight size={14} /> {statusLabel(s, t)}
           </button>
         ))}
       </div>
@@ -103,7 +121,7 @@ const OrderContextMenu = ({ menu, onClose, onUpdateStatus, onViewDetails }) => {
   );
 };
 
-const OrderDetailsModal = ({ order, onClose }) => {
+const OrderDetailsModal = ({ order, onClose }: { order: Order | null; onClose: () => void }) => {
   const { t, language } = useTranslation();
   if (!order) return null;
   const specs = order.customSpecs || {};
@@ -152,8 +170,8 @@ export function FactoryDashboard() {
 
   const [timeRange, setTimeRange] = useState("total");
   const [currency, setCurrency] = useState("USD");
-  const [contextMenu, setContextMenu] = useState(null);
-  const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
+  const [contextMenu, setContextMenu] = useState<OrderMenu | null>(null);
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState<Order | null>(null);
   const [orderError, setOrderError] = useState("");
 
   if (!session || session.role !== "factory") {
@@ -165,13 +183,13 @@ export function FactoryDashboard() {
   const allFactoryOrders = orders.filter((o) => o.factoryPublicId && o.factoryPublicId === session.publicId);
   const factoryOrders = filterOrdersByTime(allFactoryOrders, timeRange);
 
-  const handleStatusChange = async (orderId, newStatus) => {
+  const handleStatusChange = async (orderId: string, newStatus: string, version?: number) => {
     setOrderError("");
-    const result = await updateOrderStatus(orderId, newStatus);
-    if (!result.ok) setOrderError(result.error);
+    const result = await updateOrderStatus(orderId, newStatus, version);
+    if (result.ok === false) setOrderError(result.error);
   };
 
-  const handleContextMenu = (e, order) => {
+  const handleContextMenu = (e: React.MouseEvent<HTMLTableRowElement>, order: Order) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, order });
   };
@@ -182,9 +200,9 @@ export function FactoryDashboard() {
   const avgTicket = totalOrders > 0 ? (totalRevenue / totalOrders).toFixed(2) : 0;
 
   // 2. Calculate Pie Chart (Status Distribution)
-  const statusCount = { Queued: 0, "In production": 0, Delivered: 0, "Pending Payment": 0 };
+  const statusCount: Record<string, number> = { Queued: 0, "In production": 0, Delivered: 0, "Pending Payment": 0 };
   factoryOrders.forEach((o) => {
-    if (statusCount[o.status] !== undefined) statusCount[o.status]++;
+    if (Object.hasOwn(statusCount, o.status)) statusCount[o.status]++;
   });
   const pieData = Object.keys(statusCount).map((key) => ({
     name: statusLabel(key, t),
@@ -194,7 +212,7 @@ export function FactoryDashboard() {
   const COLORS = ["#eab308", "#3b82f6", "#22c55e", "#ef4444"];
 
   // 3. Calculate Area Chart (Revenue over time)
-  const dateMap = {};
+  const dateMap: Record<string, number> = Object.create(null);
   factoryOrders.forEach(o => {
     const d = o.createdAt ? o.createdAt.split("T")[0] : t("dash-recent");
     if (!dateMap[d]) dateMap[d] = 0;
@@ -375,7 +393,7 @@ export function FactoryDashboard() {
         </table>
       </section>
 
-      <OrderContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} onUpdateStatus={handleStatusChange} onViewDetails={setSelectedOrderDetails} />
+      <OrderContextMenu menu={contextMenu} role={session.role} onClose={() => setContextMenu(null)} onUpdateStatus={handleStatusChange} onViewDetails={setSelectedOrderDetails} />
       <OrderDetailsModal order={selectedOrderDetails} onClose={() => setSelectedOrderDetails(null)} />
     </div>
   );
@@ -388,8 +406,8 @@ export function StaffDashboard() {
 
   const [timeRange, setTimeRange] = useState("total");
   const [currency, setCurrency] = useState("USD");
-  const [contextMenu, setContextMenu] = useState(null);
-  const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
+  const [contextMenu, setContextMenu] = useState<OrderMenu | null>(null);
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState<Order | null>(null);
   const [orderError, setOrderError] = useState("");
 
   if (!session || session.role !== "staff") {
@@ -400,13 +418,13 @@ export function StaffDashboard() {
 
   const orders = filterOrdersByTime(allStaffOrders, timeRange);
 
-  const handleStatusChange = async (orderId, newStatus) => {
+  const handleStatusChange = async (orderId: string, newStatus: string, version?: number) => {
     setOrderError("");
-    const result = await updateOrderStatus(orderId, newStatus);
-    if (!result.ok) setOrderError(result.error);
+    const result = await updateOrderStatus(orderId, newStatus, version);
+    if (result.ok === false) setOrderError(result.error);
   };
 
-  const handleContextMenu = (e, order) => {
+  const handleContextMenu = (e: React.MouseEvent<HTMLTableRowElement>, order: Order) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, order });
   };
@@ -418,9 +436,9 @@ export function StaffDashboard() {
   // Analytics Calculations
   const totalRevenue = orders.reduce((sum, order) => sum + (Number(order.total) * rate), 0);
 
-  const statusCount = { Queued: 0, "In production": 0, Delivered: 0, "Pending Payment": 0 };
+  const statusCount: Record<string, number> = { Queued: 0, "In production": 0, Delivered: 0, "Pending Payment": 0 };
   orders.forEach((o) => {
-    if (statusCount[o.status] !== undefined) statusCount[o.status]++;
+    if (Object.hasOwn(statusCount, o.status)) statusCount[o.status]++;
   });
 
   const pieData = Object.keys(statusCount).map((key) => ({
@@ -429,7 +447,7 @@ export function StaffDashboard() {
     value: statusCount[key]
   })).filter(d => d.value > 0);
 
-  const factoryMap = {};
+  const factoryMap: Record<string, number> = Object.create(null);
   orders.forEach((o) => {
     const fname = o.factoryName || t("dash-unknown-factory");
     if (!factoryMap[fname]) factoryMap[fname] = 0;
@@ -718,7 +736,7 @@ export function StaffDashboard() {
         </section>
       </div>
 
-      <OrderContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} onUpdateStatus={handleStatusChange} onViewDetails={setSelectedOrderDetails} />
+      <OrderContextMenu menu={contextMenu} role={session.role} onClose={() => setContextMenu(null)} onUpdateStatus={handleStatusChange} onViewDetails={setSelectedOrderDetails} />
       <OrderDetailsModal order={selectedOrderDetails} onClose={() => setSelectedOrderDetails(null)} />
     </div>
   );

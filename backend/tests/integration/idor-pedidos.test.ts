@@ -156,7 +156,7 @@ describe("pedidos — autorização de objeto (TEST-02)", () => {
       const res = await request(app)
         .put(`/api/orders/${pedido.publicId}/status`)
         .set(...comToken(fabricaA.token))
-        .send({ status: "In production", factoryPublicId: fabricaB.publicId, factory_id: fabricaB.id });
+        .send({ status: "In production", version: pedido.version, factoryPublicId: fabricaB.publicId, factory_id: fabricaB.id });
 
       expect(res.status).toBe(200);
       expect((await lerPedido(pedido.publicId))?.factoryId).toBe(fabricaA.id);
@@ -172,7 +172,7 @@ describe("pedidos — autorização de objeto (TEST-02)", () => {
       const res = await request(app)
         .put(`/api/orders/${pedido.publicId}/status`)
         .set(...comToken(fabricaB.token))
-        .send({ status: "Delivered", factoryId: fabricaB.id });
+        .send({ status: "Delivered", version: pedido.version, factoryId: fabricaB.id });
 
       esperarProblema(res, 404, "not-found");
       expect(await lerPedido(pedido.publicId)).toEqual(antes);

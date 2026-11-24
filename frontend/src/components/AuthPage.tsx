@@ -4,10 +4,11 @@ import { Lock } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useTranslation } from "../contexts/LanguageContext";
 import { loginRedirectTarget } from "../routes/access";
+import { beginGoogleSignIn, googleErrorKey, readGoogleCallback } from "../api/googleSignIn";
 
 export default function AuthPage() {
-  const { login, signup } = useAuth();
-  const { t } = useTranslation();
+  const { login, signup, loginWithGoogle } = useAuth();
+  const { t, language } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   // Rota privada que o visitante tentou abrir (definida pelo RequireAuth).
@@ -15,6 +16,43 @@ export default function AuthPage() {
   const continueAfterAuth = (role: unknown) =>
     navigate(loginRedirectTarget(requestedPath, role), { replace: true });
   const [activeTab, setActiveTab] = useState("login");
+
+  const [googlePending, setGooglePending] = useState(false);
+  const [googleError, setGoogleError] = useState("");
+  const handledGoogleCallback = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (handledGoogleCallback.current === location.search) return;
+    const callback = readGoogleCallback(location.search);
+    if (!callback) return;
+    handledGoogleCallback.current = location.search;
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+    if (callback.status !== "ready") {
+      setGoogleError(t(callback.status === "cancelled" ? "auth-google-cancelled" : "auth-google-invalid"));
+      return;
+    }
+    setGooglePending(true);
+    void loginWithGoogle({ code: callback.code, nonce: callback.nonce, verifier: callback.verifier }).then(result => {
+      setGooglePending(false);
+      if (result.ok === true) {
+        navigate(loginRedirectTarget(callback.from, result.role), { replace: true });
+      } else {
+        setGoogleError(result.message);
+      }
+    });
+  }, [location.search, loginWithGoogle, navigate, t]);
+
+  const handleGoogleClick = async () => {
+    setGooglePending(true);
+    setGoogleError("");
+    try {
+      const target = await beginGoogleSignIn(language, requestedPath);
+      window.location.assign(target);
+    } catch (error) {
+      setGoogleError(t(googleErrorKey(error)));
+      setGooglePending(false);
+    }
+  };
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -30,7 +68,7 @@ export default function AuthPage() {
   const [signupError, setSignupError] = useState("");
   const [signupSuccess, setSignupSuccess] = useState("");
 
-  const handleLoginSubmit = async (e) => {
+  const handleLoginSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoginError("");
     setLoginLoading(true);
@@ -39,7 +77,7 @@ export default function AuthPage() {
       const result = await login(loginEmail, loginPassword);
       setLoginLoading(false);
 
-      if (result.ok) {
+      if (result.ok === true) {
         continueAfterAuth(result.role);
       } else {
         setLoginError(result.message || t("auth-login-invalid"));
@@ -50,7 +88,7 @@ export default function AuthPage() {
     }
   };
 
-  const handleSignupSubmit = async (e) => {
+  const handleSignupSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSignupError("");
     setSignupSuccess("");
@@ -74,7 +112,7 @@ export default function AuthPage() {
         password: signupPassword
       });
 
-      if (result.ok) {
+      if (result.ok === true) {
         setSignupSuccess(t("auth-signup-created"));
         setTimeout(() => continueAfterAuth(result.role), 500);
       } else {
@@ -164,13 +202,13 @@ export default function AuthPage() {
               />
             </div>
 
-            {loginError && <p style={{ color: "#ef4444", fontSize: "14px", margin: "0 0 16px 0" }}>{loginError}</p>}
+            {loginError && <p role="alert" style={{ color: "#ef4444", fontSize: "14px", margin: "0 0 16px 0" }}>{loginError}</p>}
 
             <button
               type="submit"
               className="save-btn"
               style={{ width: "100%", padding: "12px", fontSize: "14px", fontWeight: "600", marginBottom: "16px" }}
-              disabled={loginLoading}
+              disabled={loginLoading || googlePending}
             >
               {t(loginLoading ? "auth-entering" : "auth-enter")}
             </button>
@@ -184,7 +222,8 @@ export default function AuthPage() {
             <button
               type="button"
               className="btn"
-              onClick={() => alert(t("auth-google-unavailable"))}
+              onClick={handleGoogleClick}
+              disabled={googlePending || loginLoading}
               style={{ width: "100%", padding: "12px", fontSize: "14px", fontWeight: "600", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", background: "#fff", color: "#000", borderRadius: "6px" }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -193,8 +232,9 @@ export default function AuthPage() {
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
               </svg>
-              {t("auth-google")}
+              {t(googlePending ? "auth-google-loading" : "auth-google")}
             </button>
+            {googleError && <p role="alert">{googleError}</p>}
           </form>
         ) : (
           <form onSubmit={handleSignupSubmit}>

@@ -12,7 +12,32 @@ import { useAuth } from "./AuthContext";
 import { translate } from "./LanguageContext";
 import type { CameraView } from "../eyewear/EyewearViewer";
 
-function useStudioState(owner: string) {
+interface StudioContextValue {
+  config: EyewearConfig;
+  patchConfig: (patch: Partial<EyewearConfig>) => void;
+  drawingRedo: Map<string, DrawingStroke[]>;
+  setLayerRedo: (id: string, strokes: DrawingStroke[]) => void;
+  activeStep: number;
+  setActiveStep: React.Dispatch<React.SetStateAction<number>>;
+  tryOnMode: boolean;
+  setTryOnMode: React.Dispatch<React.SetStateAction<boolean>>;
+  environment: string;
+  setEnvironment: React.Dispatch<React.SetStateAction<string>>;
+  view: CameraView;
+  setCameraView: React.Dispatch<React.SetStateAction<CameraView>>;
+  autoRotate: boolean;
+  setAutoRotate: React.Dispatch<React.SetStateAction<boolean>>;
+  statusMessage: string;
+  showToast: (message: string) => void;
+  draftStatus: "saved" | "error";
+  designId?: string;
+  designName: string;
+  setDesignName: React.Dispatch<React.SetStateAction<string>>;
+  markSaved: (id: string) => void;
+  toggleLensTreatment: (treatment: string) => void;
+}
+
+function useStudioState(owner: string): StudioContextValue {
   const [initial] = useState(() => restoreStudio(localStorage));
   const [config, setConfig] = useState(initial.config);
   const [drawingRedo, setDrawingRedo] = useState(() => new Map<string, DrawingStroke[]>());
@@ -101,9 +126,7 @@ function useStudioState(owner: string) {
     toggleLensTreatment,
   };
 }
-const StudioContext = createContext<
-  ReturnType<typeof useStudioState> | undefined
->(undefined);
+const StudioContext = createContext<StudioContextValue | undefined>(undefined);
 export function CreatorStudioProvider({
   children,
 }: {

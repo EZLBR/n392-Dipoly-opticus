@@ -16,7 +16,7 @@ function mockApi(serverDesigns: unknown[] = []) {
     const path = new URL(String(url)).pathname;
     if (init.method === "POST") return json({ id: SERVER_ID }, 201);
     if (init.method === "PUT") return json({ id: path.split("/").pop() });
-    if (path.endsWith("/auth/me")) return json({ user: { id: "owner-a", name: "Ana", role: "client" } });
+    if (path.endsWith("/auth/me")) return json({ user: { publicId: "owner-a", name: "Ana", role: "client" } });
     if (path.endsWith("/designs")) return json({ designs: serverDesigns });
     return json({ users: [] });
   });
@@ -65,7 +65,7 @@ describe("saving a design uses the server's identity (BOLA-04)", () => {
     await act(async () => { await result.current.saveDesign({ id: "design-123", name: "Draft", model: "round", color: "#112233" }); });
 
     expect(writes(fetch)).toEqual([{ method: "POST", path: "/api/designs", body: expect.not.objectContaining({ id: expect.anything() }) }]);
-    const cached = JSON.parse(localStorage.getItem("opticus_designs")!);
+    const cached: { id: string; syncStatus: string }[] = JSON.parse(localStorage.getItem("opticus_designs")!);
     expect(cached.map(design => [design.id, design.syncStatus])).toEqual([[SERVER_ID, "synced"]]);
     expect(localStorage.getItem("opticus_active_design_id")).toBe(SERVER_ID);
   });

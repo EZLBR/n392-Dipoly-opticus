@@ -8,7 +8,7 @@ function TestComponent() {
   const { session, authWarning, clearAuthWarning, updateUser } = useAuth();
 
   const handleTest401 = async () => {
-    await apiFetch("http://localhost:5000/api/auth/users/99", {
+    await apiFetch("http://localhost:5000/api/auth/users/user-99", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "Updated" }),
@@ -16,7 +16,7 @@ function TestComponent() {
   };
 
   const handleTest403 = async () => {
-    await apiFetch("http://localhost:5000/api/auth/users/99", {
+    await apiFetch("http://localhost:5000/api/auth/users/user-99", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "Updated" }),
@@ -40,7 +40,7 @@ function TestComponent() {
 
       <button onClick={handleTest401}>Disparar 401</button>
       <button onClick={handleTest403}>Disparar 403</button>
-      <button onClick={() => updateUser("99", { name: "Via Context" })}>
+      <button onClick={() => updateUser("user-99", { name: "Via Context" })}>
         Disparar updateUser
       </button>
     </div>
@@ -77,12 +77,12 @@ describe("Épico 7 - Tratamento de 401 e 403 no Frontend", () => {
       const urlStr = String(url);
       // Mocks para inicialização bem-sucedida da sessão
       if (urlStr.includes("/auth/me")) {
-        return new Response(JSON.stringify({ user: { id: "1", name: "Maria", role: "client" } }), {
+        return new Response(JSON.stringify({ user: { publicId: "user-1", name: "Maria", role: "client" } }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
       }
-      if (urlStr.includes("/designs") || (urlStr.includes("/auth/users") && !urlStr.includes("/99"))) {
+      if (urlStr.includes("/designs") || (urlStr.includes("/auth/users") && !urlStr.includes("/user-99"))) {
         return new Response(JSON.stringify({ designs: [], users: [] }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -135,7 +135,7 @@ describe("Épico 7 - Tratamento de 401 e 403 no Frontend", () => {
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       if (String(url).includes("/auth/me")) {
-        return new Response(JSON.stringify({ user: { id: "2", name: "João", role: "client" } }), {
+        return new Response(JSON.stringify({ user: { publicId: "user-2", name: "João", role: "client" } }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
@@ -193,7 +193,7 @@ describe("Épico 7 - Tratamento de 401 e 403 no Frontend", () => {
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       if (String(url).includes("/auth/me")) {
-        return new Response(JSON.stringify({ user: { id: "3", name: "Ana", role: "client" } }), {
+        return new Response(JSON.stringify({ user: { publicId: "user-3", name: "Ana", role: "client" } }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });

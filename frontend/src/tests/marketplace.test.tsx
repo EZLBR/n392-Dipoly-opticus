@@ -37,7 +37,7 @@ const mount = () => {
   return navigate;
 };
 const response = (
-  produtos = [],
+  produtos: { publicId: string; nome: string; preco: number | string }[] = [],
   total = produtos.length,
   totalPages = produtos.length ? 1 : 0,
 ) => ({
