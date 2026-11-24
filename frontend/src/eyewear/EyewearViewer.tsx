@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -7,6 +7,9 @@ import { buildEyewear, type EyewearModel } from "./geometry";
 import { createMaterials } from "./materials";
 import { createArtworkRenderer } from "./artwork-renderer";
 import { translate } from "../contexts/LanguageContext";
+import { useAuth } from "../contexts/AuthContext";
+import { imageAssetIds } from "./artwork";
+import { useStudioImages } from "./private-images";
 
 export type CameraView = "perspective" | "front" | "side" | "left-side";
 interface Props {
@@ -27,9 +30,12 @@ export default function EyewearViewer({
   language = "pt",
 }: Props) {
   const t = (key: string) => translate(key, language === "pt" ? "pt" : "en");
+  const auth = useAuth();
+  const [imageAttempt, retryImages] = useState(0);
+  const { images, failed } = useStudioImages(imageAssetIds(config.artwork), auth?.sessionToken ?? undefined, imageAttempt);
   const host = useRef<HTMLDivElement>(null),
-    live = useRef({ config, environment, autoRotate });
-  live.current = { config, environment, autoRotate };
+    live = useRef({ config, environment, autoRotate, images });
+  live.current = { config, environment, autoRotate, images };
   const update = useRef<() => void>(() => {}),
     changeView = useRef<(v: CameraView) => void>(() => {});
   const keyboard = useRef<(key: string) => void>(() => {});
@@ -103,6 +109,7 @@ export default function EyewearViewer({
     const surfaces = createMaterials();
     const artwork = createArtworkRenderer();
     let artworkKey = "";
+    let lastImages: typeof images | undefined;
     let model: EyewearModel | undefined,
       currentKey = "",
       visible = true,
@@ -126,9 +133,10 @@ export default function EyewearViewer({
         artworkKey = "";
       }
       const nextArtworkKey = JSON.stringify(c.artwork);
-      if (artworkKey !== nextArtworkKey) {
-        artwork.update(model!, c);
+      if (artworkKey !== nextArtworkKey || lastImages !== live.current.images) {
+        artwork.update(model!, c, live.current.images);
         artworkKey = nextArtworkKey;
+        lastImages = live.current.images;
       }
       model!.setFold(c.templeOpen);
       surfaces.update(c, live.current.environment);
@@ -239,9 +247,9 @@ export default function EyewearViewer({
       renderer.domElement.remove();
     };
   }, [compact, attempt]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     update.current();
-  }, [config, environment]);
+  }, [config, environment, images]);
   useEffect(() => {
     changeView.current(view);
   }, [view]);
@@ -298,6 +306,15 @@ export default function EyewearViewer({
               </button>
             </>
           )}
+        </div>
+      )}
+      {status === "ready" && failed.size > 0 && (
+        <div role="status" style={{
+          position: "absolute", left: 8, bottom: 8, maxWidth: "calc(100% - 16px)",
+          padding: "6px 8px", background: "var(--card, #fff)", borderRadius: 6, fontSize: 12,
+        }}>
+          {t("studio-image-unavailable")}{" "}
+          <button type="button" onClick={() => retryImages(n => n + 1)}>{t("try-on-try-again")}</button>
         </div>
       )}
     </div>

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { ANONYMOUS_STUDIO_OWNER, STUDIO_OWNER_KEY, mergeSavedDesigns, migrateStudioIdentifiers, readJSON, switchStudioOwner } from "../eyewear/storage";
 import { apiClient, ProblemError, setAuthErrorHandler } from "../api/client";
+import { googleErrorKey } from "../api/googleSignIn";
 import { localizeProblem, translate } from "./LanguageContext";
 import { isPublicId } from "../utils/publicId";
 import type { AuthResult, DesignFields, SavedDesign, SignUpInput, User } from "../types/domain";
@@ -24,6 +25,7 @@ interface AuthContextValue {
   setAuthWarning: React.Dispatch<React.SetStateAction<string | null>>;
   login: (email: string, password: string) => Promise<AuthResult>;
   signup: (input: SignUpInput) => Promise<AuthResult>;
+  loginWithGoogle: (input: { code: string; verifier: string; nonce: string }) => Promise<AuthResult>;
   logout: () => void;
   saveDesign: (design: DesignFields & { id?: string | null }) => Promise<SavedDesign>;
   deleteDesign: (designId: string) => Promise<void>;
@@ -200,6 +202,18 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
     }
   };
 
+  const loginWithGoogle: AuthContextValue["loginWithGoogle"] = async (input) => {
+    const previousToken = localStorage.getItem("opticus_token");
+    try {
+      const response = await apiClient.post<{ user: User; token: string }>("/auth/google/exchange", input);
+      if (localStorage.getItem("opticus_token") !== previousToken) throw new Error("Session changed");
+      startSession(response.user, response.token);
+      return { ok: true, role: response.user.role };
+    } catch (error) {
+      return { ok: false, message: translate(googleErrorKey(error)) };
+    }
+  };
+
   const logout = endSession;
 
   const saveDesign = async (designData: DesignFields & { id?: string | null }): Promise<SavedDesign> => {
@@ -346,6 +360,7 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
       setAuthWarning,
       login,
       signup,
+      loginWithGoogle,
       logout,
       saveDesign,
       deleteDesign,

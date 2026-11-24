@@ -38,6 +38,11 @@ export class AuthService {
     return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
   }
 
+  static issueSession(user: Parameters<typeof toUserResponse>[0]): AuthResponseDTO {
+    const response = toUserResponse(user);
+    return { user: response, token: this.generateToken(response) };
+  }
+
   static async register(dto: RegisterDTO): Promise<AuthResponseDTO> {
     const { name, email, password } = dto;
 
@@ -60,10 +65,7 @@ export class AuthService {
       },
     });
 
-    const userResponse = toUserResponse(user);
-    const token = this.generateToken(userResponse);
-
-    return { user: userResponse, token };
+    return this.issueSession(user);
   }
 
   static async login(dto: LoginDTO): Promise<AuthResponseDTO> {
@@ -82,10 +84,7 @@ export class AuthService {
       throw new BadRequestProblem("Email ou senha incorretos.");
     }
 
-    const userResponse = toUserResponse(user);
-    const token = this.generateToken(userResponse);
-
-    return { user: userResponse, token };
+    return this.issueSession(user);
   }
 
   static async getProfile(publicId: string): Promise<UserResponseDTO> {

@@ -10,7 +10,7 @@ interface OrderContextValue {
   orders: Order[];
   setOrders: React.Dispatch<React.SetStateAction<Order[]>>;
   fetchBackendOrders: (token?: string | null) => Promise<OrderResult>;
-  updateOrderStatus: (publicId: string, status: string) => Promise<OrderResult>;
+  updateOrderStatus: (publicId: string, status: string, version?: number) => Promise<OrderResult>;
   createPaymentBilling: (orderPublicId: string) => Promise<BillingResult>;
 }
 
@@ -70,14 +70,21 @@ export function OrderProvider({ children }: React.PropsWithChildren) {
     }
   }, [isBackendConnected]);
 
-  const updateOrderStatus = async (publicId: string, newStatus: string): Promise<OrderResult> => {
+  // CONC-02: `version` é a versão do pedido que a tela mostrava ao decidir.
+  const updateOrderStatus = async (publicId: string, newStatus: string, version?: number): Promise<OrderResult> => {
     if (!isPublicId(publicId)) return { ok: false, error: translate("api-not-found") };
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        await apiClient.put(`/orders/${encodeURIComponent(publicId)}/status`, { status: newStatus }, { headers: { Authorization: `Bearer ${token}` } });
+        await apiClient.put(`/orders/${encodeURIComponent(publicId)}/status`, { status: newStatus, version }, { headers: { Authorization: `Bearer ${token}` } });
         return await fetchBackendOrders(token);
       } catch (e) {
+        // 409: a tela estava desatualizada. Recarrega a lista e pede para
+        // a pessoa conferir e decidir de novo; nada é aplicado localmente.
+        if (e instanceof ProblemError && e.status === 409) {
+          await fetchBackendOrders(token);
+          return { ok: false, error: translate("orders-version-conflict") };
+        }
         return orderFailure(e);
       }
     }

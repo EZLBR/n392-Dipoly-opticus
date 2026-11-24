@@ -57,7 +57,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
   describe("POST /api/payments/create-billing", () => {
     it("usuário anônimo recebe 401", async () => {
       const cliente = await criarUsuario("client");
-      const pedido = await criarPedido({ dono: cliente });
+      const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
 
       const res = await request(app).post("/api/payments/create-billing").send({ orderPublicId: pedido.publicId });
 
@@ -66,7 +66,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
 
     it("dono cria a cobrança do próprio pedido", async () => {
       const cliente = await criarUsuario("client");
-      const pedido = await criarPedido({ dono: cliente });
+      const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
 
       const res = await request(app)
         .post("/api/payments/create-billing")
@@ -79,7 +79,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
     it("outro usuário não consegue alterar o pedido alheio", async () => {
       const vitima = await criarUsuario("client");
       const atacante = await criarUsuario("client");
-      const pedido = await criarPedido({ dono: vitima });
+      const pedido = await criarPedido({ dono: vitima, status: "Pending_Payment" });
       const antes = await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } });
 
       const res = await request(app)
@@ -97,7 +97,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
       async (papel) => {
         const vitima = await criarUsuario("client");
         const atacante = await criarUsuario(papel);
-        const pedido = await criarPedido({ dono: vitima });
+        const pedido = await criarPedido({ dono: vitima, status: "Pending_Payment" });
 
         const alheio = await request(app)
           .post("/api/payments/create-billing")
@@ -119,7 +119,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
     it("staff continua criando cobrança para pedido de outro usuário", async () => {
       const cliente = await criarUsuario("client");
       const staff = await criarUsuario("staff");
-      const pedido = await criarPedido({ dono: cliente });
+      const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
 
       const res = await request(app)
         .post("/api/payments/create-billing")
@@ -141,7 +141,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
 
       it("dono cria a cobrança simulada e o vínculo fica gravado no próprio pedido", async () => {
         const cliente = await criarUsuario("client");
-        const pedido = await criarPedido({ dono: cliente });
+        const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
 
         const res = await request(app)
           .post("/api/payments/create-billing")
@@ -158,7 +158,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
       it("a fábrica do pedido não é dona dele: 404 e nada muda no banco", async () => {
         const dono = await criarUsuario("client");
         const fabrica = await criarUsuario("factory");
-        const pedido = await criarPedido({ dono, fabrica });
+        const pedido = await criarPedido({ dono, fabrica, status: "Pending_Payment" });
         const antes = await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } });
 
         const res = await request(app)

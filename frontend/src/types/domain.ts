@@ -78,6 +78,8 @@ export interface Order {
   total: number | string;
   customSpecs?: CustomSpecs;
   createdAt?: string | null;
+  /** CONC-02: versão lida, enviada de volta na troca de status. */
+  version?: number;
 }
 
 export interface Billing {
