@@ -26,6 +26,7 @@ import type { Express } from "express";
 import prisma from "../../src/config/prisma.js";
 import { app as appDeTeste } from "../setup/app.js";
 import { criarUsuario, comToken, type UsuarioDeTeste } from "../helpers/auth.js";
+import { comFalhaNoBanco } from "../helpers/falhaNoBanco.js";
 import { criarPedido } from "../helpers/orders.js";
 import { esperarProblema } from "../helpers/problem.js";
 
@@ -199,13 +200,17 @@ describe("checkout-cart em produção (SEC-06)", () => {
     const fabrica = await criarUsuario("factory");
     const cliente = await criarUsuario("client");
     simularGateway("aprovando");
-    const { app, pool } = await appEmProducao("aprovando");
-    falharNoBanco(pool, "UPDATE pedidos SET abacate_billing_id");
+    const { app } = await appEmProducao("aprovando");
 
-    const res = await request(app)
-      .post("/api/orders/checkout-cart")
-      .set(...comToken(cliente.token))
-      .send(carrinho(fabrica));
+    // DB-03: o vínculo é gravado pelo Prisma, então a falha vem do próprio
+    // banco, na única escrita em pedidos depois da criação: a associação.
+    const res = await comFalhaNoBanco(
+      { tabela: "pedidos", evento: "UPDATE", sqlstate: "XX000", mensagem: "falha de gravação simulada" },
+      () => request(app)
+        .post("/api/orders/checkout-cart")
+        .set(...comToken(cliente.token))
+        .send(carrinho(fabrica)),
+    );
 
     expect(res.status).toBe(500);
     expect(res.body.type).not.toMatch(/service-unavailable/);

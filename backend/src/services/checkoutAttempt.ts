@@ -1,5 +1,5 @@
-import { emTransacao } from "../config/transacao.js";
-import { usuarioPorPublicId } from "../utils/identidade.js";
+import { PedidoStatus, type Prisma } from "@prisma/client";
+import prisma from "../config/prisma.js";
 
 type ResultadoLocal =
   | { tipo: "associar"; billingId: string; simulado: boolean }
@@ -19,18 +19,24 @@ export async function concluirTentativaDeCheckout(opcoes: {
 }): Promise<boolean> {
   const { pedidoIds, usuarioPublicId, billingIdProvisorio, resultado } = opcoes;
   if (!pedidoIds.length) return false;
+
+  const guarda = {
+    id: { in: pedidoIds },
+    usuario: { publicId: usuarioPublicId },
+    abacateBillingId: billingIdProvisorio,
+    status: PedidoStatus.Pending_Payment,
+    pagamentoSimulado: false,
+  } satisfies Prisma.PedidoWhereInput;
+
   try {
-    await emTransacao(async (client) => {
-      const guarda = `WHERE id = ANY($1::int[]) AND usuario_id = ${usuarioPorPublicId("$2")}
-                        AND abacate_billing_id = $3 AND status = 'Pending Payment'
-                        AND pagamento_simulado = false`;
-      const parametros = [pedidoIds, usuarioPublicId, billingIdProvisorio];
-      const { rowCount } = resultado.tipo === "desfazer"
-        ? await client.query(`DELETE FROM pedidos ${guarda}`, parametros)
-        : await client.query(
-            `UPDATE pedidos SET abacate_billing_id = $4, pagamento_simulado = $5 ${guarda}`,
-            [...parametros, resultado.billingId, resultado.simulado]);
-      if (rowCount !== pedidoIds.length) throw new TentativaAlterada();
+    await prisma.$transaction(async (tx) => {
+      const { count } = resultado.tipo === "desfazer"
+        ? await tx.pedido.deleteMany({ where: guarda })
+        : await tx.pedido.updateMany({
+            where: guarda,
+            data: { abacateBillingId: resultado.billingId, pagamentoSimulado: resultado.simulado },
+          });
+      if (count !== pedidoIds.length) throw new TentativaAlterada();
     });
     return true;
   } catch (err) {
