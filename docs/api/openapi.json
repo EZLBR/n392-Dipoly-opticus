@@ -1,0 +1,2427 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Opticus API",
+    "version": "2.0.0",
+    "description": "API REST da plataforma Opticus. Erros em application/problem+json (RFC 9457), com traceId também no cabeçalho X-Request-Id. Recursos expostos por publicId (UUID). Um recurso de outro usuário responde 404, como um inexistente."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000",
+      "description": "Desenvolvimento local"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Sistema"
+    },
+    {
+      "name": "Autenticação"
+    },
+    {
+      "name": "Usuários"
+    },
+    {
+      "name": "Catálogo"
+    },
+    {
+      "name": "Estoque"
+    },
+    {
+      "name": "Studio"
+    },
+    {
+      "name": "Pedidos"
+    },
+    {
+      "name": "Pagamentos"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Sistema"
+        ],
+        "summary": "Saúde do serviço",
+        "responses": {
+          "200": {
+            "description": "Serviço no ar."
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Cadastrar cliente",
+        "responses": {
+          "201": {
+            "description": "Conta criada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
+        },
+        "description": "Sempre cria papel client. ",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "description": "Letras e números, até 72 bytes."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Entrar",
+        "responses": {
+          "200": {
+            "description": "Autenticado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          }
+        },
+        "description": "Mensagem idêntica para e-mail inexistente e senha errada. 15 tentativas a cada 15 minutos por IP. ",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/google/start": {
+      "post": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Iniciar login com Google (PKCE)",
+        "responses": {
+          "200": {
+            "description": "URL de autorização."
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "state",
+                  "nonce",
+                  "challenge"
+                ],
+                "properties": {
+                  "state": {
+                    "type": "string"
+                  },
+                  "nonce": {
+                    "type": "string"
+                  },
+                  "challenge": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/google/exchange": {
+      "post": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Concluir login com Google",
+        "responses": {
+          "200": {
+            "description": "Autenticado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "description": "Contas novas começam como client. Conflito de e-mail exige a autenticação já existente. ",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "code",
+                  "verifier",
+                  "nonce"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "verifier": {
+                    "type": "string"
+                  },
+                  "nonce": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Perfil do usuário logado",
+        "responses": {
+          "200": {
+            "description": "Perfil.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "$ref": "#/components/schemas/User"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          }
+        }
+      }
+    },
+    "/api/auth/users": {
+      "get": {
+        "tags": [
+          "Usuários"
+        ],
+        "summary": "Listar usuários",
+        "responses": {
+          "200": {
+            "description": "Página de usuários."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          }
+        },
+        "description": "Papéis: staff.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Página.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Itens por página.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ]
+      }
+    },
+    "/api/auth/users/{publicId}": {
+      "put": {
+        "tags": [
+          "Usuários"
+        ],
+        "summary": "Atualizar usuário",
+        "responses": {
+          "200": {
+            "description": "Usuário atualizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
+        },
+        "description": "Papéis: staff.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "client",
+                      "factory",
+                      "staff"
+                    ]
+                  },
+                  "factoryName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "description": "Identificador público (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Usuários"
+        ],
+        "summary": "Remover usuário",
+        "responses": {
+          "200": {
+            "description": "Removido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        },
+        "description": "Remove em cascata os pedidos e designs do usuário. Papéis: staff.",
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "description": "Identificador público (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "tags": [
+          "Catálogo"
+        ],
+        "summary": "Listar categorias",
+        "responses": {
+          "200": {
+            "description": "Categorias por nome, com total_produtos (ativos) como texto.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Category"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      },
+      "post": {
+        "tags": [
+          "Catálogo"
+        ],
+        "summary": "Criar categoria",
+        "responses": {
+          "201": {
+            "description": "Criada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Category"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
+        },
+        "description": "Papéis: staff.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/categories/{publicId}": {
+      "get": {
+        "tags": [
+          "Catálogo"
+        ],
+        "summary": "Detalhe da categoria",
+        "responses": {
+          "200": {
+            "description": "Categoria com os produtos ativos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Category"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "description": "Identificador público (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Catálogo"
+        ],
+        "summary": "Atualizar categoria",
+        "responses": {
+          "200": {
+            "description": "Atualizada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Category"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
+        },
+        "description": "Papéis: staff.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryInput"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "description": "Identificador público (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Catálogo"
+        ],
+        "summary": "Remover categoria",
+        "responses": {
+          "200": {
+            "description": "Removida.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
+        },
+        "description": "409 enquanto algum produto ativo usar a categoria. Papéis: staff.",
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "description": "Identificador público (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/products": {
+      "get": {
+        "tags": [
+          "Catálogo"
+        ],
+        "summary": "Listar produtos ativos",
+        "responses": {
+          "200": {
+            "description": "Página de produtos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "produtos": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Product"
+                      }
+                    },
+                    "total": {
+                      "type": "string"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "totalPages": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "name": "categoriaPublicId",
+            "in": "query",
+            "required": false,
+            "description": "Filtra pela categoria.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "description": "Busca literal no nome e na descrição, sem diferenciar maiúsculas.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Página.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Itens por página.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Catálogo"
+        ],
+        "summary": "Cadastrar produto",
+        "responses": {
+          "201": {
+            "description": "Criado, com estoque zerado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          }
+        },
+        "description": "Papéis: staff.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/products/{publicId}": {
+      "get": {
+        "tags": [
+          "Catálogo"
+        ],
+        "summary": "Detalhe do produto",
+        "responses": {
+          "200": {
+            "description": "Produto, inclusive inativo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "description": "Identificador público (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Catálogo"
+        ],
+        "summary": "Atualizar produto",
+        "responses": {
+          "200": {
+            "description": "Atualizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        },
+        "description": "Papéis: staff.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductInput"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "description": "Identificador público (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Catálogo"
+        ],
+        "summary": "Desativar produto",
+        "responses": {
+          "200": {
+            "description": "Desativado (exclusão lógica).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        },
+        "description": "Papéis: staff.",
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "description": "Identificador público (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/stock": {
+      "get": {
+        "tags": [
+          "Estoque"
+        ],
+        "summary": "Listar estoque",
+        "responses": {
+          "200": {
+            "description": "Estoque dos produtos ativos, da menor para a maior quantidade."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          }
+        },
+        "description": "Papéis: staff, factory.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Página.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Itens por página.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ]
+      }
+    },
+    "/api/stock/alerts": {
+      "get": {
+        "tags": [
+          "Estoque"
+        ],
+        "summary": "Alertas de estoque",
+        "responses": {
+          "200": {
+            "description": "Itens no mínimo ou abaixo, do maior déficit."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          }
+        },
+        "description": "Papéis: staff, factory."
+      }
+    },
+    "/api/stock/product/{produtoPublicId}": {
+      "get": {
+        "tags": [
+          "Estoque"
+        ],
+        "summary": "Estoque de um produto",
+        "responses": {
+          "200": {
+            "description": "Item de estoque."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        },
+        "description": "Papéis: staff, factory.",
+        "parameters": [
+          {
+            "name": "produtoPublicId",
+            "in": "path",
+            "required": true,
+            "description": "Identificador público (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Estoque"
+        ],
+        "summary": "Ajustar estoque",
+        "responses": {
+          "200": {
+            "description": "Item atualizado, com version e atualizado_em novos."
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
+        },
+        "description": "Atômico: a baixa nunca deixa o estoque negativo (409). Papéis: staff.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockUpdate"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "produtoPublicId",
+            "in": "path",
+            "required": true,
+            "description": "Identificador público (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/designs": {
+      "get": {
+        "tags": [
+          "Studio"
+        ],
+        "summary": "Listar meus designs",
+        "responses": {
+          "200": {
+            "description": "Designs do usuário, do mais recente."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Studio"
+        ],
+        "summary": "Salvar design",
+        "responses": {
+          "201": {
+            "description": "Criado; o id é gerado pelo servidor."
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Design"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/designs/{id}": {
+      "put": {
+        "tags": [
+          "Studio"
+        ],
+        "summary": "Atualizar design",
+        "responses": {
+          "200": {
+            "description": "Atualizado."
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
+        },
+        "description": "Design de outro usuário responde 404, como um inexistente. ",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Design"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Id do design (UUID gerado pelo servidor).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Studio"
+        ],
+        "summary": "Excluir design",
+        "responses": {
+          "200": {
+            "description": "Excluído."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Id do design.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/studio/assets": {
+      "get": {
+        "tags": [
+          "Studio"
+        ],
+        "summary": "Minha biblioteca de imagens",
+        "responses": {
+          "200": {
+            "description": "Imagens prontas do usuário.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "assets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/StudioAsset"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          }
+        },
+        "description": "Papéis: client, staff."
+      },
+      "post": {
+        "tags": [
+          "Studio"
+        ],
+        "summary": "Enviar imagem",
+        "responses": {
+          "201": {
+            "description": "Imagem convertida para WebP, sem metadados.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "asset": {
+                      "$ref": "#/components/schemas/StudioAsset"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem415"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "description": "PNG, JPEG ou WebP estáticos, até 5 MiB e 4096 × 4096. Até 20 imagens e 100 MiB por usuário. Papéis: client, staff.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/assets/{id}/content": {
+      "get": {
+        "tags": [
+          "Studio"
+        ],
+        "summary": "Baixar imagem",
+        "responses": {
+          "200": {
+            "description": "Imagem WebP.",
+            "content": {
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "description": "Papéis: client, staff.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Id da imagem.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/studio/assets/{id}": {
+      "delete": {
+        "tags": [
+          "Studio"
+        ],
+        "summary": "Excluir imagem",
+        "responses": {
+          "204": {
+            "description": "Excluída."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "description": "409 se a imagem estiver vinculada a um design salvo. Papéis: client, staff.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Id da imagem.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/orders": {
+      "get": {
+        "tags": [
+          "Pedidos"
+        ],
+        "summary": "Listar pedidos",
+        "responses": {
+          "200": {
+            "description": "Cliente vê os próprios, fábrica os atribuídos, staff todos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "orders": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Order"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Pedidos"
+        ],
+        "summary": "Criar pedido",
+        "responses": {
+          "201": {
+            "description": "Criado com status Pending Payment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          }
+        },
+        "description": "Nome e e-mail do cliente vêm do token; o total é calculado no servidor. ",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderItemInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/checkout-cart": {
+      "post": {
+        "tags": [
+          "Pedidos"
+        ],
+        "summary": "Checkout do carrinho",
+        "responses": {
+          "201": {
+            "description": "Pedidos criados numa transação, com a cobrança Pix."
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "cartItems"
+                ],
+                "properties": {
+                  "cartItems": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/components/schemas/OrderItemInput"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/mine": {
+      "get": {
+        "tags": [
+          "Pedidos"
+        ],
+        "summary": "Meu histórico de pedidos",
+        "responses": {
+          "200": {
+            "description": "Página de pedidos do cliente."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          }
+        },
+        "description": "Papéis: client.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Página.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Itens por página.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ]
+      }
+    },
+    "/api/orders/mine/{publicId}": {
+      "get": {
+        "tags": [
+          "Pedidos"
+        ],
+        "summary": "Detalhe de um pedido meu",
+        "responses": {
+          "200": {
+            "description": "Pedido com o histórico de status."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        },
+        "description": "Papéis: client.",
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "description": "Identificador público (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/orders/{publicId}/status": {
+      "put": {
+        "tags": [
+          "Pedidos"
+        ],
+        "summary": "Trocar o status",
+        "responses": {
+          "200": {
+            "description": "Status trocado; o cliente é avisado por e-mail."
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
+        },
+        "description": "Só as transições aceitas para o papel (FEAT-03). 409 se a versão lida estiver desatualizada (CONC-02). Papéis: factory (do pedido), staff.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status",
+                  "version"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "Pending Payment",
+                      "Queued",
+                      "In production",
+                      "Delivered",
+                      "Cancelled"
+                    ]
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "description": "Identificador público (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/payments": {
+      "get": {
+        "tags": [
+          "Pagamentos"
+        ],
+        "summary": "Listar pagamentos",
+        "responses": {
+          "200": {
+            "description": "Página de pagamentos."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          }
+        },
+        "description": "Papéis: staff.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Página.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Itens por página.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ]
+      }
+    },
+    "/api/payments/create-billing": {
+      "post": {
+        "tags": [
+          "Pagamentos"
+        ],
+        "summary": "Gerar cobrança Pix",
+        "responses": {
+          "200": {
+            "description": "Cobrança criada."
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "description": "Papéis: dono do pedido, staff.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "orderPublicId"
+                ],
+                "properties": {
+                  "orderPublicId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/payments/webhook": {
+      "post": {
+        "tags": [
+          "Pagamentos"
+        ],
+        "summary": "Webhook do gateway",
+        "responses": {
+          "200": {
+            "description": "Recebido."
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          }
+        },
+        "description": "Chamado pelo AbacatePay. Exige o segredo privado e a assinatura HMAC-SHA256 do corpo. ",
+        "security": [],
+        "parameters": [
+          {
+            "name": "webhookSecret",
+            "in": "query",
+            "required": false,
+            "description": "Segredo privado do webhook.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/payments/simulated-checkout": {
+      "get": {
+        "tags": [
+          "Pagamentos"
+        ],
+        "summary": "Página do checkout simulado",
+        "responses": {
+          "200": {
+            "description": "Página HTML.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        },
+        "description": "Somente fora de produção. Exige login do dono da cobrança. ",
+        "parameters": [
+          {
+            "name": "billingId",
+            "in": "query",
+            "required": false,
+            "description": "Cobrança.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/payments/confirm-simulated-payment": {
+      "post": {
+        "tags": [
+          "Pagamentos"
+        ],
+        "summary": "Confirmar pagamento simulado",
+        "responses": {
+          "200": {
+            "description": "Pedidos movidos para Queued."
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        },
+        "description": "Somente fora de produção. Exige login do dono da cobrança. ",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "billingId"
+                ],
+                "properties": {
+                  "billingId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "description": "RFC 9457 (application/problem+json).",
+        "required": [
+          "type",
+          "title",
+          "status"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "traceId": {
+            "type": "string"
+          },
+          "invalidParams": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "publicId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "client",
+              "factory",
+              "staff"
+            ]
+          },
+          "factoryName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "AuthResponse": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "JWT, válido por 7 dias."
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "totalItems": {
+            "type": "integer"
+          },
+          "totalPages": {
+            "type": "integer"
+          }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "publicId": {
+            "type": "string"
+          },
+          "nome": {
+            "type": "string"
+          },
+          "descricao": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "criado_em": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "CategoryInput": {
+        "type": "object",
+        "required": [
+          "nome"
+        ],
+        "properties": {
+          "nome": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "descricao": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Product": {
+        "type": "object",
+        "properties": {
+          "publicId": {
+            "type": "string"
+          },
+          "nome": {
+            "type": "string"
+          },
+          "descricao": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preco": {
+            "type": "string",
+            "description": "DECIMAL com duas casas, como texto (\"199.90\")."
+          },
+          "categoriaPublicId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "categoria_nome": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "imagem_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ativo": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "criado_em": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "estoque_quantidade": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "estoque_minimo": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "ProductInput": {
+        "type": "object",
+        "required": [
+          "nome",
+          "preco"
+        ],
+        "properties": {
+          "nome": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "descricao": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preco": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^\\s*\\d+(\\.\\d+)?\\s*$"
+              }
+            ],
+            "description": "Entre 0,01 e 99.999.999,99. Booleano, vazio e null são recusados."
+          },
+          "categoriaPublicId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "imagem_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          },
+          "ativo": {
+            "type": "boolean",
+            "description": "Só no PUT. Omitido, o produto mantém o estado atual."
+          }
+        }
+      },
+      "StockUpdate": {
+        "type": "object",
+        "required": [
+          "quantidade",
+          "operacao"
+        ],
+        "properties": {
+          "quantidade": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "estoque_minimo": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "operacao": {
+            "type": "string",
+            "enum": [
+              "set",
+              "add",
+              "subtract"
+            ]
+          }
+        }
+      },
+      "Design": {
+        "type": "object",
+        "required": [
+          "name",
+          "model",
+          "color"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "is_sunglasses": {
+            "type": "boolean"
+          },
+          "anti_reflective": {
+            "type": "boolean"
+          },
+          "temple_style": {
+            "type": "string"
+          },
+          "top_bar": {
+            "type": "boolean"
+          },
+          "bridge_style": {
+            "type": "string"
+          },
+          "frame_profile": {
+            "type": "string"
+          },
+          "temple_open": {
+            "type": "number"
+          },
+          "published": {
+            "type": "boolean"
+          },
+          "config": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Documento do Studio (versões 1 a 3 da arte)."
+          }
+        }
+      },
+      "CustomSpecs": {
+        "type": "object",
+        "required": [
+          "isSunglasses",
+          "frameProfile",
+          "frameMaterial",
+          "lensMaterial",
+          "lensTreatments"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "isSunglasses": {
+            "type": "boolean"
+          },
+          "frameProfile": {
+            "type": "string"
+          },
+          "frameMaterial": {
+            "type": "string"
+          },
+          "lensMaterial": {
+            "type": "string"
+          },
+          "lensTreatments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "description": "O preço é calculado no servidor a partir destas especificações."
+      },
+      "OrderItemInput": {
+        "type": "object",
+        "required": [
+          "productName",
+          "factoryName",
+          "customSpecs"
+        ],
+        "properties": {
+          "productName": {
+            "type": "string"
+          },
+          "factoryPublicId": {
+            "type": "string"
+          },
+          "factoryName": {
+            "type": "string"
+          },
+          "customSpecs": {
+            "$ref": "#/components/schemas/CustomSpecs"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "publicId": {
+            "type": "string"
+          },
+          "customerName": {
+            "type": "string"
+          },
+          "productName": {
+            "type": "string"
+          },
+          "factoryName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "factoryPublicId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Pending Payment",
+              "Queued",
+              "In production",
+              "Delivered",
+              "Cancelled"
+            ]
+          },
+          "total": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "description": "CONC-02: enviada de volta na troca de status."
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "StudioAsset": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "mediaType": {
+            "type": "string",
+            "const": "image/webp"
+          },
+          "inUse": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "responses": {
+      "Problem400": {
+        "description": "Entrada inválida.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem401": {
+        "description": "Sem token ou token inválido.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem403": {
+        "description": "Papel sem permissão.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem404": {
+        "description": "Não encontrado (ou não pertence ao usuário).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem409": {
+        "description": "Conflito de estado.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem413": {
+        "description": "Arquivo grande demais.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem415": {
+        "description": "Formato não suportado.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem429": {
+        "description": "Limite de requisições.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem503": {
+        "description": "Serviço indisponível.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    }
+  }
+}

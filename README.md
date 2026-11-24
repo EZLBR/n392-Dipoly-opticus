@@ -172,6 +172,17 @@ npx prisma db seed
 
 Consulte [backend/.env.example](backend/.env.example) para configurar PostgreSQL, JWT, CORS e integrações.
 
+O `npm run dev` usa o `tsx`, que compila arquivo por arquivo. Por isso o `tsconfig` liga
+`isolatedModules`: reexportar um tipo como valor (`export { UmTipo }`) passa a ser erro no
+typecheck, em vez de quebrar a API só na hora de subir. Use `export type { ... }` para tipos.
+
+### Documentação da API
+
+A especificação OpenAPI 3.1 está em [docs/api/openapi.json](docs/api/openapi.json). Abra no
+[Swagger Editor](https://editor.swagger.io/) para navegar pelas rotas. As convenções (erros,
+datas, status do pedido, trava otimista) estão em [docs/api/README.md](docs/api/README.md).
+Um teste da suíte garante que a especificação lista exatamente as rotas do código.
+
 ### Login com Google
 
 Crie um cliente OAuth 2.0 do tipo **Aplicativo da Web** na [Google Cloud](https://developers.google.com/identity/protocols/oauth2/web-server).

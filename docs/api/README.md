@@ -1,5 +1,17 @@
 # Convenções da API
 
+## Especificação OpenAPI
+
+A especificação completa da API está em [`openapi.json`](openapi.json) (OpenAPI 3.1): rotas,
+papéis, corpos de entrada, respostas e erros. Para navegar por ela, abra o arquivo no
+[Swagger Editor](https://editor.swagger.io/) ou em qualquer visualizador de OpenAPI.
+
+O teste `backend/tests/unit/contracts/openapi.test.ts` compara a especificação com as rotas
+registradas no código. Uma rota nova sem documentação, ou uma rota documentada que não existe
+mais, faz a suíte falhar.
+
+## Erros
+
 Respostas de erro da nova API devem usar `application/problem+json` conforme RFC 9457, com pelo menos `type`, `title`, `status` e, quando seguro, `detail` e `instance`.
 
 Regras iniciais:
@@ -21,6 +33,33 @@ Exemplo de forma, não de implementação:
   "traceId": "01J..."
 }
 ```
+
+## Entradas recusadas antes do controller
+
+- **Byte NUL (U+0000):** `%00` na URL ou `"\u0000"` em qualquer campo do corpo, inclusive
+  aninhado, responde **400**. O PostgreSQL não aceita esse caractere em texto, e antes a
+  consulta falhava com 500.
+
+## Datas
+
+Colunas `TIMESTAMP` (sem fuso) são lidas como **UTC** tanto pelo Prisma quanto pelo driver `pg`
+(`backend/src/config/pgTypes.ts`). Antes, fora do Docker, os endpoints ainda em `pg` mostravam
+a data no fuso do processo (3 horas a mais em `America/Sao_Paulo`) e discordavam dos já
+migrados para o Prisma.
+
+## Produtos
+
+- `preco` aceita número ou texto numérico (`199.9`, `"199.90"`), entre 0,01 e 99.999.999,99.
+  Booleano, texto vazio, `null` e vírgula decimal respondem **400** (antes, `true` gravava
+  R$ 1,00 e `""` virava 0).
+- `PUT /api/products/:publicId` **sem** o campo `ativo` mantém o estado atual. Para reativar
+  um produto desativado, envie `"ativo": true`.
+- A busca (`search`) é literal: `%` e `_` não funcionam como curinga.
+
+## Estoque
+
+`atualizado_em` passa a ser o momento da última escrita aceita. Uma escrita recusada pela
+guarda (baixa maior que o estoque, por exemplo) não o altera.
 
 ## Status do pedido (FEAT-03)
 

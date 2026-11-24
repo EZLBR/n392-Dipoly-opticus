@@ -209,6 +209,38 @@ describe("estoque — contrato da API (DB-03)", () => {
       expect(res.body.message).toBe("Estoque atualizado: 17 unidades disponíveis.");
     });
 
+    // Pendência da review do #136: antes, atualizado_em nunca mudava.
+    it("atualizado_em passa a ser o momento da última escrita", async () => {
+      const staff = await criarUsuario("staff");
+      const item = await criarItem({ nome: "Datado", quantidade: 10 });
+      const antigo = new Date("2026-01-01T00:00:00Z");
+      await prisma.estoque.update({ where: { produtoId: item.id }, data: { atualizadoEm: antigo } });
+
+      const antes = Date.now();
+      const res = await request(app).put(rotaProduto(item.publicId)).set(...comToken(staff.token))
+        .send({ quantidade: 1, operacao: "subtract" });
+
+      expect(res.status).toBe(200);
+      const atualizado = new Date(res.body.estoque.atualizado_em).getTime();
+      expect(atualizado).toBeGreaterThanOrEqual(antes - 1000);
+      const gravado = await prisma.estoque.findUniqueOrThrow({ where: { produtoId: item.id } });
+      expect(gravado.atualizadoEm!.getTime()).toBe(atualizado);
+    });
+
+    it("uma escrita recusada pela guarda não muda o atualizado_em", async () => {
+      const staff = await criarUsuario("staff");
+      const item = await criarItem({ nome: "Recusado", quantidade: 1 });
+      const antigo = new Date("2026-01-01T00:00:00Z");
+      await prisma.estoque.update({ where: { produtoId: item.id }, data: { atualizadoEm: antigo } });
+
+      const res = await request(app).put(rotaProduto(item.publicId)).set(...comToken(staff.token))
+        .send({ quantidade: 5, operacao: "subtract" });
+
+      expect(res.status).toBe(409);
+      const gravado = await prisma.estoque.findUniqueOrThrow({ where: { produtoId: item.id } });
+      expect(gravado.atualizadoEm).toEqual(antigo);
+    });
+
     it("avisa quando o estoque fica no mínimo ou abaixo", async () => {
       const staff = await criarUsuario("staff");
       const item = await criarItem({ nome: "Baixo", quantidade: 10 });

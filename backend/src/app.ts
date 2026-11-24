@@ -5,6 +5,7 @@ import helmet from "helmet";
 import { env } from "./config/env.js";
 import { NotFoundProblem, TooManyRequestsProblem } from "./errors/problem.js";
 import { problemErrorHandler } from "./middlewares/problemErrorHandler.js";
+import { rejectNulBytes } from "./middlewares/rejectNulBytes.js";
 import { requestId } from "./middlewares/requestId.js";
 import { setSessionValidator } from "./middlewares/routerGuard.js";
 import { sessionStillValid } from "./services/passwordReset.js";
@@ -117,6 +118,8 @@ export function createApp(options: AppOptions = {}) {
     }),
   );
   app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+  // O PostgreSQL não aceita U+0000: sem esta guarda, `%00` virava 500.
+  app.use(rejectNulBytes());
 
   if (requestLogging) {
     app.use((req, _res, next) => {
