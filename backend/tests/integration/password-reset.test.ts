@@ -117,3 +117,12 @@ it("a troca de senha derruba as sessões emitidas antes dela", async () => {
   const novo = await login(password).expect(200);
   await me(novo.body.token).expect(200);
 });
+
+it("conta apagada perde a sessão na hora, sem esperar o token expirar", async () => {
+  const me = (token: string) => request(app).get("/api/auth/me").set("Authorization", `Bearer ${token}`);
+  await me(sessionToken).expect(200);
+
+  await prisma.usuario.delete({ where: { email } });
+
+  esperarProblema(await me(sessionToken), 401, "unauthorized");
+});

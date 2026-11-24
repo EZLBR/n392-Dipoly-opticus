@@ -6,10 +6,18 @@ import logger from "../utils/logger.js";
 export function forgotPassword(req: Request, res: Response) {
   const { email } = req.body as ForgotPasswordDTO;
   const language = req.acceptsLanguages("en", "pt") === "pt" ? "pt" : "en";
+  const traceId = req.requestId;
   // A consulta e o SMTP ficam fora do caminho da resposta pública.
   res.once("finish", () => {
     void requestPasswordReset(email, language).catch((error: unknown) => {
-      logger.error({ errorType: error instanceof Error ? error.name : "Unknown" }, "[auth] falha na recuperação de senha");
+      logger.error(
+        {
+          traceId,
+          errorType: error instanceof Error ? error.name : "Unknown",
+          errorMessage: error instanceof Error ? error.message : String(error),
+        },
+        "[auth] falha na recuperação de senha",
+      );
     });
   });
   return res.status(202).end();

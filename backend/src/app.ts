@@ -7,8 +7,6 @@ import { NotFoundProblem, TooManyRequestsProblem } from "./errors/problem.js";
 import { problemErrorHandler } from "./middlewares/problemErrorHandler.js";
 import { rejectNulBytes } from "./middlewares/rejectNulBytes.js";
 import { requestId } from "./middlewares/requestId.js";
-import { setSessionValidator } from "./middlewares/routerGuard.js";
-import { sessionStillValid } from "./services/passwordReset.js";
 import authRoutes from "./routes/authRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import designRoutes from "./routes/designRoutes.js";
@@ -30,9 +28,6 @@ export function createApp(options: AppOptions = {}) {
     rateLimit: enableRateLimit = !isTest,
     requestLogging = !isTest,
   } = options;
-
-  // FEAT-01: o guard recusa tokens emitidos antes da última troca de senha.
-  setSessionValidator(sessionStillValid);
 
   const app = express();
   const allowedOrigins = [

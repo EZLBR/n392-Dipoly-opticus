@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import type { NextFunction, Request, Response } from "express";
 import { ForbiddenProblem, UnauthorizedProblem } from "../errors/problem.js";
 import "../config/env.js";
+import { sessionStillValid } from "../services/passwordReset.js";
 
 export type UserRole = "client" | "factory" | "staff" | string;
 
@@ -21,19 +22,6 @@ export interface RouterGuard {
 export interface IRouterGuard {
   canActivate(req: Request, res?: Response): boolean | Promise<boolean>;
   handle?(req: Request, res: Response, next: NextFunction): void | Promise<void> | unknown;
-}
-
-/**
- * Confere se a sessão de um token ainda vale (por exemplo, se a senha não foi
- * trocada depois da emissão). O `createApp` registra o validador; sem ele, o
- * guard só confere assinatura e validade do JWT, como nos testes unitários.
- */
-export type SessionValidator = (publicId: string, issuedAtSeconds: number | undefined) => Promise<boolean>;
-
-let sessionValidator: SessionValidator | undefined;
-
-export function setSessionValidator(validator: SessionValidator | undefined): void {
-  sessionValidator = validator;
 }
 
 export function getJwtSecret(): string {
@@ -115,10 +103,10 @@ export function routerGuard(
         next();
       };
 
-      if (!sessionValidator) return authorize();
-
-      // FEAT-01: tokens emitidos antes de uma troca de senha não valem mais.
-      return sessionValidator(decoded.publicId, decoded.iat).then(
+      // FEAT-01: tokens emitidos antes de uma troca de senha, ou de uma conta
+      // apagada, não valem mais. A checagem é fixa no guard (fail-closed): não
+      // depende de alguém registrar um validador.
+      return sessionStillValid(decoded.publicId, decoded.iat).then(
         valid => valid ? authorize() : next(new UnauthorizedProblem("Invalid or expired token.")),
         (error: unknown) => next(error),
       );

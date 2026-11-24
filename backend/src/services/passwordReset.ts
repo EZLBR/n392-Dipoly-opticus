@@ -59,7 +59,7 @@ export async function resetPassword(token: string, password: string): Promise<vo
 }
 
 /**
- * Validador de sessão do guard. O `iat` do JWT tem resolução de segundos, então
+ * Validador de sessão do guard. Conta apagada não tem sessão válida. O `iat` do JWT tem resolução de segundos, então
  * a comparação também é feita em segundos: um login logo após a troca, no mesmo
  * segundo, continua válido.
  */
@@ -68,7 +68,8 @@ export async function sessionStillValid(publicId: string, issuedAtSeconds: numbe
     where: { publicId },
     select: { sessoesValidasDesde: true },
   });
-  if (!user?.sessoesValidasDesde) return true;
+  if (!user) return false; // conta apagada: o token não identifica mais ninguém
+  if (!user.sessoesValidasDesde) return true;
   if (issuedAtSeconds === undefined) return false;
   return issuedAtSeconds >= Math.floor(user.sessoesValidasDesde.getTime() / 1000);
 }
