@@ -16,6 +16,7 @@ import * as productController from "../../../src/controllers/productController.j
 import * as stockController from "../../../src/controllers/stockController.js";
 import pool from "../../../src/config/db.js";
 import { AuthService } from "../../../src/services/authService.js";
+import { CategoryService } from "../../../src/services/categoryService.js";
 import { OrderService } from "../../../src/services/orderService.js";
 
 function mockResponse() {
@@ -35,7 +36,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
 
   describe("Critério de Aceite 1: Controllers lançam erros de domínio", () => {
     it("categoryController lança ConflictProblem se categoria já existe", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 } as any);
+      vi.spyOn(CategoryService, "create").mockRejectedValueOnce(new ConflictProblem("Já existe uma categoria com esse nome."));
       const req = { body: { nome: "Óculos de Sol", descricao: "Teste" } } as Request;
       const res = mockResponse();
 
@@ -43,7 +44,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("categoryController lança NotFoundProblem se categoria não for encontrada", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
+      vi.spyOn(CategoryService, "getByPublicId").mockRejectedValueOnce(new NotFoundProblem("Categoria não encontrada."));
       const req = { params: { publicId: "categoria-inexistente" } } as unknown as Request;
       const res = mockResponse();
 
@@ -176,9 +177,12 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("categoryController.createCategory retorna a categoria criada sem envelope success", async () => {
-      vi.spyOn(pool, "query")
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 } as any) // check existing
-        .mockResolvedValueOnce({ rows: [{ publicId: "categoria-10", nome: "Esportivo", descricao: "Leve" }], rowCount: 1 } as any); // insert ... RETURNING
+      vi.spyOn(CategoryService, "create").mockResolvedValueOnce({
+        publicId: "categoria-10",
+        nome: "Esportivo",
+        descricao: "Leve",
+        criado_em: new Date(),
+      });
 
       const req = { body: { nome: "Esportivo", descricao: "Leve" } } as Request;
       const res = mockResponse();
