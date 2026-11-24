@@ -17,7 +17,8 @@ export type SlugDeProblema =
   | "conflict"
   | "bad-request"
   | "validation"
-  | "service-unavailable";
+  | "service-unavailable"
+  | "internal-error";
 
 interface RespostaHttp {
   status: number;
