@@ -125,6 +125,8 @@ model OrderStatusHistory {
   @@map("order_status_history")
 }
 
+/// Reservada para a FEAT-04 (#48), que a remodela: veja docs/decisions/ADR-0004.
+/// Até lá, nenhum código lê nem grava esta tabela.
 model PedidoItem {
   id            Int     @id @default(autoincrement())
   pedidoId      Int     @map("pedido_id")
