@@ -106,7 +106,9 @@ export default function TryOnViewport() {
     let sceneKey = "";
     try {
       scene3d = createTryOnScene();
-    } catch {
+    } catch (error) {
+      // Sem WebGL (ou o contexto falhou): segue com o contorno 2D, mas avisa.
+      console.warn("[tryon] modelo 3D indisponível, usando o contorno 2D", error);
       scene3d = undefined;
     }
     const stop = () => {
