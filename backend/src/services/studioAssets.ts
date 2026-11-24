@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { PoolClient } from "pg";
+import type { Prisma } from "@prisma/client";
 import pool from "../config/db.js";
 import { emTransacao } from "../config/transacao.js";
 import { ServiceUnavailableProblem, UnauthorizedProblem } from "../errors/problem.js";
@@ -149,19 +149,20 @@ export async function cleanupStudioAssets() {
   }
 }
 
+/** Runs inside the design's Prisma transaction (DB-03), so a failed sync rolls the save back. */
 export async function syncDesignAssets(
-  client: PoolClient, owner: string, designId: string, config: SaveDesignDTO["config"],
+  tx: Prisma.TransactionClient, owner: string, designId: string, config: SaveDesignDTO["config"],
 ) {
   const layers = config?.artwork.version === 3
     ? config.artwork.layers.filter(layer => "kind" in layer && layer.kind === "image") : [];
   const ids = [...new Set(layers.map(layer => layer.assetId))];
   if (ids.length) {
     // The same row lock is used by deletion. A save either pins every asset or rolls back.
-    const { rows } = await client.query<Asset>(
-      `SELECT id, width, height, bytes FROM studio_assets
-       WHERE id = ANY($1::uuid[]) AND usuario_id = ${usuarioPorPublicId("$2")}
-         AND state = 'ready' ORDER BY id FOR UPDATE`, [ids, owner],
-    );
+    const rows = await tx.$queryRaw<Asset[]>`
+      SELECT id, width, height, bytes FROM studio_assets
+       WHERE id = ANY(${ids}::uuid[])
+         AND usuario_id = (SELECT u.id FROM usuarios u WHERE u."publicId" = ${owner})
+         AND state = 'ready' ORDER BY id FOR UPDATE`;
     if (rows.length !== ids.length) throw new StudioImageProblem("studio-image-not-found");
     const dimensions = new Map(rows.map(asset => [asset.id, asset]));
     for (const layer of layers) {
@@ -171,11 +172,11 @@ export async function syncDesignAssets(
       }
     }
   }
-  await client.query("DELETE FROM studio_design_assets WHERE design_id = $1 AND NOT (asset_id = ANY($2::uuid[]))", [designId, ids]);
+  await tx.studioDesignAsset.deleteMany({ where: { designId, assetId: { notIn: ids } } });
   if (ids.length) {
-    await client.query(
-      `INSERT INTO studio_design_assets (design_id, asset_id)
-       SELECT $1, unnest($2::uuid[]) ON CONFLICT DO NOTHING`, [designId, ids],
-    );
+    await tx.studioDesignAsset.createMany({
+      data: ids.map(assetId => ({ designId, assetId })),
+      skipDuplicates: true,
+    });
   }
 }
