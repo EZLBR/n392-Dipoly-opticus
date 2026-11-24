@@ -4,6 +4,7 @@ import { app } from "../setup/app.js";
 import { pool } from "../setup/db.js";
 import { criarUsuario } from "../helpers/auth.js";
 import { criarPedido } from "../helpers/orders.js";
+import { comFalhaNoBanco } from "../helpers/falhaNoBanco.js";
 import { criarCobranca, lerCobranca } from "../helpers/payments.js";
 import { assinarWebhook, eventoCheckoutPago, SEGREDO_WEBHOOK } from "../helpers/webhook.js";
 
@@ -56,4 +57,29 @@ it("não aprova checkout de status diferente de PAID", async () => {
   evento.data.checkout.status = "PENDING";
   expect((await enviar(JSON.stringify(evento))).status).toBe(200);
   expect(await lerCobranca(cobranca)).toEqual({ pedido: "Pending_Payment", pagamento: "pendente" });
+});
+
+const falhaNoCommit = { tabela: "pedidos", evento: "UPDATE", sqlstate: "XX000", mensagem: "falha no commit simulada", noCommit: true } as const;
+
+// O banco recusa no COMMIT, depois das duas escritas: nada fica aprovado
+// pela metade.
+it("falha no COMMIT: não aprova o pagamento sem o pedido", async () => {
+  const { cobranca, evento } = await cenario();
+
+  await comFalhaNoBanco(falhaNoCommit, () => enviar(JSON.stringify(evento)));
+
+  expect(await lerCobranca(cobranca)).toEqual({ pedido: "Pending_Payment", pagamento: "pendente" });
+});
+
+// DEFEITO CONHECIDO: o Prisma 5.22 resolve a transação interativa mesmo
+// quando o COMMIT falha (o banco desfaz tudo, mas a promise não rejeita).
+// O webhook responde 200 e o provedor não reenvia: a confirmação se perde.
+// Com o pg cru, a falha virava 500. Este teste passa enquanto o defeito
+// existir; quando a versão do Prisma corrigir, ele quebra e vira `it`.
+it.fails("falha no COMMIT deveria responder 5xx, para o provedor reenviar", async () => {
+  const { evento } = await cenario();
+
+  const res = await comFalhaNoBanco(falhaNoCommit, () => enviar(JSON.stringify(evento)));
+
+  expect(res.status).toBeGreaterThanOrEqual(500);
 });
