@@ -13,6 +13,7 @@
 import type { Request, Response } from "express";
 import { BadRequestProblem } from "../errors/problem.js";
 import { publicIdDoUsuario } from "../utils/identidade.js";
+import { origensDaRequisicao } from "../utils/origens.js";
 import { parsePagination } from "../utils/pagination.js";
 import { sendOrderStatusEmail } from "../utils/emailService.js";
 import { CheckoutService } from "../services/checkoutService.js";
@@ -98,13 +99,10 @@ export async function updateOrderStatus(req: Request, res: Response) {
 export async function checkoutCart(req: Request, res: Response) {
   const { cartItems } = req.body as CheckoutCartDTO;
 
-  const frontendOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `http://localhost:5173`);
-  const backendProto   = req.headers["x-forwarded-proto"] || req.protocol;
-
   const resultado = await CheckoutService.finalizarCarrinho({
     cliente:  clienteDoToken(req),
     cartItems,
-    origens:  { frontend: frontendOrigin, backend: `${backendProto}://${req.get("host")}` },
+    origens:  origensDaRequisicao(req),
     traceId:  req.requestId,
   });
 

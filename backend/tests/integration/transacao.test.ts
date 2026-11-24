@@ -7,11 +7,12 @@
 //   pool real da aplicação e simulam a falha do ROLLBACK numa conexão
 //   de verdade.
 //
-//   DB-03: o checkout passou para o Prisma, que devolve as próprias
-//   conexões. O caso de ponta a ponta usa a confirmação do pagamento
-//   simulado, que continua no emTransacao.
+//   DB-03: checkout e pagamentos passaram para o Prisma, que devolve as
+//   próprias conexões. O caso de ponta a ponta usa a exclusão de imagem
+//   do Studio, que continua no emTransacao.
 // ============================================================
 
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import request from "supertest";
 import type { PoolClient } from "pg";
@@ -20,8 +21,6 @@ import { emTransacao } from "../../src/config/transacao.js";
 import logger from "../../src/utils/logger.js";
 import { app } from "../setup/app.js";
 import { criarUsuario, comToken } from "../helpers/auth.js";
-import { criarPedido } from "../helpers/orders.js";
-import { criarCobranca } from "../helpers/payments.js";
 import { esperarProblema } from "../helpers/problem.js";
 
 const LIMITE_DO_POOL = 10;
@@ -119,29 +118,32 @@ describe("emTransacao (CONC-03)", () => {
   });
 });
 
-describe("POST /api/payments/confirm-simulated-payment com o ROLLBACK falhando (CONC-03)", () => {
+describe("DELETE /api/studio/assets/:id com o ROLLBACK falhando (CONC-03)", () => {
   it("mais falhas do que o tamanho do pool não esgotam as conexões", async () => {
     const cliente = await criarUsuario("client");
-    const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
-    const cobranca = await criarCobranca(pedido);
-    const confirmar = (billingId: string) => request(app)
-      .post("/api/payments/confirm-simulated-payment")
-      .set(...comToken(cliente.token))
-      .send({ billingId });
+    const imagem = randomUUID();
+    // Sem arquivo no volume: a limpeza tolera o ENOENT e apaga a linha.
+    await pool.query(
+      "INSERT INTO studio_assets (id, usuario_id, width, height, bytes, state) VALUES ($1, $2, 1, 1, 1, 'ready')",
+      [imagem, cliente.id],
+    );
+    const excluir = (id: string) => request(app)
+      .delete(`/api/studio/assets/${id}`)
+      .set(...comToken(cliente.token));
     const conexoes = quebrarRollback();
 
-    // A cobrança inexistente faz a transação lançar 404, a transação tenta o
+    // A imagem inexistente faz a transação lançar 404, a transação tenta o
     // ROLLBACK, e o ROLLBACK falha. O erro que chega ao cliente continua
     // sendo o original (404), não o do ROLLBACK.
     for (let tentativa = 0; tentativa < LIMITE_DO_POOL + 2; tentativa++) {
-      esperarProblema(await confirmar("bill-sim-inexistente"), 404, "not-found");
+      esperarProblema(await excluir(randomUUID()), 404, "studio-image-not-found");
     }
 
     expect(conexoes).toHaveLength(LIMITE_DO_POOL + 2);
     for (const conexao of conexoes) expect(conexao.release).toHaveBeenCalledTimes(1);
 
     vi.restoreAllMocks();
-    expect((await confirmar(cobranca.billingId)).status).toBe(200);
+    expect((await excluir(imagem)).status).toBe(204);
     expect(pool.totalCount).toBeLessThanOrEqual(LIMITE_DO_POOL);
   });
 });

@@ -56,7 +56,7 @@ function simularGateway(gateway: Gateway) {
   return chamada;
 }
 
-type Pool = { query: (...args: any[]) => any; connect: (...args: any[]) => any; end: () => Promise<void> };
+type Pool = { end: () => Promise<void> };
 const poolsDeProducao: Pool[] = [];
 
 async function carregarApp(opcoes: { producao: boolean; gateway: Gateway }) {
@@ -66,7 +66,8 @@ async function carregarApp(opcoes: { producao: boolean; gateway: Gateway }) {
   if (opcoes.producao) vi.stubEnv("NODE_ENV", "production");
   vi.resetModules();
   const { createApp } = await import("../../src/app.js");
-  // O pool desta instância do app, para simular falha de gravação nele.
+  // O pool pg desta instância do app, encerrado depois do teste. O Prisma
+  // reaproveita o cliente do processo de teste.
   const { default: pool } = await import("../../src/config/db.js");
   const { default: logger } = await import("../../src/utils/logger.js");
   poolsDeProducao.push(pool as unknown as Pool);
@@ -74,29 +75,9 @@ async function carregarApp(opcoes: { producao: boolean; gateway: Gateway }) {
   // Só os módulos carregados acima ficam em produção; o resto do processo
   // continua em modo de teste.
   if (opcoes.producao) vi.stubEnv("NODE_ENV", "test");
-  return { app: createApp({ requestLogging: false }) as Express, pool: pool as unknown as Pool, logger };
+  return { app: createApp({ requestLogging: false }) as Express, logger };
 }
 const appEmProducao = (gateway: Gateway) => carregarApp({ producao: true, gateway });
-
-/**
- * Faz falhar, nas transações do app (pool.connect() com promise), a
- * instrução que começa com `inicioDoSql`. O pool.query interno do pg usa
- * pool.connect(callback) e segue intacto.
- */
-function falharNoBanco(pool: Pool, inicioDoSql: string) {
-  const conectar = pool.connect.bind(pool);
-  vi.spyOn(pool, "connect").mockImplementation(((...args: unknown[]) => {
-    if (typeof args[0] === "function") return conectar(...args);
-    return conectar().then((conexao: { query: (...a: unknown[]) => unknown }) => {
-      const consultar = conexao.query.bind(conexao);
-      conexao.query = (...a: unknown[]) =>
-        String(a[0]).trimStart().startsWith(inicioDoSql)
-          ? Promise.reject(new Error("falha de gravação simulada"))
-          : consultar(...a);
-      return conexao;
-    });
-  }) as any);
-}
 
 // Válida antes e depois do SEC-05: `total` é ignorado quando o servidor
 // calcula o preço, e as opções de preço satisfazem a validação dele.
@@ -332,29 +313,6 @@ describe("checkout-cart em produção (SEC-06)", () => {
 });
 
 describe("create-billing em produção (SEC-06)", () => {
-  it("falha ao obter conexão depois de criar cobrança registra os dados de conciliação", async () => {
-    const cliente = await criarUsuario("client");
-    const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
-    const antes = await lerPedidoPorId(pedido.id);
-    simularGateway("aprovando");
-    const { app, pool, logger } = await appEmProducao("aprovando");
-    const erro = vi.spyOn(logger, "error").mockImplementation(() => undefined);
-    const conectar = pool.connect.bind(pool);
-    vi.spyOn(pool, "connect").mockImplementation(((...args: unknown[]) =>
-      typeof args[0] === "function"
-        ? conectar(...args)
-        : Promise.reject(new Error("pool indisponível após criação remota"))) as any);
-    const res = await request(app).post("/api/payments/create-billing")
-      .set(...comToken(cliente.token)).send({ orderPublicId: pedido.publicId });
-    expect(res.status).toBe(500);
-    expect(res.body.checkoutUrl).toBeUndefined();
-    expect(await lerPedidoPorId(pedido.id)).toEqual(antes);
-    expect(await pagamentosDoPedido(pedido.id)).toEqual([]);
-    expect(erro).toHaveBeenCalledWith(
-      expect.objectContaining({ billingId: "bill_real", pedidoId: pedido.id }),
-      expect.stringContaining("conciliar"),
-    );
-  });
   it.each<[Gateway, RegExp]>([
     ["ausente", NENHUMA_COBRANCA],
     ["recusando", NENHUMA_COBRANCA],
@@ -400,27 +358,37 @@ describe("create-billing em produção (SEC-06)", () => {
     ]);
   });
 
+  // DB-03: a cobrança é gravada pelo Prisma, então a falha vem do próprio
+  // banco. Na segunda escrita, o vínculo no pedido já aconteceu dentro da
+  // transação e precisa ser desfeito.
   it.each([
-    ["o vínculo no pedido", "UPDATE pedidos SET abacate_billing_id"],
-    ["o registro do pagamento", "INSERT INTO pagamentos"],
-  ])("gateway aprova e falha %s: 500 e nada é gravado (transação)", async (_caso, instrucao) => {
+    ["o vínculo no pedido", { tabela: "pedidos", evento: "UPDATE" }],
+    ["o registro do pagamento", { tabela: "pagamentos", evento: "INSERT" }],
+  ] as const)("gateway aprova e falha %s: 500, nada é gravado (transação) e a conciliação é registrada", async (_caso, alvo) => {
     const cliente = await criarUsuario("client");
     const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
     const antes = await lerPedidoPorId(pedido.id);
     simularGateway("aprovando");
-    const { app, pool } = await appEmProducao("aprovando");
-    falharNoBanco(pool, instrucao);
+    const { app, logger } = await appEmProducao("aprovando");
+    const erro = vi.spyOn(logger, "error").mockImplementation(() => undefined);
 
-    const res = await request(app)
-      .post("/api/payments/create-billing")
-      .set(...comToken(cliente.token))
-      .send({ orderPublicId: pedido.publicId });
+    const res = await comFalhaNoBanco(
+      { ...alvo, sqlstate: "XX000", mensagem: "falha de gravação simulada" },
+      () => request(app)
+        .post("/api/payments/create-billing")
+        .set(...comToken(cliente.token))
+        .send({ orderPublicId: pedido.publicId }),
+    );
 
     expect(res.status).toBe(500);
     expect(res.body.type).not.toMatch(/service-unavailable/);
     expect(res.body.checkoutUrl).toBeUndefined();
     expect(await lerPedidoPorId(pedido.id)).toEqual(antes);
     expect(await pagamentosDoPedido(pedido.id)).toEqual([]);
+    expect(erro).toHaveBeenCalledWith(
+      expect.objectContaining({ billingId: "bill_real", pedidoId: pedido.id }),
+      expect.stringContaining("conciliar"),
+    );
   });
 
   it("outra cobrança assume o pedido enquanto o gateway responde: 409 e o vínculo dela é mantido", async () => {
@@ -440,6 +408,49 @@ describe("create-billing em produção (SEC-06)", () => {
     esperarProblema(res, 409, "conflict");
     expect(res.body.checkoutUrl).toBeUndefined();
     expect((await lerPedidoPorId(pedido.id)).abacateBillingId).toBe("bill_outro");
+    expect(await pagamentosDoPedido(pedido.id)).toEqual([]);
+  });
+
+  // O billingId continua o lido (nulo): só a guarda de status segura.
+  it("o pedido é cancelado enquanto o gateway responde: 409 e nada é gravado", async () => {
+    const cliente = await criarUsuario("client");
+    const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
+    const { app } = await appEmProducao("aprovando");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      await prisma.pedido.update({ where: { id: pedido.id }, data: { status: "Cancelled" } });
+      return aprovacao("bill_real");
+    });
+
+    const res = await request(app)
+      .post("/api/payments/create-billing")
+      .set(...comToken(cliente.token))
+      .send({ orderPublicId: pedido.publicId });
+
+    esperarProblema(res, 409, "conflict");
+    expect(await lerPedidoPorId(pedido.id)).toEqual({ status: "Cancelled", abacateBillingId: null });
+    expect(await pagamentosDoPedido(pedido.id)).toEqual([]);
+  });
+
+  // As duas escritas passam e o banco recusa no COMMIT: só uma transação
+  // única desfaz o vínculo e o pagamento juntos. O status HTTP não é
+  // verificado aqui: o Prisma 5.22 não propaga a falha do COMMIT de uma
+  // transação interativa (ver webhook-provider.test.ts).
+  it("falha no COMMIT do vínculo: nem vínculo nem pagamento ficam gravados", async () => {
+    const cliente = await criarUsuario("client");
+    const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
+    const antes = await lerPedidoPorId(pedido.id);
+    simularGateway("aprovando");
+    const { app } = await appEmProducao("aprovando");
+
+    await comFalhaNoBanco(
+      { tabela: "pedidos", evento: "UPDATE", sqlstate: "XX000", mensagem: "falha no commit simulada", noCommit: true },
+      () => request(app)
+        .post("/api/payments/create-billing")
+        .set(...comToken(cliente.token))
+        .send({ orderPublicId: pedido.publicId }),
+    );
+
+    expect(await lerPedidoPorId(pedido.id)).toEqual(antes);
     expect(await pagamentosDoPedido(pedido.id)).toEqual([]);
   });
 });

@@ -1,31 +1,21 @@
 // ============================================================
-//   PAYMENT CONTROLLER
-//   Integração com AbacatePay + registro de pagamentos
-//   Migrado para PostgreSQL (pg, $1)
+//   PAYMENT CONTROLLER — AbacatePay e registro de pagamentos
+//
+//   DB-03: adapta o HTTP. A regra e o acesso ao banco ficam no
+//   PaymentService. Aqui ficam o que é do protocolo: a assinatura
+//   do webhook, o contrato do evento e a página do simulador.
 // ============================================================
 
-import pool from "../config/db.js";
-import { env, getAbacateToken, getWebhookSecret, isSimulatedPaymentGateway } from "../config/env.js";
-import { gerarBillingId } from "../utils/billingId.js";
-import { assinaturaWebhookValida, textoSecretoIgual } from "../services/webhookSignature.js";
-import {
-  PAGAMENTO_INDISPONIVEL,
-  PAGAMENTO_NAO_CONFIRMADO,
-  simuladorDePagamentoAtivo,
-} from "../config/pagamento.js";
-import { solicitarCobranca } from "../services/gatewayDePagamento.js";
 import type { Request, Response } from "express";
-import {
-  BadRequestProblem,
-  ConflictProblem,
-  NotFoundProblem,
-  ServiceUnavailableProblem,
-  UnauthorizedProblem,
-} from "../errors/problem.js";
-import { parsePagination } from "../utils/pagination.js";
-import { publicIdDoUsuario, usuarioPorPublicId } from "../utils/identidade.js";
+import { env, getWebhookSecret } from "../config/env.js";
+import type { CreateBillingDTO } from "../dtos/payment/payment.dto.js";
+import { BadRequestProblem, UnauthorizedProblem } from "../errors/problem.js";
+import { PaymentService } from "../services/paymentService.js";
+import { assinaturaWebhookValida, textoSecretoIgual } from "../services/webhookSignature.js";
+import { publicIdDoUsuario } from "../utils/identidade.js";
 import logger from "../utils/logger.js";
-import { emTransacao } from "../config/transacao.js";
+import { origensDaRequisicao } from "../utils/origens.js";
+import { parsePagination } from "../utils/pagination.js";
 
 // Security Helper
 const escapeHTML = (str: unknown) => {
@@ -37,26 +27,6 @@ const escapeHTML = (str: unknown) => {
     .replace(/'/g, "&#039;");
 };
 
-const PORT          = env.PORT;
-
-import type { CreateBillingDTO } from "../dtos/payment/payment.dto.js";
-
-/** Só as colunas de que a cobrança precisa: nada de `SELECT *`. */
-interface PedidoCobravel {
-  /** Interno: usado só nas escritas deste servidor, nunca na resposta. */
-  id: number;
-  publicId: string;
-  total: string;
-  product_name: string;
-  customer_name: string;
-  customer_email: string;
-  abacate_billing_id: string | null;
-  status: string | null;
-}
-
-/** FEAT-03: cobrança só para pedido que ainda aguarda pagamento. */
-const PEDIDO_NAO_COBRAVEL = "Só é possível gerar cobrança para um pedido que aguarda pagamento.";
-
 // ─────────────────────────────────────────────────────────
 //   CRIAR COBRANÇA (AbacatePay ou simulador)
 //   POST /api/payments/create-billing
@@ -64,150 +34,15 @@ const PEDIDO_NAO_COBRAVEL = "Só é possível gerar cobrança para um pedido que
 export async function createBilling(req: Request, res: Response) {
   const { orderPublicId } = req.body as CreateBillingDTO;
 
-  // BOLA-03: a posse é parte da própria consulta, e não uma comparação em
-  // memória depois de ler o pedido. Staff é a exceção explícita na cláusula.
-  // Pedido inexistente e pedido alheio caem no mesmo 404 (BOLA-02): 403 fica
-  // reservado à falta de papel RBAC, sem revelar a existência.
-  // ID-02: pedido e dono são resolvidos pelos publicIds na própria cláusula.
-  const escopo = [req.user!.role === "staff", publicIdDoUsuario(req)];
-
-  const { rows } = await pool.query<PedidoCobravel>(
-    `SELECT id, "publicId", total, product_name, customer_name, customer_email, abacate_billing_id, status
-       FROM pedidos
-      WHERE "publicId" = $1 AND ($2::boolean OR usuario_id = ${usuarioPorPublicId("$3")})`,
-    [orderPublicId, ...escopo]
-  );
-
-  if (rows.length === 0) {
-    throw new NotFoundProblem("Pedido não encontrado.");
-  }
-
-  const order = rows[0];
-
-  // FEAT-03: pedido pago, em produção, entregue ou cancelado não volta para
-  // Pending Payment nem ganha outra cobrança. A recusa vem antes do gateway,
-  // para não criar cobrança nenhuma. Quem chega aqui já enxerga o pedido,
-  // então o 409 não revela nada a terceiros.
-  if (order.status !== "Pending Payment") {
-    throw new ConflictProblem(PEDIDO_NAO_COBRAVEL);
-  }
-
-  const ABACATE_TOKEN = getAbacateToken();
-  const amountInCents   = Math.round(Number(order.total) * 100);
-  const isMockToken     = isSimulatedPaymentGateway();
-  const frontendOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `http://localhost:5173`);
-  const backendProto = req.headers['x-forwarded-proto'] || req.protocol;
-  const backendOrigin = `${backendProto}://${req.get("host")}`;
-
-  if (isMockToken) {
-    // SEC-06: em produção não há simulador. Sem gateway, não existe
-    // cobrança possível, e o pedido não é alterado.
-    if (!simuladorDePagamentoAtivo) {
-      throw new ServiceUnavailableProblem(PAGAMENTO_INDISPONIVEL);
-    }
-
-    const mockBillingId  = gerarBillingId("sim");
-
-    // A escrita repete o escopo e o status da leitura: a autorização e a
-    // máquina de estados valem para a mutação, e não só para o SELECT.
-    const { rowCount } = await pool.query(
-      `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true
-        WHERE id = $2 AND status = 'Pending Payment' AND ($3::boolean OR usuario_id = ${usuarioPorPublicId("$4")})`,
-      [mockBillingId, order.id, ...escopo]
-    );
-
-    // O pedido já foi visto acima: zero linhas significa que o status mudou
-    // nesse meio-tempo (o pagamento foi confirmado, por exemplo).
-    if (rowCount !== 1) {
-      throw new ConflictProblem(PEDIDO_NAO_COBRAVEL);
-    }
-
-    const mockCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${mockBillingId}&orderPublicId=${encodeURIComponent(order.publicId)}&returnTo=${encodeURIComponent(frontendOrigin)}`;
-
-    return res.json({ checkoutUrl: mockCheckoutUrl, isSimulated: true });
-  }
-
-  const cobranca = await solicitarCobranca(ABACATE_TOKEN!, {
-    products:      [{ externalId: order.publicId, name: order.product_name, quantity: 1, price: amountInCents }],
-    returnUrl:     `${frontendOrigin}/`,
-    completionUrl: `${frontendOrigin}/`,
-    customer:      { name: order.customer_name, email: order.customer_email, taxId: "00000000000" }
+  // A posse é resolvida na própria consulta, no service, a partir do token.
+  const resultado = await PaymentService.criarCobranca({
+    ator:    { publicId: publicIdDoUsuario(req), role: String(req.user!.role) },
+    orderPublicId,
+    origens: origensDaRequisicao(req),
+    traceId: req.requestId,
   });
 
-  if (cobranca.status === "criada") {
-    await registrarCobrancaNoPedido(req.requestId, order, cobranca.billingId);
-    return res.json({ checkoutUrl: cobranca.url, isSimulated: false });
-  }
-
-  logger.error(
-    { traceId: req.requestId, requestId: req.requestId, resultado: cobranca.status, motivo: cobranca.motivo, pedidoId: order.id },
-    "[AbacatePay] Falha ao criar cobrança no gateway",
-  );
-
-  // Com token real, a falha do gateway nunca cai no simulador, em nenhum
-  // ambiente (padrão §22). O pedido não é alterado, e resultado incerto não
-  // afirma que nada foi criado.
-  throw new ServiceUnavailableProblem(
-    cobranca.status === "incerta" ? PAGAMENTO_NAO_CONFIRMADO : PAGAMENTO_INDISPONIVEL
-  );
-}
-
-// ─────────────────────────────────────────────────────────
-//   HELPER INTERNO: Registra pagamento na tabela pagamentos
-// ─────────────────────────────────────────────────────────
-/**
- * Liga a cobrança criada no gateway ao pedido e registra o pagamento
- * pendente, numa transação só: um sem o outro deixaria o webhook sem ter
- * como confirmar o pagamento.
- *
- * O pedido só é alterado se ainda estiver com o billingId lido no início da
- * requisição. Se outra cobrança o assumiu enquanto o gateway respondia (um
- * checkout concluído, por exemplo), nada é gravado e a resposta é 409.
- *
- * Qualquer falha aqui acontece com a cobrança já existente no gateway, então
- * vai para o log de conciliação e nunca para o simulador.
- */
-async function registrarCobrancaNoPedido(
-  traceId: string | undefined,
-  pedido: { id: number; total: string; abacate_billing_id: string | null },
-  billingId: string,
-) {
-  try {
-    await emTransacao(async (conexao) => {
-      const { rowCount } = await conexao.query(
-        `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = false
-          WHERE id = $2 AND status = 'Pending Payment' AND abacate_billing_id IS NOT DISTINCT FROM $3::varchar`,
-        [billingId, pedido.id, pedido.abacate_billing_id]
-      );
-
-      if (rowCount !== 1) {
-        logger.error(
-          { traceId, requestId: traceId, billingId, pedidoId: pedido.id },
-          "[AbacatePay] Pedido mudou durante a cobrança; nada foi registrado: conciliar",
-        );
-        throw new ConflictProblem(
-          "O pedido mudou enquanto a cobrança era criada. Atualize seus pedidos antes de pagar."
-        );
-      }
-
-      // O total segue como o DECIMAL que o banco devolveu, sem passar por float.
-      await conexao.query(
-        "INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa) VALUES ($1, 'pix', 'pendente', $2, $3)",
-        [pedido.id, pedido.total, billingId]
-      );
-    }, { traceId });
-  } catch (err) {
-    // O ROLLBACK, e o descarte da conexão se ele falhar, ficam com emTransacao.
-    // Aqui só se registra o que a conciliação precisa, inclusive quando nem a
-    // conexão foi obtida.
-    if (!(err instanceof ConflictProblem)) {
-      logger.error(
-        { err, traceId, requestId: traceId, billingId, pedidoId: pedido.id },
-        "[AbacatePay] Cobrança criada no gateway, mas não registrada no pedido: conciliar",
-      );
-    }
-    throw err;
-  }
+  return res.json(resultado);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -219,38 +54,8 @@ export async function getPayments(req: Request, res: Response) {
   if (!pagination.isValid) {
     throw new BadRequestProblem(pagination.error);
   }
-  const { page, limit, offset } = pagination;
 
-  const countRes = await pool.query(`SELECT COUNT(*) FROM pagamentos`);
-  const totalCount = parseInt(countRes.rows[0].count);
-
-  const { rows } = await pool.query(
-    `SELECT
-      pg."publicId",
-      pd."publicId"         AS "pedidoPublicId",
-      pg.metodo,
-      pg.status,
-      pg.valor,
-      pg.referencia_externa AS "referenciaExterna",
-      pg.criado_em          AS "criadoEm",
-      pd.customer_name      AS "clienteNome",
-      pd.customer_email     AS "clienteEmail"
-     FROM pagamentos pg
-     INNER JOIN pedidos pd ON pd.id = pg.pedido_id
-     ORDER BY pg.criado_em DESC
-     LIMIT $1 OFFSET $2`,
-    [limit, offset]
-  );
-
-  return res.json({
-    pagamentos: rows,
-    pagination: {
-      page,
-      limit,
-      totalItems: totalCount,
-      totalPages: Math.ceil(totalCount / limit)
-    }
-  });
+  return res.json(await PaymentService.listar(pagination));
 }
 
 // ─────────────────────────────────────────────────────────
@@ -264,6 +69,7 @@ export async function handleWebhook(req: Request, res: Response) {
   const payload = req.body as { event?: string; devMode?: boolean; data?: { checkout?: { id?: unknown; status?: unknown } } } | null;
   const assinatura = req.headers["x-webhook-signature"];
 
+  // A assinatura vem antes de qualquer efeito.
   if (
     !textoSecretoIgual(req.query.webhookSecret, getWebhookSecret()) ||
     !assinaturaWebhookValida(req.rawBody, assinatura)
@@ -283,25 +89,7 @@ export async function handleWebhook(req: Request, res: Response) {
   if (payload?.event === "checkout.completed" && checkout?.status === "PAID" &&
       typeof checkout.id === "string" && checkout.id.trim() &&
       (env.NODE_ENV !== "production" || payload.devMode === false)) {
-    const billingId = checkout.id;
-    const processados = await emTransacao(async (client) => {
-      // Guardar a transição torna reentregas inofensivas, inclusive após entrega.
-      const { rows } = await client.query<{ id: number }>(
-        `UPDATE pedidos SET status = 'Queued'
-          WHERE abacate_billing_id = $1 AND pagamento_simulado = false
-            AND status = 'Pending Payment' RETURNING id`, [billingId]);
-      const ids = rows.map(pedido => pedido.id);
-      await client.query(
-        `UPDATE pagamentos SET status = 'aprovado'
-          WHERE referencia_externa = $1 AND pedido_id = ANY($2::int[])`, [billingId, ids]);
-      await client.query(
-        `INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa)
-         SELECT pe.id, 'pix', 'aprovado', pe.total, $1::varchar FROM pedidos pe
-          WHERE pe.id = ANY($2::int[])
-            AND NOT EXISTS (SELECT 1 FROM pagamentos pg
-                             WHERE pg.pedido_id = pe.id AND pg.referencia_externa = $1)`, [billingId, ids]);
-      return ids.length;
-    }, { traceId: req.requestId });
+    const processados = await PaymentService.confirmarPeloGateway(checkout.id);
     logger.info({ traceId: req.requestId, pedidos: processados }, "[Webhook] Pagamento processado.");
   }
 
@@ -335,6 +123,12 @@ const simulatedCheckoutCopy = {
   },
 };
 
+/**
+ * Formata o texto decimal exato, sem converter para float. O Intl aceita
+ * texto desde o ES2023; o lib do TypeScript em ES2022 ainda só declara number.
+ */
+const formatarReais = (moeda: Intl.NumberFormat, valor: string) => (moeda.format as unknown as (v: string) => string)(valor);
+
 export async function getSimulatedCheckoutPage(req: Request, res: Response) {
   const { billingId } = req.query;
   res.set("Cache-Control", "private, no-store");
@@ -344,24 +138,13 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
     throw new BadRequestProblem("billingId ausente.");
   }
 
-  const { rows: orders } = await pool.query(
-    `SELECT * FROM pedidos
-      WHERE abacate_billing_id = $1 AND usuario_id = ${usuarioPorPublicId("$2")} AND pagamento_simulado = true`,
-    [billingId, publicIdDoUsuario(req)]
-  );
-
-  if (orders.length === 0) {
-    throw new NotFoundProblem("Nenhum pedido encontrado para essa cobrança.");
-  }
+  const checkout = await PaymentService.checkoutSimulado(publicIdDoUsuario(req), billingId);
 
   const copy = req.acceptsLanguages("pt", "en") === "en" ? simulatedCheckoutCopy.en : simulatedCheckoutCopy.pt;
   res.vary("Accept-Language");
   try {
-
-    const totalAmount    = orders.reduce((sum, o) => sum + Number(o.total), 0);
-    const customerName   = orders[0].customer_name;
-    const customerEmail  = orders[0].customer_email;
     const money = new Intl.NumberFormat(copy.language, { style: "currency", currency: "BRL" });
+    const formatar = (valor: string) => formatarReais(money, valor);
 
     const html = `<!DOCTYPE html>
 <html lang="${copy.language}">
@@ -389,19 +172,19 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
   <div class="box">
     <div class="logo">ABACATEPAY <span style="font-weight:300;color:#22c55e">${copy.simulator}</span></div>
     <h2 style="margin:0 0 5px">Opticus Eyewear</h2>
-    <div class="amount">${money.format(totalAmount)}</div>
+    <div class="amount">${formatar(checkout.total)}</div>
     <div class="qr-box"><div class="qr"></div></div>
     <p class="hint">${copy.hint}</p>
     <div class="order-details">
       <h4 style="margin:0 0 10px;font-size:13px;text-transform:uppercase;color:#22c55e">${copy.items}:</h4>
-      ${orders.map(o => `
+      ${checkout.itens.map(item => `
         <div class="detail-row">
-          <span>${escapeHTML(o.product_name)}:</span>
-          <strong>${money.format(Number(o.total))}</strong>
+          <span>${escapeHTML(item.productName)}:</span>
+          <strong>${formatar(item.total)}</strong>
         </div>
       `).join("")}
       <div class="detail-row"><span>${copy.billing}:</span><strong style="font-size:11px;color:#8b949e">${escapeHTML(billingId)}</strong></div>
-      <div class="detail-row"><span>${copy.customer}:</span><strong>${escapeHTML(customerName)} (${escapeHTML(customerEmail)})</strong></div>
+      <div class="detail-row"><span>${copy.customer}:</span><strong>${escapeHTML(checkout.cliente.nome)} (${escapeHTML(checkout.cliente.email)})</strong></div>
     </div>
   </div>
 </body>
@@ -431,50 +214,7 @@ export async function confirmSimulatedPayment(req: Request, res: Response) {
   }
 
   // A identidade vem exclusivamente do token validado por `protect`.
-  const usuarioPublicId = publicIdDoUsuario(req);
-
-  await emTransacao(async (client) => {
-    // Autorização na cláusula WHERE: só o dono, e só enquanto o pedido
-    // ainda está em "Pending Payment". rowCount 0 agrupa inexistente,
-    // de outro dono e já processado — todos respondem o mesmo 404, sem
-    // oráculo de existência/estado.
-    const { rowCount, rows } = await client.query<{ id: number }>(
-      `UPDATE pedidos
-          SET status = 'Queued'
-        WHERE abacate_billing_id = $1
-          AND usuario_id = ${usuarioPorPublicId("$2")}
-          AND pagamento_simulado = true
-          AND status = 'Pending Payment'
-      RETURNING id`,
-      [billingId, usuarioPublicId]
-    );
-
-    if (rowCount === 0) {
-      throw new NotFoundProblem("Nenhum pedido elegível encontrado para essa cobrança.");
-    }
-
-    const pedidosConfirmados = rows.map(pedido => pedido.id);
-    // Apenas os pedidos efetivamente autorizados e alterados nesta transação.
-    await client.query(
-      `UPDATE pagamentos pg
-          SET status = 'aprovado'
-         FROM pedidos pe
-        WHERE pg.pedido_id = pe.id
-          AND pg.referencia_externa = $1
-          AND pe.id = ANY($2::int[])`,
-      [billingId, pedidosConfirmados]
-    );
-
-    // O carrinho simulado não possui necessariamente uma linha prévia.
-    await client.query(
-      `INSERT INTO pagamentos (pedido_id, metodo, status, valor, referencia_externa)
-       SELECT pe.id, 'pix', 'aprovado', pe.total, $1::varchar FROM pedidos pe
-        WHERE pe.id = ANY($2::int[])
-          AND NOT EXISTS (SELECT 1 FROM pagamentos pg
-                           WHERE pg.pedido_id = pe.id AND pg.referencia_externa = $1)`,
-      [billingId, pedidosConfirmados]
-    );
-  }, { traceId: req.requestId });
+  await PaymentService.confirmarSimulado(publicIdDoUsuario(req), billingId);
 
   return res.json({ status: "confirmed", billingId });
 }

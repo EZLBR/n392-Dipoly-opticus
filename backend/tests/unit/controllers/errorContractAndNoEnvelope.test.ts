@@ -19,6 +19,7 @@ import { AuthService } from "../../../src/services/authService.js";
 import { CategoryService } from "../../../src/services/categoryService.js";
 import { DesignService } from "../../../src/services/designService.js";
 import { OrderService } from "../../../src/services/orderService.js";
+import { PaymentService } from "../../../src/services/paymentService.js";
 import { ProductService } from "../../../src/services/productService.js";
 import { StockService } from "../../../src/services/stockService.js";
 
@@ -69,30 +70,28 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
       await expect(orderController.getOrders(req, res)).rejects.toThrow(ForbiddenProblem);
     });
 
-    it("paymentController lança NotFoundProblem se pedido não existir", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
-      const req = { body: { orderPublicId: "pedido-inexistente" }, user: { publicId: "usuario-1", role: "client" } } as unknown as Request;
-      const res = mockResponse();
-
-      await expect(paymentController.createBilling(req, res)).rejects.toThrow(NotFoundProblem);
-    });
-
-    // BOLA-03: a posse está na própria consulta. Para pedido alheio o banco
-    // devolve zero linhas, e a resposta é a mesma do pedido inexistente.
-    it("paymentController lança o mesmo NotFoundProblem se pedido pertencer a outro usuário", async () => {
-      const query = vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
-      const req = { body: { orderPublicId: "pedido-5" }, user: { publicId: "usuario-1", role: "client" } } as unknown as Request;
+    // DB-03: a consulta escopada está no PaymentService e é coberta contra o
+    // banco em idor-pagamentos.test.ts. Aqui, o controller entrega ao service
+    // a identidade do token e propaga o 404.
+    it("paymentController lança NotFoundProblem se pedido não existir ou for de outro usuário", async () => {
+      const criar = vi.spyOn(PaymentService, "criarCobranca").mockRejectedValueOnce(new NotFoundProblem("Pedido não encontrado."));
+      const req = {
+        body: { orderPublicId: "pedido-5" },
+        user: { publicId: "usuario-1", role: "client" },
+        headers: {},
+        protocol: "http",
+        get: () => "api.test",
+      } as unknown as Request;
       const res = mockResponse();
 
       await expect(paymentController.createBilling(req, res)).rejects.toThrow(
         new NotFoundProblem("Pedido não encontrado."),
       );
-      // O escopo vem do token: o publicId do usuário, resolvido na própria
-      // consulta (ID-02), sem a exceção de staff.
-      expect(query).toHaveBeenCalledWith(
-        expect.stringMatching(/usuario_id = \(SELECT u\.id FROM usuarios u WHERE u\."publicId" = \$3\)/),
-        ["pedido-5", false, "usuario-1"],
-      );
+      // O escopo vem do token, nunca do corpo.
+      expect(criar).toHaveBeenCalledWith(expect.objectContaining({
+        ator: { publicId: "usuario-1", role: "client" },
+        orderPublicId: "pedido-5",
+      }));
     });
 
     it("paymentController lança BadRequestProblem se billingId estiver ausente no checkout simulado", async () => {
