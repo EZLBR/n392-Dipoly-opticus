@@ -6,6 +6,8 @@ import { env } from "./config/env.js";
 import { NotFoundProblem, TooManyRequestsProblem } from "./errors/problem.js";
 import { problemErrorHandler } from "./middlewares/problemErrorHandler.js";
 import { requestId } from "./middlewares/requestId.js";
+import { setSessionValidator } from "./middlewares/routerGuard.js";
+import { sessionStillValid } from "./services/passwordReset.js";
 import authRoutes from "./routes/authRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import designRoutes from "./routes/designRoutes.js";
@@ -13,6 +15,7 @@ import orderRoutes from "./routes/orderRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import stockRoutes from "./routes/stockRoutes.js";
+import { createStudioAssetRoutes } from "./routes/studioAssetRoutes.js";
 import logger from "./utils/logger.js";
 
 export interface AppOptions {
@@ -26,6 +29,9 @@ export function createApp(options: AppOptions = {}) {
     rateLimit: enableRateLimit = !isTest,
     requestLogging = !isTest,
   } = options;
+
+  // FEAT-01: o guard recusa tokens emitidos antes da última troca de senha.
+  setSessionValidator(sessionStillValid);
 
   const app = express();
   const allowedOrigins = [
@@ -126,6 +132,7 @@ export function createApp(options: AppOptions = {}) {
   app.use("/api/products", productRoutes);
   app.use("/api/categories", categoryRoutes);
   app.use("/api/stock", stockRoutes);
+  app.use("/api/studio/assets", createStudioAssetRoutes(enableRateLimit));
 
   app.get("/health", (_req, res) => {
     res.json({ success: true, status: "Server is healthy and responsive." });

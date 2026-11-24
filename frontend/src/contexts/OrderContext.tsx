@@ -55,13 +55,20 @@ export function OrderProvider({ children }) {
     }
   }, [isBackendConnected]);
 
-  const updateOrderStatus = async (orderId, newStatus): Promise<OrderResult> => {
+  // CONC-02: `version` é a versão do pedido que a tela mostrava ao decidir.
+  const updateOrderStatus = async (orderId, newStatus, version): Promise<OrderResult> => {
     const token = localStorage.getItem("opticus_token");
     if (isBackendConnected && token) {
       try {
-        await apiClient.put(`/orders/${orderId}/status`, { status: newStatus }, { headers: { Authorization: `Bearer ${token}` } });
+        await apiClient.put(`/orders/${orderId}/status`, { status: newStatus, version }, { headers: { Authorization: `Bearer ${token}` } });
         return await fetchBackendOrders(token);
       } catch (e) {
+        // 409: a tela estava desatualizada. Recarrega a lista e pede para
+        // a pessoa conferir e decidir de novo; nada é aplicado localmente.
+        if (e instanceof ProblemError && e.status === 409) {
+          await fetchBackendOrders(token);
+          return { ok: false, error: translate("orders-version-conflict") };
+        }
         return orderFailure(e);
       }
     }

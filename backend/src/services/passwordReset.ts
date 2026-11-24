@@ -7,13 +7,26 @@ import { escapeEmailHtml, sendEmail } from "../utils/mailTransport.js";
 
 const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
 
+export const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
+/** Intervalo mínimo entre dois pedidos para a mesma conta. */
+export const RESET_REQUEST_COOLDOWN_MS = 60 * 1000;
+
 export async function requestPasswordReset(email: string, language: "pt" | "en"): Promise<void> {
   const token = randomBytes(32).toString("hex");
+  const now = Date.now();
+  // Um token emitido há menos de um minuto não é substituído: evita inundar a
+  // caixa de entrada e invalidar o link legítimo com pedidos de vários IPs.
   const { count } = await prisma.usuario.updateMany({
-    where: { email },
+    where: {
+      email,
+      OR: [
+        { resetTokenExpiresAt: null },
+        { resetTokenExpiresAt: { lte: new Date(now + RESET_TOKEN_TTL_MS - RESET_REQUEST_COOLDOWN_MS) } },
+      ],
+    },
     data: {
       resetTokenHash: tokenHash(token),
-      resetTokenExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      resetTokenExpiresAt: new Date(now + RESET_TOKEN_TTL_MS),
     },
   });
   if (!count) return;
@@ -39,7 +52,23 @@ export async function resetPassword(token: string, password: string): Promise<vo
   const senhaHash = await bcrypt.hash(password, 10);
   const { count } = await prisma.usuario.updateMany({
     where: { resetTokenHash: hash, resetTokenExpiresAt: { gt: new Date() } },
-    data: { senhaHash, resetTokenHash: null, resetTokenExpiresAt: null },
+    // sessoesValidasDesde derruba todos os JWTs emitidos antes da troca.
+    data: { senhaHash, resetTokenHash: null, resetTokenExpiresAt: null, sessoesValidasDesde: new Date() },
   });
   if (!count) throw invalidToken();
+}
+
+/**
+ * Validador de sessão do guard. O `iat` do JWT tem resolução de segundos, então
+ * a comparação também é feita em segundos: um login logo após a troca, no mesmo
+ * segundo, continua válido.
+ */
+export async function sessionStillValid(publicId: string, issuedAtSeconds: number | undefined): Promise<boolean> {
+  const user = await prisma.usuario.findUnique({
+    where: { publicId },
+    select: { sessoesValidasDesde: true },
+  });
+  if (!user?.sessoesValidasDesde) return true;
+  if (issuedAtSeconds === undefined) return false;
+  return issuedAtSeconds >= Math.floor(user.sessoesValidasDesde.getTime() / 1000);
 }

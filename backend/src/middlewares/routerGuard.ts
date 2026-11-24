@@ -23,6 +23,19 @@ export interface IRouterGuard {
   handle?(req: Request, res: Response, next: NextFunction): void | Promise<void> | unknown;
 }
 
+/**
+ * Confere se a sessão de um token ainda vale (por exemplo, se a senha não foi
+ * trocada depois da emissão). O `createApp` registra o validador; sem ele, o
+ * guard só confere assinatura e validade do JWT, como nos testes unitários.
+ */
+export type SessionValidator = (publicId: string, issuedAtSeconds: number | undefined) => Promise<boolean>;
+
+let sessionValidator: SessionValidator | undefined;
+
+export function setSessionValidator(validator: SessionValidator | undefined): void {
+  sessionValidator = validator;
+}
+
 export function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
@@ -89,16 +102,26 @@ export function routerGuard(
         return next(new UnauthorizedProblem("Invalid or expired token."));
       }
 
-      req.user = decoded; // Attach payload (publicId, email, name, role)
+      const authorize = () => {
+        req.user = decoded; // Attach payload (publicId, email, name, role)
 
-      if (allowedRoles && allowedRoles.length > 0) {
-        const userRole = req.user.role || "";
-        if (!allowedRoles.includes(userRole)) {
-          return next(new ForbiddenProblem("Access forbidden. Insufficient permissions."));
+        if (allowedRoles && allowedRoles.length > 0) {
+          const userRole = req.user.role || "";
+          if (!allowedRoles.includes(userRole)) {
+            return next(new ForbiddenProblem("Access forbidden. Insufficient permissions."));
+          }
         }
-      }
 
-      next();
+        next();
+      };
+
+      if (!sessionValidator) return authorize();
+
+      // FEAT-01: tokens emitidos antes de uma troca de senha não valem mais.
+      return sessionValidator(decoded.publicId, decoded.iat).then(
+        valid => valid ? authorize() : next(new UnauthorizedProblem("Invalid or expired token.")),
+        (error: unknown) => next(error),
+      );
     } catch (_err) {
       return next(new UnauthorizedProblem("Invalid or expired token."));
     }
