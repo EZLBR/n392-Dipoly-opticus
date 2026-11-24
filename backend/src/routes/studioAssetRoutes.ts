@@ -6,14 +6,13 @@ import { StudioImageProblem } from "../errors/studioImageProblem.js";
 import { routerGuard } from "../middlewares/routerGuard.js";
 import { deleteStudioAsset, listStudioAssets, readStudioAsset, saveStudioAsset } from "../services/studioAssets.js";
 import { MAX_STUDIO_IMAGE_BYTES, STUDIO_IMAGE_MEDIA_TYPE } from "../services/studioImageCodec.js";
+import { studioUploadSlots } from "../services/uploadSlots.js";
 import { publicIdDoUsuario } from "../utils/identidade.js";
 
 const parseFile = multer({
   storage: multer.memoryStorage(),
   limits: { files: 1, fields: 0, parts: 2, fileSize: MAX_STUDIO_IMAGE_BYTES + 1 },
 }).single("file");
-
-let inflight = 0;
 
 function readFilePart(req: Request, res: Response) {
   return new Promise<Buffer>((resolve, reject) => {
@@ -59,14 +58,15 @@ export function createStudioAssetRoutes(enableRateLimit: boolean) {
   }
 
   router.post("/", async (req, res) => {
-    if (inflight >= 2) throw new ServiceUnavailableProblem("Envios em processamento. Tente novamente.");
-    inflight++;
+    const usuario = publicIdDoUsuario(req);
+    const liberar = studioUploadSlots.reservar(usuario);
+    if (!liberar) throw new ServiceUnavailableProblem("Envios em processamento. Tente novamente.");
     try {
       const data = await readFilePart(req, res);
-      const asset = await saveStudioAsset(publicIdDoUsuario(req), data);
+      const asset = await saveStudioAsset(usuario, data);
       res.status(201).json({ asset });
     } finally {
-      inflight--;
+      liberar();
     }
   });
   router.get("/", async (req, res) => {
