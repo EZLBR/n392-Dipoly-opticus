@@ -231,25 +231,24 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("orderController.getOrders retorna { orders, pagination } sem envelope success", async () => {
-      vi.spyOn(pool, "query")
-        .mockResolvedValueOnce({ rows: [{ count: "1" }], rowCount: 1 } as any)
-        .mockResolvedValueOnce({
-          rows: [{
-            publicId: "01J00000000000000000000001",
-            customerName: "Maria",
-            customerEmail: "maria@test.com",
-            productName: "Armação",
-            factoryPublicId: "fabrica-2",
-            factoryName: "Fábrica A",
-            status: "Pending Payment",
-            total: "350.00",
-            customSpecs: "{}",
-            abacateBillingId: null,
-            createdAt: "2026-10-14",
-            updatedAt: "2026-10-14",
-          }],
-          rowCount: 1,
-        } as any);
+      vi.spyOn(OrderService, "list").mockResolvedValueOnce({
+        orders: [{
+          publicId: "01J00000000000000000000001",
+          customerName: "Maria",
+          customerEmail: "maria@test.com",
+          productName: "Armação",
+          factoryPublicId: "fabrica-2",
+          factoryName: "Fábrica A",
+          status: "Pending Payment",
+          version: 0,
+          total: "350.00",
+          customSpecs: {},
+          abacateBillingId: null,
+          createdAt: new Date("2026-10-14T00:00:00Z"),
+          updatedAt: new Date("2026-10-14T00:00:00Z"),
+        }],
+        pagination: { page: 1, limit: 10, totalItems: 1, totalPages: 1 },
+      });
 
       const req = {
         user: { role: "client", email: "maria@test.com", publicId: "usuario-1" },
