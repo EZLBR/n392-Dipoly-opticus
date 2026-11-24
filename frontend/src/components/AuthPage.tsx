@@ -68,7 +68,7 @@ export default function AuthPage() {
   const [signupError, setSignupError] = useState("");
   const [signupSuccess, setSignupSuccess] = useState("");
 
-  const handleLoginSubmit = async (e) => {
+  const handleLoginSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoginError("");
     setLoginLoading(true);
@@ -88,7 +88,7 @@ export default function AuthPage() {
     }
   };
 
-  const handleSignupSubmit = async (e) => {
+  const handleSignupSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSignupError("");
     setSignupSuccess("");
@@ -202,7 +202,7 @@ export default function AuthPage() {
               />
             </div>
 
-            {loginError && <p style={{ color: "#ef4444", fontSize: "14px", margin: "0 0 16px 0" }}>{loginError}</p>}
+            {loginError && <p role="alert" style={{ color: "#ef4444", fontSize: "14px", margin: "0 0 16px 0" }}>{loginError}</p>}
 
             <button
               type="submit"

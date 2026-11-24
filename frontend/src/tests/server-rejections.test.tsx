@@ -59,7 +59,7 @@ describe("server rejection is not local success (#34)", () => {
     await act(async () => { response = await result.current.order.updateOrderStatus("order-a", "Delivered"); });
     expect(result.current.order.orders).toEqual([order]);
     expect(localStorage.getItem("opticus_orders")).toBe(cached);
-    const localized = {
+    const localized: Record<number, string> = {
       401: "Entre na sua conta e tente novamente.",
       403: "Você não tem permissão para esta ação.",
       422: "Revise os campos e tente novamente.",

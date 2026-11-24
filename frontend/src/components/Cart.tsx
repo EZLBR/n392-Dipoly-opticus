@@ -20,7 +20,7 @@ interface SimulatedCheckout {
   language: Language;
 }
 
-export default function Cart({ setView }) {
+export default function Cart({ setView }: { setView: (view: string) => void }) {
   const { session } = useAuth();
   const { cart, removeFromCart, updateCartQty, clearCart, checkoutCart } = useCart();
   const { t, language } = useTranslation();
@@ -48,7 +48,7 @@ export default function Cart({ setView }) {
     return () => controller.abort();
   }, [checkout, language, checkoutLanguageAttempt]);
 
-  const showToast = (msg) => {
+  const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage("");
@@ -59,7 +59,7 @@ export default function Cart({ setView }) {
     return cart.reduce((sum, item) => sum + Number(item.total) * (item.quantity || 1), 0);
   };
 
-  const handleQtyChange = (itemId, currentQty, delta) => {
+  const handleQtyChange = (itemId: string, currentQty: number, delta: number) => {
     const nextQty = currentQty + delta;
     if (nextQty >= 1) {
       updateCartQty(itemId, nextQty);
@@ -305,6 +305,7 @@ export default function Cart({ setView }) {
                       padding: "4px"
                     }}>
                       <button
+                        aria-label={t("cart-decrease-quantity")}
                         onClick={() => handleQtyChange(item.id, item.quantity || 1, -1)}
                         style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex", padding: "6px" }}
                         disabled={(item.quantity || 1) <= 1}
@@ -315,6 +316,7 @@ export default function Cart({ setView }) {
                         {item.quantity || 1}
                       </span>
                       <button
+                        aria-label={t("cart-increase-quantity")}
                         onClick={() => handleQtyChange(item.id, item.quantity || 1, 1)}
                         style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex", padding: "6px" }}
                       >
@@ -328,6 +330,7 @@ export default function Cart({ setView }) {
 
                     <button
                       className="btn"
+                      aria-label={t("cart-remove-item")}
                       onClick={() => {
                         removeFromCart(item.id);
                         showToast(t("cart-item-removed"));

@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { DecalGeometry } from "three/examples/jsm/geometries/DecalGeometry.js";
 import { isMetal, type EyewearConfig } from "./config";
 import { lensShape, proportions, type EyewearModel } from "./geometry";
-import type { DrawingLayer, TextLayer } from "./artwork";
+import { isImageLayer, type DrawingLayer, type ImageLayer, type TextLayer } from "./artwork";
 import { drawingAspect, paintStrokes } from "./drawing";
 
 function upperEdge(shape: THREE.Shape, x: number) {
@@ -120,6 +120,24 @@ export function createDrawingTexture(layer: DrawingLayer): { texture: THREE.Text
   return { texture, aspect };
 }
 
+export function createImageTexture(layer: ImageLayer, image: HTMLImageElement) {
+  const { x, y, width, height } = layer.crop;
+  const cropWidth = Math.max(1, width * image.naturalWidth);
+  const cropHeight = Math.max(1, height * image.naturalHeight);
+  const scale = Math.min(1, 1024 / Math.max(cropWidth, cropHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(cropWidth * scale));
+  canvas.height = Math.max(1, Math.round(cropHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  context.drawImage(image, x * image.naturalWidth, y * image.naturalHeight,
+    cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return { texture, aspect: cropWidth / cropHeight };
+}
+
 export function createArtworkRenderer(textTexture = createTextTexture, drawingTexture = createDrawingTexture) {
   const meshes: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>[] = [];
   const clear = () => {
@@ -130,13 +148,28 @@ export function createArtworkRenderer(textTexture = createTextTexture, drawingTe
     meshes.length = 0;
   };
   return {
-    update(model: EyewearModel, config: EyewearConfig) {
+    update(model: EyewearModel, config: EyewearConfig, images?: ReadonlyMap<string, HTMLImageElement>) {
       clear();
       for (const layer of config.artwork.layers) {
-        const drawing = "kind" in layer;
-        if (drawing ? !layer.strokes.length : !layer.text.trim()) continue;
-        const { texture, aspect } = drawing ? drawingTexture(layer) : textTexture(layer);
-        const placement = drawing ? { zone: layer.zone, x: 0, y: 0, size: 1, rotation: 0 } : layer;
+        const drawing = "kind" in layer && layer.kind === "drawing" ? layer : undefined;
+        if (drawing && !drawing.strokes.length || "text" in layer && !layer.text.trim()) continue;
+        let result: { texture: THREE.Texture; aspect: number } | null;
+        if (isImageLayer(layer)) {
+          const image = images?.get(layer.assetId);
+          if (!image) continue;
+          try {
+            result = createImageTexture(layer, image);
+          } catch {
+            continue;
+          }
+        } else if ("text" in layer) {
+          result = textTexture(layer);
+        } else {
+          result = drawingTexture(layer);
+        }
+        if (!result) continue;
+        const { texture, aspect } = result;
+        const placement = "x" in layer ? layer : { zone: layer.zone, x: 0, y: 0, size: 1, rotation: 0 };
         const projection = projectArtworkLayer(model, config, placement, aspect);
         if (!projection || !projection.geometry.getAttribute("position").count) {
           projection?.geometry.dispose(); texture.dispose(); continue;

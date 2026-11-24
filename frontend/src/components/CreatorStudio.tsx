@@ -15,7 +15,12 @@ import { SaveDesignModal } from "./creator/CreatorModals";
 import { ArrowLeft, Box, Camera, RotateCw, Check } from "lucide-react";
 import "./creator/studio.css";
 
-function CreatorStudioInner({ setView, onOpenDesigns }) {
+interface CreatorStudioProps {
+  setView: (view: string) => void;
+  onOpenDesigns?: () => void;
+}
+
+function CreatorStudioInner({ setView, onOpenDesigns }: CreatorStudioProps) {
   const {
     config,
     tryOnMode,
@@ -183,7 +188,7 @@ function CreatorStudioInner({ setView, onOpenDesigns }) {
     </div>
   );
 }
-export default function CreatorStudio(props) {
+export default function CreatorStudio(props: CreatorStudioProps) {
   return (
     <CreatorStudioProvider>
       <CreatorStudioInner {...props} />

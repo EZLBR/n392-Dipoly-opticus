@@ -42,6 +42,7 @@ model Usuario {
   pedidos        Pedido[]      @relation("UsuarioPedidos")
   pedidosFabrica Pedido[]      @relation("FactoryPedidos")
   savedDesigns   SavedDesign[]
+  studioAssets   StudioAsset[]
 
   @@map("usuarios")
 }
@@ -126,6 +127,8 @@ model OrderStatusHistory {
   @@map("order_status_history")
 }
 
+/// Reservada para a FEAT-04 (#48), que a remodela: veja docs/decisions/ADR-0004.
+/// Até lá, nenhum código lê nem grava esta tabela.
 model PedidoItem {
   id            Int     @id @default(autoincrement())
   pedidoId      Int     @map("pedido_id")
@@ -207,7 +210,36 @@ model SavedDesign {
   publicId String @unique @default(dbgenerated("gen_random_uuid()"))
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  assets  StudioDesignAsset[]
 
   @@index([usuarioId], map: "idx_designs_usuario")
   @@map("saved_designs")
+}
+
+model StudioAsset {
+  id        String   @id @db.Uuid
+  usuarioId Int?     @map("usuario_id")
+  width     Int
+  height    Int
+  bytes     Int
+  state     String   @default("pending")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  usuario Usuario?            @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  designs StudioDesignAsset[]
+
+  @@index([usuarioId])
+  @@map("studio_assets")
+}
+
+model StudioDesignAsset {
+  designId String @map("design_id") @db.VarChar(255)
+  assetId  String @map("asset_id") @db.Uuid
+
+  design SavedDesign @relation(fields: [designId], references: [id], onDelete: Cascade)
+  asset  StudioAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@id([designId, assetId])
+  @@index([assetId])
+  @@map("studio_design_assets")
 }

@@ -278,11 +278,27 @@ docker compose up --build -d --wait   # sobe em segundo plano e espera tudo fica
 docker compose ps                     # estado dos serviços
 docker compose logs -f api            # acompanhar a API
 docker compose down                   # encerra e MANTÉM os dados
-docker compose down -v                # encerra e APAGA o banco
+docker compose down -v                # encerra e APAGA o banco e os arquivos de imagem
 ```
 
 Depois de alterar código, rode `docker compose up --build` para reconstruir as imagens.
 Mudar `API_PORT` também exige rebuild, porque o endereço da API é embutido no frontend.
+
+O Studio armazena as imagens privadas no volume `studio_assets`. Em execução
+local, o padrão é `backend/.studio-assets`. Use `STUDIO_ASSET_DIR` para apontar
+para outro diretório privado que seja gravável pelo processo da API. Em Docker
+sem Compose, monte um volume em `/app/.studio-assets`; todas as instâncias da
+API precisam acessar os mesmos arquivos. Ao fazer backup ou migrar a instalação,
+pare as gravações da API e copie o volume de imagens junto com o backup do
+PostgreSQL. Restaure o par da mesma captura para preservar as referências dos
+designs. O volume não deve ser servido como conteúdo estático.
+
+No Studio, abra **Arte → Adicionar imagem**. O editor aceita PNG, JPEG e WebP
+estáticos de até 5 MiB e 4096 × 4096 pixels. A imagem recortada fica na armação,
+e o design salvo a recupera ao entrar na mesma conta em outro dispositivo.
+A biblioteca permite excluir envios que não estejam vinculados a designs
+salvos. O limite é de seis camadas por design e de 20 arquivos ou 100 MiB por
+conta. As imagens são prévias e continuam bloqueadas para compra.
 
 **Dados de exemplo (opcional, só local):**
 
@@ -391,3 +407,12 @@ de segurança, o usuário não-root e a ausência de segredos e arquivos `.env`.
 - credenciais anteriormente expostas não podem ser reutilizadas.
 
 As decisões e critérios estão detalhados em [docs/security](docs/security/README.md) e [docs/api](docs/api/README.md).
+
+### E-mail transacional
+
+Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` e `SMTP_FROM`
+no arquivo de ambiente do backend (ou no `.env` da raiz para Docker Compose).
+Use um remetente verificado no provedor. A porta 465 usa TLS direto e a
+porta 587 usa STARTTLS. Se nenhuma variável SMTP for configurada em
+desenvolvimento, os e-mails vão para o Ethereal. Em produção, sem SMTP
+válido a falha é registrada sem interromper a atualização do pedido.
