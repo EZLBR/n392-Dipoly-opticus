@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useCreatorStudio } from "../../contexts/CreatorStudioContext";
 import { useAuth } from "../../contexts/AuthContext";
-import { localizeProblem, useTranslation } from "../../contexts/LanguageContext";
+import { useTranslation } from "../../contexts/LanguageContext";
 import { ProblemError } from "../../api/client";
+import { studioImageError } from "../../eyewear/private-images";
 
 export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
   const { config, designId, designName, setDesignName, markSaved, showToast } =
@@ -50,7 +51,7 @@ export function SaveDesignModal({ isOpen, onClose, onOpenDesigns }) {
       onOpenDesigns?.();
     } catch (error) {
       setError(
-        error instanceof ProblemError ? localizeProblem(error.problem, language)
+        error instanceof ProblemError ? studioImageError(error, language)
           : t("studio-save-unable-to-confirm-the-save-please"),
       );
     } finally {

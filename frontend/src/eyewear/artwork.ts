@@ -25,8 +25,28 @@ export interface DrawingLayer {
   zone: ArtworkZone;
   strokes: DrawingStroke[];
 }
-export type ArtworkLayer = TextLayer | DrawingLayer;
-export interface Artwork { version: 1 | 2; layers: ArtworkLayer[] }
+export interface ImageCrop { x: number; y: number; width: number; height: number }
+export interface ImageLayer {
+  id: string;
+  kind: "image";
+  assetId: string;
+  zone: ArtworkZone;
+  x: number;
+  y: number;
+  size: number;
+  rotation: number;
+  crop: ImageCrop;
+}
+export type ArtworkLayer = TextLayer | DrawingLayer | ImageLayer;
+export interface Artwork { version: 1 | 2 | 3; layers: ArtworkLayer[] }
+export const fullImageCrop: ImageCrop = { x: 0, y: 0, width: 1, height: 1 };
+export function isImageLayer(layer: ArtworkLayer): layer is ImageLayer {
+  return "kind" in layer && layer.kind === "image";
+}
+export function imageAssetIds(artwork: Artwork) {
+  return [...new Set(artwork.layers.filter(isImageLayer).map(layer => layer.assetId))].sort();
+}
+const assetIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const MAX_ARTWORK_LAYERS = 6;
 export const MAX_TEXT_CHARACTERS = 24;
 export const MAX_DRAWING_STROKES = 32;
@@ -52,23 +72,41 @@ function normalizeStrokes(input: unknown): DrawingStroke[] {
   });
 }
 
+function normalizeCrop(value: unknown): ImageCrop | null {
+  if (!value || typeof value !== "object") return null;
+  const { x, y, width, height } = value as Record<string, unknown>;
+  if (typeof x !== "number" || typeof y !== "number" || typeof width !== "number" || typeof height !== "number"
+    || ![x, y, width, height].every(Number.isFinite) || x < 0 || y < 0 || width <= 0 || height <= 0
+    || x + width > 1 || y + height > 1) return null;
+  return { x, y, width, height };
+}
+
 export function normalizeArtwork(input: unknown): Artwork {
   const result: Artwork = { version: 1, layers: [] };
   if (!input || typeof input !== "object") return result;
   const source = input as Record<string, unknown>;
-  if ((source.version !== 1 && source.version !== 2) || !Array.isArray(source.layers)) return result;
+  if ((source.version !== 1 && source.version !== 2 && source.version !== 3) || !Array.isArray(source.layers)) return result;
   result.version = source.version;
   const ids = new Set<string>();
   for (const [index, raw] of source.layers.entries()) {
     if (!raw || typeof raw !== "object") continue;
     const layer = raw as Record<string, unknown>;
     const zone = layer.zone as ArtworkZone;
-    const drawing = source.version === 2 && layer.kind === "drawing";
-    if (!artworkZones.includes(zone) || (!drawing && (layer.kind !== undefined || typeof layer.text !== "string"))) continue;
-    const id = typeof layer.id === "string" && layer.id.length > 0 && layer.id.length <= 64 ? layer.id : `${drawing ? "drawing" : "text"}-${index}`;
+    const drawing = source.version >= 2 && layer.kind === "drawing";
+    const image = source.version === 3 && layer.kind === "image";
+    if (!artworkZones.includes(zone) || (!drawing && !image && (layer.kind !== undefined || typeof layer.text !== "string"))) continue;
+    const id = typeof layer.id === "string" && layer.id.length > 0 && layer.id.length <= 64
+      ? layer.id : `${drawing ? "drawing" : image ? "image" : "text"}-${index}`;
     if (ids.has(id)) continue;
     ids.add(id);
-    if (drawing) {
+    if (image) {
+      const crop = normalizeCrop(layer.crop);
+      if (typeof layer.assetId !== "string" || !assetIdPattern.test(layer.assetId) || !crop) continue;
+      result.layers.push({ id, kind: "image", assetId: layer.assetId.toLowerCase(), zone, crop,
+        x: clamp(layer.x, -1, 1, 0), y: clamp(layer.y, -1, 1, 0),
+        size: clamp(layer.size, 0.25, 1, 0.8), rotation: clamp(layer.rotation, -30, 30, 0),
+      });
+    } else if (drawing) {
       result.layers.push({ id, kind: "drawing", zone, strokes: normalizeStrokes(layer.strokes) });
     } else if (typeof layer.text === "string") {
       result.layers.push({
