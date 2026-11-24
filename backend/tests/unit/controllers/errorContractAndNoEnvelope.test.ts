@@ -17,6 +17,7 @@ import * as stockController from "../../../src/controllers/stockController.js";
 import pool from "../../../src/config/db.js";
 import { AuthService } from "../../../src/services/authService.js";
 import { CategoryService } from "../../../src/services/categoryService.js";
+import { DesignService } from "../../../src/services/designService.js";
 import { OrderService } from "../../../src/services/orderService.js";
 import { ProductService } from "../../../src/services/productService.js";
 import { StockService } from "../../../src/services/stockService.js";
@@ -54,7 +55,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("designController lança NotFoundProblem se design não existir ou sem permissão", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
+      vi.spyOn(DesignService, "delete").mockRejectedValueOnce(new NotFoundProblem("Design não encontrado ou sem permissão."));
       const req = { params: { id: "des-999" }, user: { email: "user@test.com", publicId: "usuario-1" } } as unknown as Request;
       const res = mockResponse();
 
@@ -199,25 +200,23 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("designController.getDesigns retorna { designs } sem envelope success", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({
-        rows: [{
-          id: "des-1",
-          name: "Design 1",
-          model: "wayfarer",
-          color: "#000",
-          is_sunglasses: false,
-          anti_reflective: true,
-          temple_style: "standard",
-          top_bar: false,
-          bridge_style: "keyhole",
-          frame_profile: "medium",
-          temple_open: "0.00",
-          published: true,
-          created_at: new Date(),
-          updated_at: new Date(),
-        }],
-        rowCount: 1,
-      } as any);
+      vi.spyOn(DesignService, "list").mockResolvedValueOnce([{
+        id: "des-1",
+        name: "Design 1",
+        model: "wayfarer",
+        color: "#000",
+        isSunglasses: false,
+        antiReflective: true,
+        templeStyle: "standard",
+        topBar: false,
+        bridgeStyle: "keyhole",
+        frameProfile: "medium",
+        templeOpen: 0,
+        published: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        config: null,
+      }]);
 
       const req = { user: { email: "user@test.com", publicId: "usuario-1" } } as unknown as Request;
       const res = mockResponse();
