@@ -115,3 +115,33 @@ export const checkoutCartSchema = z.object({
 });
 
 export type CheckoutCartDTO = z.infer<typeof checkoutCartSchema>;
+
+/** O que a API devolve de um pedido. Nunca o id interno (ID-02). */
+export interface OrderResponseDTO {
+  publicId: string;
+  customerName: string;
+  customerEmail: string;
+  productName: string;
+  factoryPublicId: string | null;
+  factoryName: string | null;
+  status: string | null;
+  version: number;
+  /** DECIMAL como texto de duas casas, sem passar por float. */
+  total: string;
+  customSpecs: Record<string, unknown>;
+  abacateBillingId: string | null;
+  /** Só o dia, à meia-noite. */
+  createdAt: Date | null;
+  updatedAt: Date | null;
+}
+
+export interface PaginatedOrdersDTO {
+  orders: OrderResponseDTO[];
+  pagination: { page: number; limit: number; totalItems: number; totalPages: number };
+}
+
+export interface CheckoutResultDTO {
+  checkoutUrl: string;
+  isSimulated: boolean;
+  billingId: string;
+}

@@ -10,3 +10,35 @@ export const createBillingSchema = z.object({
 });
 
 export type CreateBillingDTO = z.infer<typeof createBillingSchema>;
+
+/** Para onde o cliente vai pagar. */
+export interface BillingResultDTO {
+  checkoutUrl: string;
+  isSimulated: boolean;
+}
+
+/** Um pagamento na listagem do staff, sem ids internos (ID-02). */
+export interface PaymentResponseDTO {
+  publicId: string;
+  pedidoPublicId: string;
+  metodo: string | null;
+  status: string | null;
+  /** Decimal em texto, com os dois centavos ("1999.90"). */
+  valor: string;
+  referenciaExterna: string | null;
+  criadoEm: Date | null;
+  clienteNome: string;
+  clienteEmail: string;
+}
+
+export interface PaginatedPaymentsDTO {
+  pagamentos: PaymentResponseDTO[];
+  pagination: { page: number; limit: number; totalItems: number; totalPages: number };
+}
+
+/** O que a página do simulador mostra. Valores em texto decimal, sem float. */
+export interface SimulatedCheckoutDTO {
+  itens: { productName: string; total: string }[];
+  total: string;
+  cliente: { nome: string; email: string };
+}

@@ -90,6 +90,10 @@ function mapearErroBanco(err: Error): HttpProblem | null {
       }
       case "P2025":
         return new NotFoundProblem("Recurso não encontrado.");
+      // Violação de chave estrangeira: o mesmo 409 do erro cru do pg, sem o
+      // nome da constraint que o Prisma põe na mensagem.
+      case "P2003":
+        return new ConflictProblem("Registro referenciado não existe.");
       case "P2010": {
         const raiz = comCodigo.meta?.code;
         if (SQLSTATE_UNIQUE.has(String(raiz))) {

@@ -7,21 +7,17 @@
 //   vazar detalhe interno e com traceId.
 // ============================================================
 
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { app } from "../setup/app.js";
-import { pool } from "../setup/db.js";
 import { criarUsuario, comToken } from "../helpers/auth.js";
+import { comFalhaNoBanco } from "../helpers/falhaNoBanco.js";
 import { criarPedido } from "../helpers/orders.js";
 import { criarCobranca, lerCobranca } from "../helpers/payments.js";
 import { PROBLEM_TYPE_NAMESPACE } from "../../src/errors/problem.js";
 
 const PENDENTE = { pedido: "Pending_Payment", pagamento: "pendente" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 async function cenarioDeCobranca() {
   const fabrica = await criarUsuario("factory");
@@ -35,30 +31,15 @@ describe("SEC-01 — atomicidade da confirmação simulada", () => {
   it("falha na segunda atualização reverte a primeira (ROLLBACK)", async () => {
     const { dono, cobranca } = await cenarioDeCobranca();
 
-    // Injeta uma falha real na segunda escrita (pagamentos), sem tocar no
-    // banco: o pedido já foi atualizado dentro da transação e precisa voltar.
-    const connectOriginal = pool.connect.bind(pool);
-    vi.spyOn(pool, "connect").mockImplementation((async () => {
-      const client = (await connectOriginal()) as unknown as {
-        query: (...args: unknown[]) => unknown;
-        release: () => void;
-      };
-      const queryOriginal = client.query.bind(client);
-      client.query = (...args: unknown[]) => {
-        const [text] = args;
-        const sql = typeof text === "string" ? text : String((text as { text?: string } | undefined)?.text ?? "");
-        if (/update\s+pagamentos/i.test(sql)) {
-          return Promise.reject(new Error("FALHA-FORCADA-SEGUNDA-ATUALIZACAO"));
-        }
-        return queryOriginal(...args);
-      };
-      return client;
-    }) as never);
-
-    const res = await request(app)
-      .post("/api/payments/confirm-simulated-payment")
-      .set(...comToken(dono.token))
-      .send({ billingId: cobranca.billingId });
+    // DB-03: o próprio banco recusa a segunda escrita (pagamentos). O pedido
+    // já foi atualizado dentro da transação e precisa voltar.
+    const res = await comFalhaNoBanco(
+      { tabela: "pagamentos", evento: "UPDATE", sqlstate: "XX000", mensagem: "FALHA-FORCADA-SEGUNDA-ATUALIZACAO" },
+      () => request(app)
+        .post("/api/payments/confirm-simulated-payment")
+        .set(...comToken(dono.token))
+        .send({ billingId: cobranca.billingId }),
+    );
 
     expect(res.status).toBe(500);
     expect(res.headers["content-type"]).toContain("application/problem+json");
@@ -74,6 +55,24 @@ describe("SEC-01 — atomicidade da confirmação simulada", () => {
     expect(corpo).not.toContain("update ");
 
     // Nenhuma das duas mutações persistiu: rollback preservou o estado.
+    expect(await lerCobranca(cobranca)).toEqual(PENDENTE);
+  });
+
+  // As duas escritas passam e o banco recusa no COMMIT. Se o pagamento fosse
+  // aprovado fora da transação do pedido, ele ficaria aprovado sozinho. O
+  // status HTTP não é verificado aqui: o Prisma 5.22 não propaga a falha do
+  // COMMIT de uma transação interativa (ver webhook-provider.test.ts).
+  it("falha no COMMIT desfaz o pedido e o pagamento juntos", async () => {
+    const { dono, cobranca } = await cenarioDeCobranca();
+
+    await comFalhaNoBanco(
+      { tabela: "pedidos", evento: "UPDATE", sqlstate: "XX000", mensagem: "FALHA-FORCADA-NO-COMMIT", noCommit: true },
+      () => request(app)
+        .post("/api/payments/confirm-simulated-payment")
+        .set(...comToken(dono.token))
+        .send({ billingId: cobranca.billingId }),
+    );
+
     expect(await lerCobranca(cobranca)).toEqual(PENDENTE);
   });
 });

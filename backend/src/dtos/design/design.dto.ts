@@ -45,3 +45,22 @@ export const createDesignSchema = saveDesignSchema.extend({
 });
 
 export type SaveDesignDTO = z.infer<typeof saveDesignSchema>;
+
+/** O que a API devolve de um design salvo. */
+export interface DesignResponseDTO {
+  id: string;
+  name: string;
+  model: string;
+  color: string;
+  isSunglasses: boolean;
+  antiReflective: boolean;
+  templeStyle: string | null;
+  topBar: boolean;
+  bridgeStyle: string | null;
+  frameProfile: string | null;
+  templeOpen: number;
+  published: boolean;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+  config: unknown;
+}
