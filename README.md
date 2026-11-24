@@ -390,3 +390,12 @@ de segurança, o usuário não-root e a ausência de segredos e arquivos `.env`.
 - credenciais anteriormente expostas não podem ser reutilizadas.
 
 As decisões e critérios estão detalhados em [docs/security](docs/security/README.md) e [docs/api](docs/api/README.md).
+
+### E-mail transacional
+
+Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` e `SMTP_FROM`
+no arquivo de ambiente do backend (ou no `.env` da raiz para Docker Compose).
+Use um remetente verificado no provedor. A porta 465 usa TLS direto e a
+porta 587 usa STARTTLS. Se nenhuma variável SMTP for configurada em
+desenvolvimento, os e-mails vão para o Ethereal. Em produção, sem SMTP
+válido a falha é registrada sem interromper a atualização do pedido.

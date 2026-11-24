@@ -30,6 +30,9 @@ const assetCleanupInterval = setInterval(() => void runAssetCleanup(), 120_000);
 assetCleanupInterval.unref();
 const server = app.listen(env.PORT, () => {
   logger.info(`🚀 OPTICUS Backend rodando na porta ${env.PORT}`);
+  if (env.SMTP_MODE === "disabled") {
+    logger.warn("[email] SMTP não configurado em produção; notificações de pedido não serão enviadas.");
+  }
   void runAssetCleanup();
 });
 
