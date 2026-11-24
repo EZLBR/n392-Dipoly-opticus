@@ -6,8 +6,13 @@
 //   pool, de 10, travava a API depois de 10 falhas. Os testes usam o
 //   pool real da aplicação e simulam a falha do ROLLBACK numa conexão
 //   de verdade.
+//
+//   DB-03: checkout e pagamentos passaram para o Prisma, que devolve as
+//   próprias conexões. O caso de ponta a ponta usa a exclusão de imagem
+//   do Studio, que continua no emTransacao.
 // ============================================================
 
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import request from "supertest";
 import type { PoolClient } from "pg";
@@ -113,45 +118,32 @@ describe("emTransacao (CONC-03)", () => {
   });
 });
 
-describe("POST /api/orders/checkout-cart com o ROLLBACK falhando (CONC-03)", () => {
+describe("DELETE /api/studio/assets/:id com o ROLLBACK falhando (CONC-03)", () => {
   it("mais falhas do que o tamanho do pool não esgotam as conexões", async () => {
-    const fabrica = await criarUsuario("factory");
     const cliente = await criarUsuario("client");
-    const itemValido = {
-      productName: "Wayfarer",
-      factoryName: "Fabrica",
-      quantity: 1,
-      customSpecs: {
-        isSunglasses: false,
-        frameProfile: "medium",
-        frameMaterial: "acetate",
-        lensMaterial: "cr39",
-        lensTreatments: [],
-      },
-    };
+    const imagem = randomUUID();
+    // Sem arquivo no volume: a limpeza tolera o ENOENT e apaga a linha.
+    await pool.query(
+      "INSERT INTO studio_assets (id, usuario_id, width, height, bytes, state) VALUES ($1, $2, 1, 1, 1, 'ready')",
+      [imagem, cliente.id],
+    );
+    const excluir = (id: string) => request(app)
+      .delete(`/api/studio/assets/${id}`)
+      .set(...comToken(cliente.token));
     const conexoes = quebrarRollback();
 
-    // A fábrica inexistente faz o INSERT falhar dentro da transação (ID-02:
-    // recusada com 400 pelo publicId), a transação tenta o ROLLBACK, e o
-    // ROLLBACK falha. O erro que chega ao cliente continua sendo o original
-    // (400), não o do ROLLBACK.
+    // A imagem inexistente faz a transação lançar 404, a transação tenta o
+    // ROLLBACK, e o ROLLBACK falha. O erro que chega ao cliente continua
+    // sendo o original (404), não o do ROLLBACK.
     for (let tentativa = 0; tentativa < LIMITE_DO_POOL + 2; tentativa++) {
-      const res = await request(app)
-        .post("/api/orders/checkout-cart")
-        .set(...comToken(cliente.token))
-        .send({ cartItems: [{ ...itemValido, factoryPublicId: "fabrica-inexistente" }] });
-      esperarProblema(res, 400, "bad-request");
+      esperarProblema(await excluir(randomUUID()), 404, "studio-image-not-found");
     }
 
     expect(conexoes).toHaveLength(LIMITE_DO_POOL + 2);
     for (const conexao of conexoes) expect(conexao.release).toHaveBeenCalledTimes(1);
 
     vi.restoreAllMocks();
-    const res = await request(app)
-      .post("/api/orders/checkout-cart")
-      .set(...comToken(cliente.token))
-      .send({ cartItems: [{ ...itemValido, factoryPublicId: fabrica.publicId }] });
-    expect(res.status).toBe(200);
+    expect((await excluir(imagem)).status).toBe(204);
     expect(pool.totalCount).toBeLessThanOrEqual(LIMITE_DO_POOL);
   });
 });

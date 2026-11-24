@@ -20,7 +20,9 @@ import request from "supertest";
 import { app } from "../setup/app.js";
 import { pool } from "../setup/db.js";
 import { criarUsuario, comToken } from "../helpers/auth.js";
+import { comFalhaNoBanco } from "../helpers/falhaNoBanco.js";
 import { especificacaoDoStudio } from "../helpers/especificacao.js";
+import { criarPedido } from "../helpers/orders.js";
 import { requestId } from "../../src/middlewares/requestId.js";
 import { problemErrorHandler } from "../../src/middlewares/problemErrorHandler.js";
 import { PROBLEM_TYPE_NAMESPACE } from "../../src/errors/problem.js";
@@ -199,23 +201,19 @@ describe("regressão — falha de banco não vira 400 (pontos da evidência)", (
 
   // ID-02: as entradas passaram a ser publicIds de texto, e uma fábrica
   // inexistente é recusada antes do INSERT. Nenhuma requisição válida chega
-  // mais a esses erros do banco, então eles são simulados no driver, com o
-  // mesmo formato do erro cru do pg, na consulta que a rota executa.
-  function erroDoPg(mensagem: string, campos: Record<string, string>) {
-    return Object.assign(new Error(mensagem), { name: "error", severity: "ERROR", ...campos });
-  }
-
-  it("paymentController: SELECT com tipo inválido vira 500, nunca 400", async () => {
+  // mais a esses erros, então o próprio banco os levanta, com o SQLSTATE
+  // real, na escrita que a rota executa (DB-03: pelo Prisma, sem mock).
+  it("paymentController: erro de tipo inválido no banco vira 500, nunca 400", async () => {
     const cliente = await criarUsuario("client");
-    const consulta = vi.spyOn(pool, "query").mockRejectedValueOnce(
-      erroDoPg('invalid input syntax for type integer: "nao-numerico"', { code: "22P02", table: "pedidos" }),
-    );
+    const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
 
-    const res = await request(app)
-      .post("/api/payments/create-billing")
-      .set(...comToken(cliente.token))
-      .send({ orderPublicId: "nao-numerico" });
-    consulta.mockRestore();
+    const res = await comFalhaNoBanco(
+      { tabela: "pedidos", evento: "UPDATE", sqlstate: "22P02", mensagem: 'invalid input syntax for type integer: "nao-numerico"' },
+      () => request(app)
+        .post("/api/payments/create-billing")
+        .set(...comToken(cliente.token))
+        .send({ orderPublicId: pedido.publicId }),
+    );
 
     const traceId = expect500Generico(res);
     // SQLSTATE 22P02 (invalid input syntax) é errível cru do pg, não detalhe.
@@ -223,25 +221,26 @@ describe("regressão — falha de banco não vira 400 (pontos da evidência)", (
     expect(typeof traceId).toBe("string");
   });
 
+  // DB-03: o pedido é gravado pelo Prisma. A violação vem do próprio banco,
+  // e não de um mock do pool, que a escrita não usa mais.
   it("orderController: violação de foreign key vira 409 (mapeada), nunca 400", async () => {
     const cliente = await criarUsuario("client");
-    const consulta = vi.spyOn(pool, "query").mockRejectedValueOnce(
-      erroDoPg('insert or update on table "pedidos" violates foreign key constraint "pedidos_factory_id_fkey"', {
-        code: "23503",
-        constraint: "pedidos_factory_id_fkey",
-        detail: 'Key (factory_id)=(999999) is not present in table "usuarios".',
-      }),
-    );
 
-    const res = await request(app)
-      .post("/api/orders")
-      .set(...comToken(cliente.token))
-      .send({
-        productName: "Óculos sem fábrica",
-        factoryName: "Fábrica Fantasma",
-        customSpecs: especificacaoDoStudio(),
-      });
-    consulta.mockRestore();
+    const res = await comFalhaNoBanco(
+      {
+        tabela: "pedidos", evento: "INSERT", sqlstate: "23503",
+        mensagem: 'insert or update on table "pedidos" violates foreign key constraint "pedidos_factory_id_fkey". Key (factory_id)=(999999)',
+        constraint: "pedidos_factory_id_fkey",
+      },
+      () => request(app)
+        .post("/api/orders")
+        .set(...comToken(cliente.token))
+        .send({
+          productName: "Óculos sem fábrica",
+          factoryName: "Fábrica Fantasma",
+          customSpecs: especificacaoDoStudio(),
+        }),
+    );
 
     expect(res.status).toBe(409);
     expect(res.headers["content-type"]).toContain("application/problem+json");
