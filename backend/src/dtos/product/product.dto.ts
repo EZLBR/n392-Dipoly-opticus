@@ -12,7 +12,9 @@ const publicIdDaCategoria = z.string().trim().min(1, "Categoria inválida.").max
 const precoSchema = z.preprocess(
   (valor) => (typeof valor === "string" && /^\s*\d+(\.\d+)?\s*$/.test(valor) ? Number(valor) : valor),
   z
-    .number({ message: "Preço deve ser um número positivo." })
+    .number({
+      error: (issue) => (issue.input === undefined ? "Preço é obrigatório." : "Preço deve ser um número positivo."),
+    })
     .positive({ message: "Preço deve ser um número positivo.", abort: true })
     .min(0.01, "O preço mínimo é 0,01.")
     .max(99_999_999.99, "O preço máximo é 99.999.999,99."),

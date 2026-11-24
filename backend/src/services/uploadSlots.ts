@@ -43,8 +43,23 @@ export class UploadSlots {
 }
 
 /**
- * Dois envios por usuário, o mesmo que um usuário tinha antes, e no máximo 8
- * no processo (≈ 40 MiB de buffers). Dois envios simultâneos do mesmo usuário
- * continuam chegando à trava de cota no banco (FOR NO KEY UPDATE).
+ * Teto global de envios simultâneos, de `STUDIO_UPLOADS_SIMULTANEOS` (padrão 4).
+ * O buffer é de até 5 MiB, mas uma imagem de 4096×4096 decodificada no Sharp
+ * passa de 60 MiB: cada vaga pode custar isso de memória no pico.
  */
-export const studioUploadSlots = new UploadSlots(2, 8);
+export function lerTetoDeUploads(valor: string | undefined): number {
+  const texto = valor?.trim();
+  if (!texto) return 4;
+  const teto = Number(texto);
+  if (!Number.isInteger(teto) || teto < 1 || teto > 64) {
+    throw new Error("STUDIO_UPLOADS_SIMULTANEOS deve ser um inteiro entre 1 e 64.");
+  }
+  return teto;
+}
+
+/**
+ * Dois envios por usuário, o mesmo que um usuário tinha antes, e no máximo
+ * `STUDIO_UPLOADS_SIMULTANEOS` no processo. Dois envios simultâneos do mesmo
+ * usuário continuam chegando à trava de cota no banco (FOR NO KEY UPDATE).
+ */
+export const studioUploadSlots = new UploadSlots(2, lerTetoDeUploads(process.env.STUDIO_UPLOADS_SIMULTANEOS));

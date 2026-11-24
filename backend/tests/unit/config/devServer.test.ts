@@ -10,6 +10,7 @@
 
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
@@ -18,8 +19,11 @@ const exec = promisify(execFile);
 describe("npm run dev", () => {
   it("o tsx consegue carregar e montar a aplicação", async () => {
     const script = "import('./src/app.ts').then(m => { m.createApp(); console.log('APP_OK'); })";
-    const { stdout } = await exec("npx", ["tsx", "-e", script], {
-      cwd: new URL("../../..", import.meta.url).pathname,
+    // O próprio node com o loader do tsx: sem `npx`, que no Windows é
+    // `npx.cmd` e não roda sem shell. O fileURLToPath decodifica espaços
+    // ("%20") e a letra do disco, que o `.pathname` deixaria inválidos.
+    const { stdout } = await exec(process.execPath, ["--import", "tsx", "-e", script], {
+      cwd: fileURLToPath(new URL("../../..", import.meta.url)),
       env: { ...process.env, NODE_ENV: "test" },
       timeout: 60_000,
     });
