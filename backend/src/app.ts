@@ -6,6 +6,8 @@ import { env } from "./config/env.js";
 import { NotFoundProblem, TooManyRequestsProblem } from "./errors/problem.js";
 import { problemErrorHandler } from "./middlewares/problemErrorHandler.js";
 import { requestId } from "./middlewares/requestId.js";
+import { setSessionValidator } from "./middlewares/routerGuard.js";
+import { sessionStillValid } from "./services/passwordReset.js";
 import authRoutes from "./routes/authRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import designRoutes from "./routes/designRoutes.js";
@@ -27,6 +29,9 @@ export function createApp(options: AppOptions = {}) {
     rateLimit: enableRateLimit = !isTest,
     requestLogging = !isTest,
   } = options;
+
+  // FEAT-01: o guard recusa tokens emitidos antes da última troca de senha.
+  setSessionValidator(sessionStillValid);
 
   const app = express();
   const allowedOrigins = [
@@ -60,6 +65,15 @@ export function createApp(options: AppOptions = {}) {
   app.use(requestId());
 
   if (enableRateLimit) {
+    for (const [path, limit] of [["forgot-password", 5], ["reset-password", 10]] as const) {
+      app.use(`/api/auth/${path}`, rateLimit({
+        windowMs: 15 * 60 * 1000,
+        limit,
+        handler: (_req, _res, next) => {
+          next(new TooManyRequestsProblem("Muitas tentativas. Tente novamente mais tarde."));
+        },
+      }));
+    }
     app.use(
       "/api/auth/login",
       rateLimit({

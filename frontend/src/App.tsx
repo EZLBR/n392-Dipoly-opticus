@@ -16,6 +16,7 @@ const Marketplace = lazy(() => import("./components/Marketplace"));
 const CreatorStudio = lazy(() => import("./components/CreatorStudio"));
 const DesignsGallery = lazy(() => import("./components/DesignsGallery"));
 const AuthPage = lazy(() => import("./components/AuthPage"));
+const PasswordRecovery = lazy(() => import("./components/PasswordRecovery"));
 const Cart = lazy(() => import("./components/Cart"));
 const CustomerOrders = lazy(() => import("./components/CustomerOrders"));
 
@@ -132,6 +133,8 @@ export function AppContent() {
             <Routes>
               <Route path="/" element={<Marketplace setView={setViewLegacy} />} />
               <Route path="/login" element={<AuthPage />} />
+              <Route path="/forgot-password" element={<PasswordRecovery key="forgot" />} />
+              <Route path="/reset-password" element={<PasswordRecovery key="reset" />} />
               <Route path="/designs" element={<RequireAuth roles={STUDIO_ROLES}><DesignsGallery setView={setViewLegacy} /></RequireAuth>} />
               <Route path="/create" element={<RequireAuth roles={STUDIO_ROLES}><CreatorStudio setView={setViewLegacy} /></RequireAuth>} />
               <Route path="/cart" element={<RequireAuth roles={STUDIO_ROLES}><Cart setView={setViewLegacy} /></RequireAuth>} />

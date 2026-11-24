@@ -202,6 +202,13 @@ mudou, a transação inteira é revertida sem link de cobrança (409 na associa�
 uma transação, condicionada ao billingId lido no início da requisição.
 A classificação fica em `backend/src/services/gatewayDePagamento.ts`.
 
+### Recuperação de senha
+
+Defina `FRONTEND_URL` com a origem que o usuário usa para acessar o frontend.
+O backend envia o link para `/reset-password` por SMTP. O token expira em
+15 minutos e só pode ser usado uma vez. Quando o e-mail é desconhecido, a
+solicitação recebe a mesma resposta.
+
 ## Docker
 
 Imagens de produção para o backend e o frontend. Para subir a stack completa, com o
