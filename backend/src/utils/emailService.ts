@@ -93,8 +93,8 @@ export async function sendOrderStatusEmail(
   }
 
   try {
-    await sendEmail(order.customer_email, mensagem.assunto, mensagem.html);
-    logger.info({ pedidoId: order.id, status: newStatus }, "[email] mensagem enviada");
+    const { previewUrl } = await sendEmail(order.customer_email, mensagem.assunto, mensagem.html);
+    logger.info({ pedidoId: order.id, status: newStatus, previewUrl }, "[email] mensagem enviada");
   } catch (err) {
     logger.error(
       { err, pedidoId: order.id, status: newStatus },
