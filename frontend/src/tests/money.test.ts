@@ -5,5 +5,9 @@ import { formatMoney } from "../utils/money";
 it("formata preços em reais no padrão do idioma", () => {
   expect(formatMoney(1234.5, "pt").replace(/\s/g, " ")).toBe("R$ 1.234,50");
   expect(formatMoney(1234.5, "en")).toBe("R$1,234.50");
-  expect(formatMoney(Number.NaN, "pt").replace(/\s/g, " ")).toBe("R$ 0,00");
+});
+
+it("preço inválido aparece como \"—\", não como grátis", () => {
+  expect(formatMoney(Number.NaN, "pt")).toBe("—");
+  expect(formatMoney(Number.POSITIVE_INFINITY, "en")).toBe("—");
 });
