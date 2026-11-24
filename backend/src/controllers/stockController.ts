@@ -2,25 +2,15 @@
 //   STOCK CONTROLLER — Gerenciamento de Estoque
 //   Rotas: /api/stock
 //
-//   ID-02: o produto é identificado pelo publicId na rota, resolvido na
-//   própria consulta, e as respostas não serializam ids inteiros.
+//   DB-03: adapta o HTTP. A regra e o acesso ao banco ficam no
+//   StockService.
 // ============================================================
 
-import pool from "../config/db.js";
 import type { Request, Response } from "express";
-import { BadRequestProblem, ConflictProblem, NotFoundProblem } from "../errors/problem.js";
+import { BadRequestProblem } from "../errors/problem.js";
 import { parsePagination } from "../utils/pagination.js";
-import { LIMITE_QUANTIDADE_ESTOQUE, type UpdateStockDTO } from "../dtos/stock/stock.dto.js";
-
-/** Colunas públicas de um item de estoque (alias informado) e do seu produto (alias p). */
-const camposEstoque = (e: string) => `
-  ${e}."publicId",
-  p."publicId"    AS "produtoPublicId",
-  p.nome          AS produto_nome,
-  ${e}.quantidade,
-  ${e}.estoque_minimo,
-  ${e}.atualizado_em,
-  ${e}.version`;
+import type { UpdateStockDTO } from "../dtos/stock/stock.dto.js";
+import { StockService } from "../services/stockService.js";
 
 // ─────────────────────────────────────────────────────────
 //   LISTAR TODO O ESTOQUE
@@ -31,46 +21,8 @@ export async function getAllStock(req: Request, res: Response) {
   if (!pagination.isValid) {
     throw new BadRequestProblem(pagination.error);
   }
-  const { page, limit, offset } = pagination;
 
-  const countRes = await pool.query(`SELECT COUNT(*) FROM estoque e INNER JOIN produtos p ON p.id = e.produto_id WHERE p.ativo = TRUE`);
-  const totalCount = parseInt(countRes.rows[0].count);
-
-  const { rows } = await pool.query(
-    `SELECT
-      e."publicId",
-      p."publicId"    AS "produtoPublicId",
-      p.nome          AS produto_nome,
-      p.preco         AS produto_preco,
-      c.nome          AS categoria_nome,
-      e.quantidade,
-      e.estoque_minimo,
-      e.atualizado_em,
-      -- Flag de alerta: estoque abaixo do mínimo
-      (e.quantidade <= e.estoque_minimo) AS alerta_baixo_estoque
-     FROM estoque e
-     INNER JOIN produtos p ON p.id = e.produto_id
-     LEFT JOIN categorias c ON c.id = p.categoria_id
-     WHERE p.ativo = TRUE
-     ORDER BY e.quantidade ASC
-     LIMIT $1 OFFSET $2`,
-    [limit, offset]
-  );
-
-  // Separa os produtos com estoque crítico (desta página)
-  const alertas = rows.filter(r => r.alerta_baixo_estoque);
-
-  return res.json({
-    estoque:  rows,
-    alertas:  alertas.length,
-    produtos_criticos: alertas.map(r => r.produto_nome),
-    pagination: {
-      page,
-      limit,
-      totalItems: totalCount,
-      totalPages: Math.ceil(totalCount / limit)
-    }
-  });
+  return res.json(await StockService.list(pagination));
 }
 
 // ─────────────────────────────────────────────────────────
@@ -78,26 +30,7 @@ export async function getAllStock(req: Request, res: Response) {
 //   GET /api/stock/product/:produtoPublicId
 // ─────────────────────────────────────────────────────────
 export async function getStockByProduct(req: Request, res: Response) {
-  const produtoPublicId = String(req.params.produtoPublicId);
-
-  const { rows } = await pool.query(
-    `SELECT ${camposEstoque("e")}, p.preco
-     FROM estoque e
-     INNER JOIN produtos p ON p.id = e.produto_id
-     WHERE p."publicId" = $1`,
-    [produtoPublicId]
-  );
-
-  if (rows.length === 0) {
-    throw new NotFoundProblem("Estoque não encontrado para esse produto.");
-  }
-
-  const item = rows[0];
-
-  return res.json({
-    estoque: item,
-    alerta:  item.quantidade <= item.estoque_minimo
-  });
+  return res.json(await StockService.getByProduct(String(req.params.produtoPublicId)));
 }
 
 // ─────────────────────────────────────────────────────────
@@ -106,68 +39,12 @@ export async function getStockByProduct(req: Request, res: Response) {
 //   Body: { quantidade, estoque_minimo, operacao }
 //   operacao: 'set' (define valor) | 'add' (adiciona) | 'subtract' (subtrai)
 // ─────────────────────────────────────────────────────────
-
-// A operação acontece dentro do próprio UPDATE, sobre o valor atual da
-// linha. Ler a quantidade, calcular em JavaScript e gravar o valor
-// absoluto perdia baixas concorrentes: duas baixas de 5 sobre um estoque
-// de 10 terminavam em 5, não em 0. A guarda no WHERE impede estoque
-// negativo e estouro do INTEGER; quando ela barra a escrita, nenhuma
-// linha é afetada.
-const OPERACOES_DE_ESTOQUE = {
-  set:      { novaQuantidade: "$1",              guarda: "TRUE" },
-  add:      { novaQuantidade: "quantidade + $1", guarda: `quantidade <= ${LIMITE_QUANTIDADE_ESTOQUE} - $1` },
-  subtract: { novaQuantidade: "quantidade - $1", guarda: "quantidade >= $1" },
-} as const;
-
 export async function updateStock(req: Request, res: Response) {
-  const produtoPublicId = String(req.params.produtoPublicId);
-  const { quantidade, estoque_minimo, operacao } = req.body as UpdateStockDTO;
-  const { novaQuantidade, guarda } = OPERACOES_DE_ESTOQUE[operacao];
-
-  const { rows: atualizados } = await pool.query(
-    `WITH atualizado AS (
-       UPDATE estoque
-          SET quantidade     = ${novaQuantidade},
-              estoque_minimo = COALESCE($2, estoque_minimo),
-              version        = version + 1
-        WHERE produto_id = (SELECT id FROM produtos WHERE "publicId" = $3) AND ${guarda}
-       RETURNING *
-     )
-     SELECT ${camposEstoque("a")}
-       FROM atualizado a
-       INNER JOIN produtos p ON p.id = a.produto_id`,
-    [quantidade, estoque_minimo ?? null, produtoPublicId]
+  const resultado = await StockService.update(
+    String(req.params.produtoPublicId),
+    req.body as UpdateStockDTO,
   );
-
-  if (atualizados.length === 0) {
-    // O UPDATE já decidiu, de forma atômica. Esta leitura serve só para
-    // escolher a resposta: produto inexistente ou guarda que barrou.
-    const { rows: atual } = await pool.query<{ quantidade: number }>(
-      `SELECT e.quantidade FROM estoque e
-         INNER JOIN produtos p ON p.id = e.produto_id
-        WHERE p."publicId" = $1`,
-      [produtoPublicId]
-    );
-
-    if (atual.length === 0) {
-      throw new NotFoundProblem("Produto não encontrado no estoque.");
-    }
-    if (operacao === "subtract") {
-      throw new ConflictProblem(`Estoque insuficiente. Disponível: ${atual[0].quantidade} unidades.`);
-    }
-    throw new ConflictProblem(`A entrada excederia o limite de ${LIMITE_QUANTIDADE_ESTOQUE} unidades em estoque.`);
-  }
-
-  const item = atualizados[0];
-  const alerta = item.quantidade <= item.estoque_minimo;
-
-  return res.json({
-    estoque: item,
-    alerta,
-    message: alerta
-      ? `⚠️ Atenção: estoque baixo! ${item.quantidade} unidades (mínimo: ${item.estoque_minimo})`
-      : `Estoque atualizado: ${item.quantidade} unidades disponíveis.`
-  });
+  return res.json(resultado);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -175,21 +52,5 @@ export async function updateStock(req: Request, res: Response) {
 //   GET /api/stock/alerts
 // ─────────────────────────────────────────────────────────
 export async function getStockAlerts(req: Request, res: Response) {
-  const { rows } = await pool.query(
-    `SELECT
-      p."publicId"   AS "produtoPublicId",
-      p.nome         AS produto_nome,
-      e.quantidade,
-      e.estoque_minimo,
-      (e.estoque_minimo - e.quantidade) AS deficit
-     FROM estoque e
-     INNER JOIN produtos p ON p.id = e.produto_id
-     WHERE e.quantidade <= e.estoque_minimo AND p.ativo = TRUE
-     ORDER BY deficit DESC`
-  );
-
-  return res.json({
-    alertas: rows,
-    total:   rows.length
-  });
+  return res.json(await StockService.alerts());
 }
