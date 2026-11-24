@@ -1446,7 +1446,7 @@
         ],
         "summary": "Checkout do carrinho",
         "responses": {
-          "201": {
+          "200": {
             "description": "Pedidos criados numa transação, com a cobrança Pix."
           },
           "400": {
@@ -1454,6 +1454,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Problem401"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
           },
           "503": {
             "$ref": "#/components/responses/Problem503"
@@ -1480,7 +1483,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Responde 409 se os pedidos mudarem enquanto a cobrança é criada. "
       }
     },
     "/api/orders/mine": {
