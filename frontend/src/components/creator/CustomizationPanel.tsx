@@ -1,3 +1,4 @@
+import { formatMoney } from "../../utils/money";
 import React from "react";
 import { useCreatorStudio } from "../../contexts/CreatorStudioContext";
 import { useTranslation } from "../../contexts/LanguageContext";
@@ -320,10 +321,7 @@ export default function CustomizationPanel({
             {t("studio-options-configuration-estimate")}
           </span>
           <strong>
-            {new Intl.NumberFormat(pt ? "pt-BR" : "en-US", {
-              style: "currency",
-              currency: "BRL",
-            }).format(calculateBasePrice(c))}
+            {formatMoney(calculateBasePrice(c), pt ? "pt" : "en")}
           </strong>
         </div>
         <div className="studio-actions">

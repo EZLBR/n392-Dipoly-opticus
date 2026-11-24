@@ -1,3 +1,4 @@
+import { formatMoney } from "../../utils/money";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -45,11 +46,7 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
   );
   const [selected, setSelected] = useState<StoreProduct | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
-  const money = (value: number) =>
-    new Intl.NumberFormat(pt ? "pt-BR" : "en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(value);
+  const money = (value: number) => formatMoney(value, pt ? "pt" : "en");
   useEffect(() => {
     const controller = new AbortController();
     let disposed = false;
@@ -242,7 +239,7 @@ export default function StoreCatalog({ pt }: { pt: boolean }) {
             </nav>
           )}
           <p className="market-price-note">
-            {t("store-prices-in-us-dollars-usd-as")}
+            {t("store-prices-note")}
           </p>
         </>
       )}
