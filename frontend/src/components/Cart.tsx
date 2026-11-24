@@ -20,7 +20,7 @@ interface SimulatedCheckout {
   language: Language;
 }
 
-export default function Cart({ setView }) {
+export default function Cart({ setView }: { setView: (view: string) => void }) {
   const { session } = useAuth();
   const { cart, removeFromCart, updateCartQty, clearCart, checkoutCart } = useCart();
   const { t, language } = useTranslation();
@@ -48,7 +48,7 @@ export default function Cart({ setView }) {
     return () => controller.abort();
   }, [checkout, language, checkoutLanguageAttempt]);
 
-  const showToast = (msg) => {
+  const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage("");
@@ -59,7 +59,7 @@ export default function Cart({ setView }) {
     return cart.reduce((sum, item) => sum + Number(item.total) * (item.quantity || 1), 0);
   };
 
-  const handleQtyChange = (itemId, currentQty, delta) => {
+  const handleQtyChange = (itemId: string, currentQty: number, delta: number) => {
     const nextQty = currentQty + delta;
     if (nextQty >= 1) {
       updateCartQty(itemId, nextQty);
@@ -82,30 +82,20 @@ export default function Cart({ setView }) {
     try {
       const result = await checkoutCart(cart);
 
-      if (result && (result.ok || result.checkoutUrl || result.isOffline || result.success)) {
-        if (result.isOffline) {
-          showToast(t("toast-offline-checkout"));
-          setTimeout(() => {
-            setView("marketplace");
-          }, 2000);
-        } else if (result.checkoutUrl) {
-          if (result.isSimulated) {
-            if (token !== localStorage.getItem("opticus_token")) return;
-            const url = result.checkoutUrl;
-            const html = await fetchSimulatedCheckoutHtml(url, language);
-            const billingId = result.billingId || new URL(url).searchParams.get("billingId") || "";
-            if (token === localStorage.getItem("opticus_token")) {
-              setSimulatedCheckout({ html, owner: String(session.publicId), token, billingId, url, language });
-            }
-          } else {
-            window.location.href = result.checkoutUrl;
-          }
+      if (result.ok === false) {
+        alert(result.error || t("cart-an-error-occurred-during-checkout-initialization"));
+        return;
+      }
+      if (token !== localStorage.getItem("opticus_token")) return;
+      const url = result.checkoutUrl;
+      if (result.isSimulated) {
+        const html = await fetchSimulatedCheckoutHtml(url, language);
+        const billingId = result.billingId || new URL(url).searchParams.get("billingId") || "";
+        if (token === localStorage.getItem("opticus_token")) {
+          setSimulatedCheckout({ html, owner: String(session.publicId), token, billingId, url, language });
         }
-      } else {
-        alert(
-          result?.error ||
-          (t("cart-an-error-occurred-during-checkout-initialization"))
-        );
+      } else if (url) {
+        window.location.href = url;
       }
     } catch (err) {
       console.error("Checkout process failed:", err);
@@ -315,6 +305,7 @@ export default function Cart({ setView }) {
                       padding: "4px"
                     }}>
                       <button
+                        aria-label={t("cart-decrease-quantity")}
                         onClick={() => handleQtyChange(item.id, item.quantity || 1, -1)}
                         style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex", padding: "6px" }}
                         disabled={(item.quantity || 1) <= 1}
@@ -325,6 +316,7 @@ export default function Cart({ setView }) {
                         {item.quantity || 1}
                       </span>
                       <button
+                        aria-label={t("cart-increase-quantity")}
                         onClick={() => handleQtyChange(item.id, item.quantity || 1, 1)}
                         style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex", padding: "6px" }}
                       >
@@ -338,6 +330,7 @@ export default function Cart({ setView }) {
 
                     <button
                       className="btn"
+                      aria-label={t("cart-remove-item")}
                       onClick={() => {
                         removeFromCart(item.id);
                         showToast(t("cart-item-removed"));

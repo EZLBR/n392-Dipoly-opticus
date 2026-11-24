@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "../contexts/LanguageContext";
 import { readJSON } from "../eyewear/storage";
+import { isPublicId } from "../utils/publicId";
 import {
   filterModels,
   studioModels,
@@ -37,8 +38,8 @@ export default function Marketplace({
   const [materials, setMaterials] = useState<string[]>([]);
   const [sort, setSort] = useState("featured");
   const [favorites, setFavorites] = useState<string[]>(() =>
-    readJSON(localStorage, "opticus_favorites", []).filter(
-      (id: unknown) => typeof id === "string",
+    readJSON<(string | number)[]>(localStorage, "opticus_favorites", []).filter(
+      isPublicId,
     ),
   );
   const [storageError, setStorageError] = useState(false);

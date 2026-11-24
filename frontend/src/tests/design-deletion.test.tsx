@@ -21,7 +21,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear(); });
 function api(remote: () => Response = () => json({ designs: [] }), remove: () => Response | Promise<Response> = () => json({ message: "ok" })) {
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
     if (init?.method === "DELETE") return remove();
-    if (String(url).endsWith("/auth/me")) return json({ user: { id: "A", name: "A", role: "client" } });
+    if (String(url).endsWith("/auth/me")) return json({ user: { publicId: "A", name: "A", role: "client" } });
     if (String(url).endsWith("/designs")) return remote();
     return json({ users: [] });
   });
@@ -63,7 +63,7 @@ it("does not clear B's active selection if the session changes during remote ref
   const remote = { id: "remote-a", name: "Remote A", model: "round", color: "#112233" };
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
     if (init?.method === "DELETE") return json({ message: "ok" });
-    if (String(url).endsWith("/auth/me")) return json({ user: { id: "A", name: "A", role: "client" } });
+    if (String(url).endsWith("/auth/me")) return json({ user: { publicId: "A", name: "A", role: "client" } });
     if (String(url).endsWith("/designs")) {
       if (++reads === 1) return json({ designs: [remote] });
       refreshStarted(); return new Promise(resolve => { release = resolve; });
@@ -89,7 +89,7 @@ it("requires confirmed remote deletion for an offline edit of a previously synch
     // An edit of a synced design is a PUT to its own id (BOLA-04); here it fails offline.
     if (init?.method === "PUT" || init?.method === "POST") throw new TypeError("Failed to fetch");
     if (init?.method === "DELETE") { serverDesigns = []; return json({ message: "ok" }); }
-    if (String(url).endsWith("/auth/me")) return json({ user: { id: "A", name: "A", role: "client" } });
+    if (String(url).endsWith("/auth/me")) return json({ user: { publicId: "A", name: "A", role: "client" } });
     if (String(url).endsWith("/designs")) return json({ designs: serverDesigns });
     return json({ users: [] });
   });
