@@ -13,6 +13,7 @@ import { app } from "../setup/app.js";
 import { pool } from "../setup/db.js";
 import prisma from "../../src/config/prisma.js";
 import { criarUsuario, comToken } from "../helpers/auth.js";
+import { esperarBloqueios } from "../helpers/bloqueio.js";
 import { esperarProblema } from "../helpers/problem.js";
 
 const rota = (publicId: string) => `/api/categories/${publicId}`;
@@ -238,19 +239,6 @@ describe("categorias — contrato da API (DB-03)", () => {
 });
 
 describe("categorias — garantias de escrita (DB-03)", () => {
-  /** Espera a requisição ficar parada num lock do banco, sem depender de tempo fixo. */
-  async function esperarBloqueio() {
-    for (let tentativa = 0; tentativa < 100; tentativa++) {
-      const { rows } = await pool.query(
-        `SELECT COUNT(*)::int AS total FROM pg_stat_activity
-          WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ILIKE '%categorias%'`,
-      );
-      if (rows[0].total > 0) return;
-      await new Promise(resolve => setTimeout(resolve, 20));
-    }
-    throw new Error("A requisição não chegou a esperar pelo lock.");
-  }
-
   it("dez criações simultâneas do mesmo nome: uma passa e as outras recebem o mesmo 409", async () => {
     const staff = await criarUsuario("staff");
 
@@ -294,7 +282,7 @@ describe("categorias — garantias de escrita (DB-03)", () => {
       );
       produtoId = rows[0].id;
       remocao = request(app).delete(rota(categoria.publicId)).set(...comToken(staff.token)).then(r => r);
-      await esperarBloqueio();
+      await esperarBloqueios();
       await conexao.query("COMMIT");
     } catch (erro) {
       await conexao.query("ROLLBACK");
