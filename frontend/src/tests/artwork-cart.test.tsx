@@ -23,8 +23,8 @@ it("keeps a saved artwork design editable but unavailable to add from the galler
 function CartControls() {
   const { cart, addToCart } = useCart();
   return <><output aria-label="cart-count">{cart.length}</output>
-    <button onClick={() => addToCart({ id: "normal", customSpecs: normalizeConfig() })}>Add normal</button>
-    <button onClick={() => addToCart({ id: "art", customSpecs: config })}>Add art</button></>;
+    <button onClick={() => addToCart({ id: "normal", productName: "Test frame", total: 100, customSpecs: normalizeConfig() })}>Add normal</button>
+    <button onClick={() => addToCart({ id: "art", productName: "Test frame", total: 100, customSpecs: config })}>Add art</button></>;
 }
 it("rejects artwork at the shared cart entry point while accepting a normal design", () => {
   render(<AuthProvider><CartProvider><CartControls /></CartProvider></AuthProvider>);
@@ -36,7 +36,7 @@ it("rejects artwork at the shared cart entry point while accepting a normal desi
 
 function PatternCartControls() {
   const { cart, addToCart } = useCart();
-  return <><output aria-label="cart-count">{cart.length}</output><button onClick={() => addToCart({ id: "pattern", customSpecs: normalizeConfig({ surfacePattern: { version: 1, style: "checker" } }) })}>Add pattern</button></>;
+  return <><output aria-label="cart-count">{cart.length}</output><button onClick={() => addToCart({ id: "pattern", productName: "Test frame", total: 100, customSpecs: normalizeConfig({ surfacePattern: { version: 1, style: "checker" } }) })}>Add pattern</button></>;
 }
 it("does not add a visual-only pattern to the shared cart", () => {
   render(<AuthProvider><CartProvider><PatternCartControls /></CartProvider></AuthProvider>);

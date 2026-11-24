@@ -39,7 +39,7 @@ export default function AuthPage() {
       const result = await login(loginEmail, loginPassword);
       setLoginLoading(false);
 
-      if (result.ok) {
+      if (result.ok === true) {
         continueAfterAuth(result.role);
       } else {
         setLoginError(result.message || t("auth-login-invalid"));
@@ -74,7 +74,7 @@ export default function AuthPage() {
         password: signupPassword
       });
 
-      if (result.ok) {
+      if (result.ok === true) {
         setSignupSuccess(t("auth-signup-created"));
         setTimeout(() => continueAfterAuth(result.role), 500);
       } else {

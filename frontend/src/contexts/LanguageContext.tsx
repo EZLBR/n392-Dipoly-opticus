@@ -761,7 +761,13 @@ const translations = {
   }
 };
 
-const LanguageContext = createContext<any>(undefined);
+interface LanguageContextValue {
+  language: Language;
+  setLanguage: (language: string) => void;
+  t: (key: string) => string;
+}
+
+const LanguageContext = createContext<LanguageContextValue | undefined>(undefined);
 
 export type Language = keyof typeof translations;
 
@@ -809,17 +815,17 @@ export function localizeProblem(problem: ProblemDetails, language: Language = ge
   return translate(problemTypes.has(key) ? key : problemKeys.get(problem.status) ?? "api-unknown", language);
 }
 
-export function LanguageProvider({ children }) {
+export function LanguageProvider({ children }: React.PropsWithChildren) {
   const [language, setLangState] = useState(getStoredLanguage);
 
-  const setLanguage = (lang) => {
+  const setLanguage = (lang: string) => {
     if (lang === "en" || lang === "pt") {
       setLangState(lang);
       localStorage.setItem("opticus_language", lang);
     }
   };
 
-  const t = (key) => {
+  const t = (key: string) => {
     return translate(key, language);
   };
 

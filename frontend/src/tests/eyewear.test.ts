@@ -284,7 +284,7 @@ describe("draft and saved design compatibility", () => {
     ]);
   });
   it("preserves device-local materials when refreshing old API records, without losing offline designs", () => {
-    const local = [
+    const local: Parameters<typeof mergeSavedDesigns>[1] = [
       {
         id: "a",
         config: {

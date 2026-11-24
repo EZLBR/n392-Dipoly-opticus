@@ -173,7 +173,7 @@ export function FactoryDashboard() {
   const handleStatusChange = async (orderId, newStatus, version) => {
     setOrderError("");
     const result = await updateOrderStatus(orderId, newStatus, version);
-    if (!result.ok) setOrderError(result.error);
+    if (result.ok === false) setOrderError(result.error);
   };
 
   const handleContextMenu = (e, order) => {
@@ -408,7 +408,7 @@ export function StaffDashboard() {
   const handleStatusChange = async (orderId, newStatus, version) => {
     setOrderError("");
     const result = await updateOrderStatus(orderId, newStatus, version);
-    if (!result.ok) setOrderError(result.error);
+    if (result.ok === false) setOrderError(result.error);
   };
 
   const handleContextMenu = (e, order) => {
