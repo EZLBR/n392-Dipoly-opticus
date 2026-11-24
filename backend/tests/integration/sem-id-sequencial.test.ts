@@ -125,8 +125,11 @@ describe("ID-02: nenhum payload expõe o id sequencial", () => {
     await registrar("POST /payments/confirm-simulated-payment", request(app)
       .post("/api/payments/confirm-simulated-payment").set(...como(cliente)).send({ billingId }));
     // FEAT-03: a fábrica só move o pedido depois que o pagamento o leva a Queued.
+    // CONC-02: e envia a versão que acabou de ler na própria listagem.
+    const daFabrica = await registrar("GET /orders", request(app).get("/api/orders").set(...como(fabrica)));
+    const versao = daFabrica.body.orders.find((o: { publicId: string }) => o.publicId === pedido.body.publicId).version;
     await registrar("PUT /orders/:publicId/status", request(app)
-      .put(`/api/orders/${pedido.body.publicId}/status`).set(...como(fabrica)).send({ status: "In production" }));
+      .put(`/api/orders/${pedido.body.publicId}/status`).set(...como(fabrica)).send({ status: "In production", version: versao }));
     const pagamentos = await registrar("GET /payments", request(app).get("/api/payments").set(...como(staff)));
     expect(pagamentos.body.pagamentos[0]).toMatchObject({ pedidoPublicId: pedido.body.publicId });
 
@@ -184,7 +187,7 @@ describe("ID-02: as rotas recebem publicId, não o id interno", () => {
       request(app).put(`/api/auth/users/${cliente.id}`).set(...auth(staff)).send({ name: "X" }),
       request(app).delete(`/api/auth/users/${cliente.id}`).set(...auth(staff)),
       request(app).get(`/api/orders/mine/${pedido.id}`).set(...auth(cliente)),
-      request(app).put(`/api/orders/${pedido.id}/status`).set(...auth(staff)).send({ status: "Queued" }),
+      request(app).put(`/api/orders/${pedido.id}/status`).set(...auth(staff)).send({ status: "Queued", version: 0 }),
       request(app).post("/api/payments/create-billing").set(...auth(cliente)).send({ orderPublicId: String(pedido.id) }),
     ];
 

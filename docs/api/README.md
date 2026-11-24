@@ -49,3 +49,20 @@ confere que as duas são iguais.
   status responde **409** antes de chamar o gateway, e o pedido não volta para
   `Pending Payment`.
 - Cancelar um pedido já pago não faz estorno automático: o estorno é tratado fora do sistema.
+
+### Trava otimista (CONC-02)
+
+O corpo do `PUT /api/orders/:publicId/status` leva a versão do pedido que o cliente leu:
+
+```json
+{ "status": "In production", "version": 3 }
+```
+
+- A versão vem na listagem (`GET /api/orders`) e na resposta da própria atualização.
+- Se o pedido mudou depois da leitura, a resposta é **409**
+  ("O pedido foi alterado por outra pessoa…") e nada é gravado. O painel recarrega a lista e
+  pede para a pessoa conferir e decidir de novo.
+- Versão ausente, fracionária, negativa ou acima do `INTEGER` responde **400** com
+  `invalidParams` apontando `version`.
+- Toda escrita em `pedidos` avança a versão, pelo trigger `pedidos_version_trigger`: também a
+  cobrança, a confirmação de pagamento e o checkout, que não passam pela rota de status.

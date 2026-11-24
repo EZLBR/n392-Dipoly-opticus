@@ -25,16 +25,17 @@ async function cenario(status: "Pending_Payment" | "Queued" | "In_production" | 
   return { cliente, fabrica, staff, pedido };
 }
 
-function mover(token: string, publicId: string, status: string) {
-  return request(app).put(rota(publicId)).set(...comToken(token)).send({ status });
+/** A versão enviada é a lida na criação, salvo quando o teste diz outra. */
+function mover(token: string, pedido: { publicId: string; version: number }, status: string, version = pedido.version) {
+  return request(app).put(rota(pedido.publicId)).set(...comToken(token)).send({ status, version });
 }
 
 describe("PUT /api/orders/:publicId/status — transições (FEAT-03)", () => {
   it("a fábrica leva o pedido pago de Queued a In production e depois a Delivered", async () => {
     const { fabrica, pedido } = await cenario("Queued");
 
-    expect((await mover(fabrica.token, pedido.publicId, "In production")).status).toBe(200);
-    expect((await mover(fabrica.token, pedido.publicId, "Delivered")).status).toBe(200);
+    expect((await mover(fabrica.token, pedido, "In production")).status).toBe(200);
+    expect((await mover(fabrica.token, pedido, "Delivered", pedido.version + 1)).status).toBe(200);
 
     expect(await lerPedido(pedido.publicId)).toMatchObject({ status: "Delivered", version: pedido.version + 2 });
   });
@@ -42,7 +43,7 @@ describe("PUT /api/orders/:publicId/status — transições (FEAT-03)", () => {
   it("a fábrica não entrega um pedido que aguarda pagamento: 409 e nada muda", async () => {
     const { fabrica, pedido } = await cenario("Pending_Payment");
 
-    const res = await mover(fabrica.token, pedido.publicId, "Delivered");
+    const res = await mover(fabrica.token, pedido, "Delivered");
 
     esperarProblema(res, 409, "conflict");
     expect(res.body.detail).toContain("não permitida");
@@ -53,7 +54,7 @@ describe("PUT /api/orders/:publicId/status — transições (FEAT-03)", () => {
     const { fabrica, staff, pedido } = await cenario("Pending_Payment");
     const ator = papel === "factory" ? fabrica : staff;
 
-    const res = await mover(ator.token, pedido.publicId, "Queued");
+    const res = await mover(ator.token, pedido, "Queued");
 
     esperarProblema(res, 409, "conflict");
     expect(res.body.detail).toContain("Apenas a confirmação do pagamento");
@@ -68,7 +69,7 @@ describe("PUT /api/orders/:publicId/status — transições (FEAT-03)", () => {
   ] as const)("staff não move de %s para %s", async (atual, destino) => {
     const { staff, pedido } = await cenario(atual);
 
-    const res = await mover(staff.token, pedido.publicId, destino);
+    const res = await mover(staff.token, pedido, destino);
 
     esperarProblema(res, 409, "conflict");
     expect(await lerPedido(pedido.publicId)).toMatchObject({ status: atual, version: pedido.version });
@@ -77,7 +78,7 @@ describe("PUT /api/orders/:publicId/status — transições (FEAT-03)", () => {
   it("repetir o status atual responde 409 sem avançar a versão", async () => {
     const { fabrica, pedido } = await cenario("In_production");
 
-    const res = await mover(fabrica.token, pedido.publicId, "In production");
+    const res = await mover(fabrica.token, pedido, "In production");
 
     esperarProblema(res, 409, "conflict");
     expect(res.body.detail).toContain("já está");
@@ -87,7 +88,7 @@ describe("PUT /api/orders/:publicId/status — transições (FEAT-03)", () => {
   it("a fábrica dona do pedido não cancela: 403, porque falta o papel", async () => {
     const { fabrica, pedido } = await cenario("Queued");
 
-    const res = await mover(fabrica.token, pedido.publicId, "Cancelled");
+    const res = await mover(fabrica.token, pedido, "Cancelled");
 
     esperarProblema(res, 403, "forbidden");
     expect(await lerPedido(pedido.publicId)).toMatchObject({ status: "Queued", version: pedido.version });
@@ -98,7 +99,7 @@ describe("PUT /api/orders/:publicId/status — transições (FEAT-03)", () => {
     async (atual) => {
       const { staff, pedido } = await cenario(atual);
 
-      const res = await mover(staff.token, pedido.publicId, "Cancelled");
+      const res = await mover(staff.token, pedido, "Cancelled");
 
       expect(res.status).toBe(200);
       expect(await lerPedido(pedido.publicId)).toMatchObject({ status: "Cancelled", version: pedido.version + 1 });
@@ -109,8 +110,8 @@ describe("PUT /api/orders/:publicId/status — transições (FEAT-03)", () => {
     const { pedido } = await cenario("Pending_Payment");
     const outraFabrica = await criarUsuario("factory");
 
-    const alheio = await mover(outraFabrica.token, pedido.publicId, "Delivered");
-    const inexistente = await mover(outraFabrica.token, "00000000-0000-4000-8000-000000000000", "Delivered");
+    const alheio = await mover(outraFabrica.token, pedido, "Delivered");
+    const inexistente = await mover(outraFabrica.token, { publicId: "00000000-0000-4000-8000-000000000000", version: 0 }, "Delivered");
 
     esperarProblema(alheio, 404, "not-found");
     esperarProblema(inexistente, 404, "not-found");
@@ -124,7 +125,7 @@ describe("PUT /api/orders/:publicId/status — transições (FEAT-03)", () => {
     const { fabrica, pedido } = await cenario("Queued");
 
     const respostas = await Promise.all(
-      Array.from({ length: 10 }, () => mover(fabrica.token, pedido.publicId, "In production")),
+      Array.from({ length: 10 }, () => mover(fabrica.token, pedido, "In production")),
     );
 
     expect(respostas.filter((r) => r.status === 200)).toHaveLength(1);
