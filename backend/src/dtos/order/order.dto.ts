@@ -6,6 +6,7 @@ import {
   QUANTIDADE_MAXIMA_POR_ITEM,
   TRATAMENTOS_DE_LENTE,
 } from "../../domain/pricing.js";
+import { STATUS_DO_PEDIDO } from "../../domain/pedidoStatus.js";
 
 // O cliente não envia preço: o total vem de precoUnitarioEmCentavos() a
 // partir das especificações (SEC-05). Um `total` no corpo é descartado
@@ -78,10 +79,13 @@ export const createOrderSchema = z.object({
 export type CreateOrderDTO = z.infer<typeof createOrderSchema>;
 
 export const updateOrderStatusSchema = z.object({
-  status: z
-    .enum(["Pending Payment", "Queued", "In production", "Delivered", "Cancelled"], {
-      message: "Informe um status válido.",
-    }),
+  status: z.enum(STATUS_DO_PEDIDO, { message: "Informe um status válido." }),
+  // CONC-02: a versão lida pelo cliente. Teto do INTEGER do PostgreSQL, para
+  // um valor absurdo virar 400 em vez de erro do banco.
+  version: z.number({ message: "Informe a versão do pedido que você leu." })
+    .int("A versão é um número inteiro.")
+    .min(0, "A versão não pode ser negativa.")
+    .max(2_147_483_647, "Versão inválida."),
 });
 
 export type UpdateOrderStatusDTO = z.infer<typeof updateOrderStatusSchema>;
