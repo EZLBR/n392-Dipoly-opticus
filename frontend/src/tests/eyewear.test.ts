@@ -277,14 +277,14 @@ describe("draft and saved design compatibility", () => {
       [{ id: "old", model: "aviator", antiReflective: true }],
       [{ id: "old", frameMaterial: "gold", lensTreatments: ["polarized"] }],
     );
-    expect(result[0].config.frameMaterial).toBe("gold");
-    expect(result[0].config.lensTreatments).toEqual([
+    expect(result[0].config?.frameMaterial).toBe("gold");
+    expect(result[0].config?.lensTreatments).toEqual([
       "polarized",
       "anti_reflective",
     ]);
   });
   it("preserves device-local materials when refreshing old API records, without losing offline designs", () => {
-    const local = [
+    const local: Parameters<typeof mergeSavedDesigns>[1] = [
       {
         id: "a",
         config: {

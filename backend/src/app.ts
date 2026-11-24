@@ -13,6 +13,7 @@ import orderRoutes from "./routes/orderRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import stockRoutes from "./routes/stockRoutes.js";
+import { createStudioAssetRoutes } from "./routes/studioAssetRoutes.js";
 import logger from "./utils/logger.js";
 
 export interface AppOptions {
@@ -60,7 +61,7 @@ export function createApp(options: AppOptions = {}) {
 
   if (enableRateLimit) {
     app.use(
-      "/api/auth/login",
+      ["/api/auth/login", "/api/auth/google"],
       rateLimit({
         windowMs: 15 * 60 * 1000,
         max: 15,
@@ -117,6 +118,7 @@ export function createApp(options: AppOptions = {}) {
   app.use("/api/products", productRoutes);
   app.use("/api/categories", categoryRoutes);
   app.use("/api/stock", stockRoutes);
+  app.use("/api/studio/assets", createStudioAssetRoutes(enableRateLimit));
 
   app.get("/health", (_req, res) => {
     res.json({ success: true, status: "Server is healthy and responsive." });

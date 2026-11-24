@@ -47,6 +47,7 @@ const CAMPOS_PEDIDO = `
   f."publicId"      AS "factoryPublicId",
   p.factory_name    AS "factoryName",
   p.status,
+  p.version,
   p.total,
   p.custom_specs    AS "customSpecs",
   p.abacate_billing_id AS "abacateBillingId",
@@ -208,13 +209,14 @@ export async function getOrders(req: Request, res: Response) {
 export async function updateOrderStatus(req: Request, res: Response) {
   // Express 5 tipa params como string | string[]; a rota declara um só.
   const publicId   = String(req.params.publicId ?? "");
-  const { status } = req.body as UpdateOrderStatusDTO;
+  const { status, version } = req.body as UpdateOrderStatusDTO;
 
   // A identidade vem exclusivamente do token validado pelo middleware.
   // A autorização de objeto acontece dentro da mutação, no service.
   const pedido = await OrderService.updateStatus({
     publicId,
     status,
+    version,
     ator: { publicId: publicIdDoUsuario(req), role: String(req.user!.role) },
   });
 

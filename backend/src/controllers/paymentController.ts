@@ -51,7 +51,11 @@ interface PedidoCobravel {
   customer_name: string;
   customer_email: string;
   abacate_billing_id: string | null;
+  status: string | null;
 }
+
+/** FEAT-03: cobrança só para pedido que ainda aguarda pagamento. */
+const PEDIDO_NAO_COBRAVEL = "Só é possível gerar cobrança para um pedido que aguarda pagamento.";
 
 // ─────────────────────────────────────────────────────────
 //   CRIAR COBRANÇA (AbacatePay ou simulador)
@@ -68,7 +72,7 @@ export async function createBilling(req: Request, res: Response) {
   const escopo = [req.user!.role === "staff", publicIdDoUsuario(req)];
 
   const { rows } = await pool.query<PedidoCobravel>(
-    `SELECT id, "publicId", total, product_name, customer_name, customer_email, abacate_billing_id
+    `SELECT id, "publicId", total, product_name, customer_name, customer_email, abacate_billing_id, status
        FROM pedidos
       WHERE "publicId" = $1 AND ($2::boolean OR usuario_id = ${usuarioPorPublicId("$3")})`,
     [orderPublicId, ...escopo]
@@ -79,6 +83,14 @@ export async function createBilling(req: Request, res: Response) {
   }
 
   const order = rows[0];
+
+  // FEAT-03: pedido pago, em produção, entregue ou cancelado não volta para
+  // Pending Payment nem ganha outra cobrança. A recusa vem antes do gateway,
+  // para não criar cobrança nenhuma. Quem chega aqui já enxerga o pedido,
+  // então o 409 não revela nada a terceiros.
+  if (order.status !== "Pending Payment") {
+    throw new ConflictProblem(PEDIDO_NAO_COBRAVEL);
+  }
 
   const ABACATE_TOKEN = getAbacateToken();
   const amountInCents   = Math.round(Number(order.total) * 100);
@@ -96,16 +108,18 @@ export async function createBilling(req: Request, res: Response) {
 
     const mockBillingId  = gerarBillingId("sim");
 
-    // A escrita repete o escopo da leitura: a autorização vale para a
-    // mutação, e não só para o SELECT que a precedeu.
+    // A escrita repete o escopo e o status da leitura: a autorização e a
+    // máquina de estados valem para a mutação, e não só para o SELECT.
     const { rowCount } = await pool.query(
-      `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true, status = 'Pending Payment'
-        WHERE id = $2 AND ($3::boolean OR usuario_id = ${usuarioPorPublicId("$4")})`,
+      `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = true
+        WHERE id = $2 AND status = 'Pending Payment' AND ($3::boolean OR usuario_id = ${usuarioPorPublicId("$4")})`,
       [mockBillingId, order.id, ...escopo]
     );
 
+    // O pedido já foi visto acima: zero linhas significa que o status mudou
+    // nesse meio-tempo (o pagamento foi confirmado, por exemplo).
     if (rowCount !== 1) {
-      throw new NotFoundProblem("Pedido não encontrado.");
+      throw new ConflictProblem(PEDIDO_NAO_COBRAVEL);
     }
 
     const mockCheckoutUrl = `${backendOrigin}/api/payments/simulated-checkout?billingId=${mockBillingId}&orderPublicId=${encodeURIComponent(order.publicId)}&returnTo=${encodeURIComponent(frontendOrigin)}`;
@@ -161,8 +175,8 @@ async function registrarCobrancaNoPedido(
   try {
     await emTransacao(async (conexao) => {
       const { rowCount } = await conexao.query(
-        `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = false, status = 'Pending Payment'
-          WHERE id = $2 AND abacate_billing_id IS NOT DISTINCT FROM $3::varchar`,
+        `UPDATE pedidos SET abacate_billing_id = $1, pagamento_simulado = false
+          WHERE id = $2 AND status = 'Pending Payment' AND abacate_billing_id IS NOT DISTINCT FROM $3::varchar`,
         [billingId, pedido.id, pedido.abacate_billing_id]
       );
 

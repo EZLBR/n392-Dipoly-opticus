@@ -7,12 +7,12 @@ import { FactoryDashboard, StaffDashboard } from "../components/Dashboards";
 
 vi.mock("../contexts/OrderContext", () => ({ useOrder: () => ({ orders: [], updateOrderStatus: vi.fn() }) }));
 
-function SessionControls({ role }: { role: string }) {
+function SessionControls({ role }: { role: "factory" | "staff" }) {
   const { setSession } = useAuth();
   return <>
-    <button onClick={() => setSession({ id: "factory-a", role, factoryName: "Factory A" })}>Authorize</button>
+    <button onClick={() => setSession({ publicId: "factory-a", role, name: "Factory", email: "factory@example.com", factoryName: "Factory A" })}>Authorize</button>
     <button onClick={() => setSession(null)}>End session</button>
-    <button onClick={() => setSession({ id: "client-a", role: "client" })}>Client session</button>
+    <button onClick={() => setSession({ publicId: "client-a", role: "client", name: "Client", email: "client@example.com" })}>Client session</button>
   </>;
 }
 
@@ -21,8 +21,8 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); localS
 
 describe("dashboard session transitions (#38)", () => {
   it.each([
-    { Component: FactoryDashboard, role: "factory", title: "Factory A Dashboard" },
-    { Component: StaffDashboard, role: "staff", title: "Operations Dashboard" },
+    { Component: FactoryDashboard, role: "factory" as const, title: "Factory A Dashboard" },
+    { Component: StaffDashboard, role: "staff" as const, title: "Operations Dashboard" },
   ])("keeps $role dashboard working across authorization and logout", ({ Component, role, title }) => {
     // Charts have no layout in jsdom; this test exercises the real dashboard, not chart rendering.
     vi.spyOn(console, "warn").mockImplementation(() => {});
