@@ -17,7 +17,9 @@ import * as stockController from "../../../src/controllers/stockController.js";
 import pool from "../../../src/config/db.js";
 import { AuthService } from "../../../src/services/authService.js";
 import { CategoryService } from "../../../src/services/categoryService.js";
+import { DesignService } from "../../../src/services/designService.js";
 import { OrderService } from "../../../src/services/orderService.js";
+import { PaymentService } from "../../../src/services/paymentService.js";
 import { ProductService } from "../../../src/services/productService.js";
 import { StockService } from "../../../src/services/stockService.js";
 
@@ -54,7 +56,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("designController lança NotFoundProblem se design não existir ou sem permissão", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
+      vi.spyOn(DesignService, "delete").mockRejectedValueOnce(new NotFoundProblem("Design não encontrado ou sem permissão."));
       const req = { params: { id: "des-999" }, user: { email: "user@test.com", publicId: "usuario-1" } } as unknown as Request;
       const res = mockResponse();
 
@@ -68,30 +70,28 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
       await expect(orderController.getOrders(req, res)).rejects.toThrow(ForbiddenProblem);
     });
 
-    it("paymentController lança NotFoundProblem se pedido não existir", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
-      const req = { body: { orderPublicId: "pedido-inexistente" }, user: { publicId: "usuario-1", role: "client" } } as unknown as Request;
-      const res = mockResponse();
-
-      await expect(paymentController.createBilling(req, res)).rejects.toThrow(NotFoundProblem);
-    });
-
-    // BOLA-03: a posse está na própria consulta. Para pedido alheio o banco
-    // devolve zero linhas, e a resposta é a mesma do pedido inexistente.
-    it("paymentController lança o mesmo NotFoundProblem se pedido pertencer a outro usuário", async () => {
-      const query = vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
-      const req = { body: { orderPublicId: "pedido-5" }, user: { publicId: "usuario-1", role: "client" } } as unknown as Request;
+    // DB-03: a consulta escopada está no PaymentService e é coberta contra o
+    // banco em idor-pagamentos.test.ts. Aqui, o controller entrega ao service
+    // a identidade do token e propaga o 404.
+    it("paymentController lança NotFoundProblem se pedido não existir ou for de outro usuário", async () => {
+      const criar = vi.spyOn(PaymentService, "criarCobranca").mockRejectedValueOnce(new NotFoundProblem("Pedido não encontrado."));
+      const req = {
+        body: { orderPublicId: "pedido-5" },
+        user: { publicId: "usuario-1", role: "client" },
+        headers: {},
+        protocol: "http",
+        get: () => "api.test",
+      } as unknown as Request;
       const res = mockResponse();
 
       await expect(paymentController.createBilling(req, res)).rejects.toThrow(
         new NotFoundProblem("Pedido não encontrado."),
       );
-      // O escopo vem do token: o publicId do usuário, resolvido na própria
-      // consulta (ID-02), sem a exceção de staff.
-      expect(query).toHaveBeenCalledWith(
-        expect.stringMatching(/usuario_id = \(SELECT u\.id FROM usuarios u WHERE u\."publicId" = \$3\)/),
-        ["pedido-5", false, "usuario-1"],
-      );
+      // O escopo vem do token, nunca do corpo.
+      expect(criar).toHaveBeenCalledWith(expect.objectContaining({
+        ator: { publicId: "usuario-1", role: "client" },
+        orderPublicId: "pedido-5",
+      }));
     });
 
     it("paymentController lança BadRequestProblem se billingId estiver ausente no checkout simulado", async () => {
@@ -199,25 +199,23 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("designController.getDesigns retorna { designs } sem envelope success", async () => {
-      vi.spyOn(pool, "query").mockResolvedValueOnce({
-        rows: [{
-          id: "des-1",
-          name: "Design 1",
-          model: "wayfarer",
-          color: "#000",
-          is_sunglasses: false,
-          anti_reflective: true,
-          temple_style: "standard",
-          top_bar: false,
-          bridge_style: "keyhole",
-          frame_profile: "medium",
-          temple_open: "0.00",
-          published: true,
-          created_at: new Date(),
-          updated_at: new Date(),
-        }],
-        rowCount: 1,
-      } as any);
+      vi.spyOn(DesignService, "list").mockResolvedValueOnce([{
+        id: "des-1",
+        name: "Design 1",
+        model: "wayfarer",
+        color: "#000",
+        isSunglasses: false,
+        antiReflective: true,
+        templeStyle: "standard",
+        topBar: false,
+        bridgeStyle: "keyhole",
+        frameProfile: "medium",
+        templeOpen: 0,
+        published: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        config: null,
+      }]);
 
       const req = { user: { email: "user@test.com", publicId: "usuario-1" } } as unknown as Request;
       const res = mockResponse();
@@ -231,25 +229,24 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
     });
 
     it("orderController.getOrders retorna { orders, pagination } sem envelope success", async () => {
-      vi.spyOn(pool, "query")
-        .mockResolvedValueOnce({ rows: [{ count: "1" }], rowCount: 1 } as any)
-        .mockResolvedValueOnce({
-          rows: [{
-            publicId: "01J00000000000000000000001",
-            customerName: "Maria",
-            customerEmail: "maria@test.com",
-            productName: "Armação",
-            factoryPublicId: "fabrica-2",
-            factoryName: "Fábrica A",
-            status: "Pending Payment",
-            total: "350.00",
-            customSpecs: "{}",
-            abacateBillingId: null,
-            createdAt: "2026-10-14",
-            updatedAt: "2026-10-14",
-          }],
-          rowCount: 1,
-        } as any);
+      vi.spyOn(OrderService, "list").mockResolvedValueOnce({
+        orders: [{
+          publicId: "01J00000000000000000000001",
+          customerName: "Maria",
+          customerEmail: "maria@test.com",
+          productName: "Armação",
+          factoryPublicId: "fabrica-2",
+          factoryName: "Fábrica A",
+          status: "Pending Payment",
+          version: 0,
+          total: "350.00",
+          customSpecs: {},
+          abacateBillingId: null,
+          createdAt: new Date("2026-10-14T00:00:00Z"),
+          updatedAt: new Date("2026-10-14T00:00:00Z"),
+        }],
+        pagination: { page: 1, limit: 10, totalItems: 1, totalPages: 1 },
+      });
 
       const req = {
         user: { role: "client", email: "maria@test.com", publicId: "usuario-1" },
