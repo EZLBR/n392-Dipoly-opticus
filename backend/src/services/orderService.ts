@@ -3,10 +3,18 @@
 //   Regra de negócio de pedidos. Não conhece Request nem Response.
 // ============================================================
 
-import { PedidoStatus } from "@prisma/client";
+import { PedidoStatus, Prisma } from "@prisma/client";
 import prisma from "../config/prisma.js";
 import { origensPermitidas, recusaDaTransicao, type StatusDoPedido } from "../domain/pedidoStatus.js";
-import { BadRequestProblem, ConflictProblem, ForbiddenProblem, NotFoundProblem } from "../errors/problem.js";
+import { centavosParaDecimal, precoDoItem } from "../domain/pricing.js";
+import type { CreateOrderDTO, OrderResponseDTO, PaginatedOrdersDTO } from "../dtos/order/order.dto.js";
+import {
+  BadRequestProblem,
+  ConflictProblem,
+  ForbiddenProblem,
+  NotFoundProblem,
+  UnauthorizedProblem,
+} from "../errors/problem.js";
 
 /** Identidade já autenticada, vinda do token. Nunca do corpo da requisição. */
 export interface Ator {
@@ -34,7 +42,160 @@ const ROTULO_POR_STATUS = Object.fromEntries(
 /** Papéis autorizados a mover o status de um pedido. */
 const PAPEIS_PERMITIDOS = ["factory", "staff"];
 
+/** Quem faz o pedido: identidade do token, com o nome e o e-mail gravados nele. */
+export interface Cliente {
+  publicId: string;
+  name: string;
+  email: string;
+}
+
+/** Colunas públicas de um pedido, com a fábrica, sem ids internos (ID-02). */
+const CAMPOS_PEDIDO = {
+  publicId: true,
+  customerName: true,
+  customerEmail: true,
+  productName: true,
+  factoryName: true,
+  status: true,
+  version: true,
+  total: true,
+  customSpecs: true,
+  abacateBillingId: true,
+  criadoEm: true,
+  atualizadoEm: true,
+  fabrica: { select: { publicId: true } },
+} satisfies Prisma.PedidoSelect;
+
+type PedidoLido = Prisma.PedidoGetPayload<{ select: typeof CAMPOS_PEDIDO }>;
+
+/** Contrato público: as datas do pedido sempre saíram só com o dia, à meia-noite. */
+const soODia = (data: Date | null) =>
+  data ? new Date(Date.UTC(data.getUTCFullYear(), data.getUTCMonth(), data.getUTCDate())) : null;
+
+function toOrderResponse(pedido: PedidoLido): OrderResponseDTO {
+  return {
+    publicId: pedido.publicId,
+    customerName: pedido.customerName,
+    customerEmail: pedido.customerEmail,
+    productName: pedido.productName,
+    factoryPublicId: pedido.fabrica?.publicId ?? null,
+    factoryName: pedido.factoryName,
+    status: pedido.status ? ROTULO_POR_STATUS[pedido.status] : null,
+    version: pedido.version,
+    // O Decimal serializado sozinho perde o zero final (199.9).
+    total: pedido.total.toFixed(2),
+    customSpecs: pedido.customSpecs ? JSON.parse(pedido.customSpecs) : {},
+    abacateBillingId: pedido.abacateBillingId,
+    createdAt: soODia(pedido.criadoEm),
+    updatedAt: soODia(pedido.atualizadoEm),
+  };
+}
+
+/**
+ * A fábrica do pedido: a informada, que precisa ser uma fábrica, ou a mais
+ * antiga, quando nenhuma é enviada. Sem fábrica cadastrada, o pedido nasce
+ * sem fábrica.
+ */
+async function fabricaDoPedido(tx: Prisma.TransactionClient, factoryPublicId?: string): Promise<number | null> {
+  if (factoryPublicId) {
+    const fabrica = await tx.usuario.findFirst({
+      where: { publicId: factoryPublicId, role: "factory" },
+      select: { id: true },
+    });
+    if (!fabrica) throw new BadRequestProblem("Fábrica não encontrada.");
+    return fabrica.id;
+  }
+  const padrao = await tx.usuario.findFirst({ where: { role: "factory" }, orderBy: { id: "asc" }, select: { id: true } });
+  return padrao?.id ?? null;
+}
+
+/** O dono do pedido, pelo publicId do token. Um token de conta apagada não cria pedido. */
+async function donoDoPedido(tx: Prisma.TransactionClient, publicId: string): Promise<number> {
+  const dono = await tx.usuario.findUnique({ where: { publicId }, select: { id: true } });
+  if (!dono) throw new UnauthorizedProblem("Sessão inválida.");
+  return dono.id;
+}
+
+export interface ItemDoPedido {
+  productName: string;
+  factoryPublicId?: string;
+  factoryName: string;
+  customSpecs: CreateOrderDTO["customSpecs"];
+  quantity: number;
+}
+
+/**
+ * Grava um pedido em "Pending Payment" com o preço calculado no servidor
+ * (SEC-05). A quantidade gravada na especificação é a cobrada, nunca a que
+ * vier em customSpecs. O status nunca vem do corpo.
+ */
+export async function inserirPedido(
+  tx: Prisma.TransactionClient,
+  cliente: Cliente,
+  item: ItemDoPedido,
+  billingId: string | null,
+) {
+  const preco = precoDoItem(item.customSpecs, item.quantity);
+  const factoryId = await fabricaDoPedido(tx, item.factoryPublicId);
+  const usuarioId = await donoDoPedido(tx, cliente.publicId);
+
+  const pedido = await tx.pedido.create({
+    data: {
+      usuarioId,
+      customerName: cliente.name,
+      customerEmail: cliente.email,
+      productName: item.productName,
+      factoryId,
+      factoryName: item.factoryName,
+      status: PedidoStatus.Pending_Payment,
+      total: centavosParaDecimal(preco.total),
+      customSpecs: JSON.stringify({ ...item.customSpecs, quantity: item.quantity }),
+      abacateBillingId: billingId,
+    },
+    select: { id: true, ...CAMPOS_PEDIDO },
+  });
+
+  return { pedido, precoUnitarioEmCentavos: preco.unitario };
+}
+
 export class OrderService {
+  static async create(cliente: Cliente, dto: CreateOrderDTO): Promise<OrderResponseDTO> {
+    const { pedido } = await prisma.$transaction(tx => inserirPedido(tx, cliente, dto, null));
+    return toOrderResponse(pedido);
+  }
+
+  /** Cada papel vê o seu recorte: cliente os próprios, fábrica os atribuídos, staff todos. */
+  static async list(
+    ator: Ator,
+    { page, limit, offset }: { page: number; limit: number; offset: number },
+  ): Promise<PaginatedOrdersDTO> {
+    const where: Prisma.PedidoWhereInput | null =
+      ator.role === "client" ? { usuario: { publicId: ator.publicId } }
+      : ator.role === "factory" ? { fabrica: { is: { publicId: ator.publicId } } }
+      : ator.role === "staff" ? {}
+      : null;
+
+    if (!where) {
+      throw new ForbiddenProblem("Acesso não autorizado.");
+    }
+
+    const [pedidos, totalItems] = await Promise.all([
+      prisma.pedido.findMany({
+        where,
+        orderBy: [{ criadoEm: "desc" }, { id: "desc" }],
+        skip: offset,
+        take: limit,
+        select: CAMPOS_PEDIDO,
+      }),
+      prisma.pedido.count({ where }),
+    ]);
+
+    return {
+      orders: pedidos.map(toOrderResponse),
+      pagination: { page, limit, totalItems, totalPages: Math.ceil(totalItems / limit) },
+    };
+  }
+
   /**
    * Atualiza o status de um pedido.
    *

@@ -17,7 +17,9 @@ export type SlugDeProblema =
   | "conflict"
   | "bad-request"
   | "validation"
-  | "service-unavailable";
+  | "service-unavailable"
+  | "internal-error"
+  | "studio-image-not-found";
 
 interface RespostaHttp {
   status: number;
