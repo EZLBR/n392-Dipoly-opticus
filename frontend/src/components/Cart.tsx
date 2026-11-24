@@ -234,7 +234,9 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
                   key={item.id}
                   className="premium-glass-card cart-item"
                 >
-                  <ThreePreview config={specs} />
+                  <div className="cart-item-preview">
+                    <ThreePreview config={specs} />
+                  </div>
 
                   <div className="cart-item-details">
                     <h3 style={{ fontSize: "18px", fontWeight: "600", margin: "0 0 6px 0" }}>
