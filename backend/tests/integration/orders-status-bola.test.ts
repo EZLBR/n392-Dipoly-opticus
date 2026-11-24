@@ -28,7 +28,7 @@ describe("PUT /api/orders/:publicId/status — autorização de objeto", () => {
     const res = await request(app)
       .put(rota(pedido.publicId))
       .set(...comToken(fabrica.token))
-      .send({ status: "In production" });
+      .send({ status: "In production", version: pedido.version });
 
     expect(res.status).toBe(200);
 
@@ -48,7 +48,7 @@ describe("PUT /api/orders/:publicId/status — autorização de objeto", () => {
     const res = await request(app)
       .put(rota(pedido.publicId))
       .set(...comToken(fabricaB.token))
-      .send({ status: "Delivered" });
+      .send({ status: "Delivered", version: pedido.version });
 
     expect(res.status).toBe(404);
 
@@ -66,12 +66,12 @@ describe("PUT /api/orders/:publicId/status — autorização de objeto", () => {
     const alheio = await request(app)
       .put(rota(pedido.publicId))
       .set(...comToken(fabricaB.token))
-      .send({ status: "Delivered" });
+      .send({ status: "Delivered", version: pedido.version });
 
     const inexistente = await request(app)
       .put(rota("00000000-0000-4000-8000-000000000000"))
       .set(...comToken(fabricaB.token))
-      .send({ status: "Delivered" });
+      .send({ status: "Delivered", version: pedido.version });
 
     esperarProblema(alheio, 404, "not-found");
     esperarProblema(inexistente, 404, "not-found");
@@ -84,7 +84,7 @@ describe("PUT /api/orders/:publicId/status — autorização de objeto", () => {
     const fabrica = await criarUsuario("factory");
     const pedido = await criarPedido({ dono: cliente, fabrica });
 
-    const res = await request(app).put(rota(pedido.publicId)).send({ status: "Delivered" });
+    const res = await request(app).put(rota(pedido.publicId)).send({ status: "Delivered", version: pedido.version });
 
     expect(res.status).toBe(401);
 
@@ -100,12 +100,12 @@ describe("PUT /api/orders/:publicId/status — autorização de objeto", () => {
     const res = await request(app)
       .put(rota(pedido.publicId))
       .set(...comToken(cliente.token))
-      .send({ status: "Delivered" });
+      .send({ status: "Delivered", version: pedido.version });
 
     const inexistente = await request(app)
       .put(rota("00000000-0000-4000-8000-000000000000"))
       .set(...comToken(cliente.token))
-      .send({ status: "Delivered" });
+      .send({ status: "Delivered", version: pedido.version });
 
     esperarProblema(res, 403, "forbidden");
     esperarProblema(inexistente, 403, "forbidden");
@@ -125,7 +125,7 @@ describe("PUT /api/orders/:publicId/status — autorização de objeto", () => {
     const res = await request(app)
       .put(rota(pedido.publicId))
       .set(...comToken(staff.token))
-      .send({ status: "Delivered" });
+      .send({ status: "Delivered", version: pedido.version });
 
     // A exceção de papel privilegiado precisa de um teste que prova
     // que ela FUNCIONA, não só de testes que provam que os outros são
@@ -144,7 +144,7 @@ describe("PUT /api/orders/:publicId/status — autorização de objeto", () => {
     const res = await request(app)
       .put(rota(pedido.publicId))
       .set(...comToken(fabrica.token))
-      .send({ status: "Teleportado" });
+      .send({ status: "Teleportado", version: pedido.version });
 
     expect(res.status).toBe(400);
 
@@ -161,7 +161,7 @@ describe("PUT /api/orders/:publicId/status — autorização de objeto", () => {
     const res = await request(app)
       .put(rota(String(pedido.id)))
       .set(...comToken(fabrica.token))
-      .send({ status: "Delivered" });
+      .send({ status: "Delivered", version: pedido.version });
 
     expect(res.status).toBe(404);
 

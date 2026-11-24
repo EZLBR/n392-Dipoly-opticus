@@ -10,7 +10,9 @@ import { NotFoundProblem, UnauthorizedProblem } from "../errors/problem.js";
 import { publicIdDoUsuario, usuarioPorPublicId } from "../utils/identidade.js";
 import type { SaveDesignDTO } from "../dtos/design/design.dto.js";
 import { resolveStudioConfig } from "../services/designConfig.js";
+import { syncDesignAssets } from "../services/studioAssets.js";
 import { emTransacao } from "../config/transacao.js";
+import type { PoolClient } from "pg";
 
 // BOLA-04: criar e atualizar são caminhos separados. Antes, um POST com o
 // id de um design alheio não passava no SELECT escopado e caía no INSERT,
@@ -47,7 +49,8 @@ export async function createDesign(req: Request, res: Response) {
   // O identificador é sempre do servidor: UUID v4, nunca valor do cliente.
   const id = randomUUID();
 
-  const { rows: result } = await pool.query<{ id: string }>(
+  const insert = async (conexao: Pick<PoolClient, "query">) => {
+    const { rows: [created] } = await conexao.query<{ id: string }>(
     `INSERT INTO saved_designs
       (id, usuario_id, name, model, color,
        is_sunglasses, anti_reflective, temple_style,
@@ -61,16 +64,23 @@ export async function createDesign(req: Request, res: Response) {
       Boolean(top_bar), bridge_style || "keyhole", frame_profile || "medium",
       temple_open || 0.00, Boolean(published), config ? JSON.stringify(config) : null
     ]
-  );
+    );
 
-  // Token válido de um usuário que não existe mais: nada foi gravado.
-  if (result.length === 0) {
-    throw new UnauthorizedProblem("Sessão inválida.");
-  }
+    if (!created) throw new UnauthorizedProblem("Sessão inválida.");
+    return created.id;
+  };
+
+  const createdId = config?.artwork.version === 3
+    ? await emTransacao(async conexao => {
+        const designId = await insert(conexao);
+        await syncDesignAssets(conexao, usuarioPublicId, designId, config);
+        return designId;
+      }, { traceId: req.requestId })
+    : await insert(pool);
 
   return res.status(201).json({
     message: "Design salvo com sucesso.",
-    id:      result[0].id
+    id:      createdId
   });
 }
 
@@ -102,6 +112,9 @@ export async function updateDesign(req: Request, res: Response) {
     }
 
     const document = resolveStudioConfig(payload, existing[0].studio_config);
+    if (document?.artwork.version === 3) {
+      await syncDesignAssets(conexao, usuarioPublicId, id, document);
+    }
     await conexao.query(
       `UPDATE saved_designs SET
         name = $1, model = $2, color = $3,

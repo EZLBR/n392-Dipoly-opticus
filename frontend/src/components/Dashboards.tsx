@@ -3,7 +3,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { useOrder } from "../contexts/OrderContext";
 import { roleKey, useTranslation } from "../contexts/LanguageContext";
 import { label } from "../eyewear/config";
-import { ShoppingBag, Users, Building, ShieldCheck, DollarSign, Clock, Info, CheckCircle, ChevronRight, Settings } from "lucide-react";
+import { nextStatuses } from "../utils/orderStatus";
+import { ShoppingBag, Users, Building, ShieldCheck, DollarSign, Clock, Info, ChevronRight, Settings } from "lucide-react";
 import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 // ID-02: a API identifica pedidos só pelo publicId (UUID). O painel mostra
@@ -66,10 +67,11 @@ const getDeliveryStatus = (createdAtStr, status, t: (key: string) => string) => 
   return { color: "#ef4444", label: t("dash-overdue") };
 };
 
-const OrderContextMenu = ({ menu, onClose, onUpdateStatus, onViewDetails }) => {
+const OrderContextMenu = ({ menu, role, onClose, onUpdateStatus, onViewDetails }) => {
   const { t } = useTranslation();
   if (!menu) return null;
-  const statuses = ["Queued", "In production", "Delivered"];
+  // FEAT-03: só as transições que o servidor aceita para este papel.
+  const statuses = nextStatuses(menu.order.status, role);
 
   // Calcula se o menu vai vazar a tela para baixo (assumindo altura ~200px)
   const isTooLow = menu.y > window.innerHeight - 200;
@@ -93,9 +95,12 @@ const OrderContextMenu = ({ menu, onClose, onUpdateStatus, onViewDetails }) => {
           <Info size={14} /> {t("dash-view-details")}
         </button>
         <div style={{ padding: "8px 12px", fontSize: "11px", color: "var(--color-hint)", textTransform: "uppercase", marginTop: "4px" }}>{t("dash-change-status")}</div>
+        {statuses.length === 0 && (
+          <p style={{ padding: "4px 12px", margin: 0, fontSize: "12px", color: "var(--color-hint)" }}>{t("dash-no-status-change")}</p>
+        )}
         {statuses.map(s => (
-          <button key={s} className="menu-btn hoverable-row" onClick={() => { onUpdateStatus(menu.order.publicId, s); onClose(); }} style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "8px 12px", background: "none", border: "none", color: s === menu.order.status ? "var(--primary-accent)" : "var(--text-color)", cursor: "pointer", borderRadius: "6px", textAlign: "left" }}>
-            {s === menu.order.status ? <CheckCircle size={14} /> : <ChevronRight size={14} />} {statusLabel(s, t)}
+          <button key={s} className="menu-btn hoverable-row" onClick={() => { onUpdateStatus(menu.order.publicId, s, menu.order.version); onClose(); }} style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "8px 12px", background: "none", border: "none", color: "var(--text-color)", cursor: "pointer", borderRadius: "6px", textAlign: "left" }}>
+            <ChevronRight size={14} /> {statusLabel(s, t)}
           </button>
         ))}
       </div>
@@ -165,9 +170,9 @@ export function FactoryDashboard() {
   const allFactoryOrders = orders.filter((o) => o.factoryPublicId && o.factoryPublicId === session.publicId);
   const factoryOrders = filterOrdersByTime(allFactoryOrders, timeRange);
 
-  const handleStatusChange = async (orderId, newStatus) => {
+  const handleStatusChange = async (orderId, newStatus, version) => {
     setOrderError("");
-    const result = await updateOrderStatus(orderId, newStatus);
+    const result = await updateOrderStatus(orderId, newStatus, version);
     if (result.ok === false) setOrderError(result.error);
   };
 
@@ -375,7 +380,7 @@ export function FactoryDashboard() {
         </table>
       </section>
 
-      <OrderContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} onUpdateStatus={handleStatusChange} onViewDetails={setSelectedOrderDetails} />
+      <OrderContextMenu menu={contextMenu} role={session.role} onClose={() => setContextMenu(null)} onUpdateStatus={handleStatusChange} onViewDetails={setSelectedOrderDetails} />
       <OrderDetailsModal order={selectedOrderDetails} onClose={() => setSelectedOrderDetails(null)} />
     </div>
   );
@@ -400,9 +405,9 @@ export function StaffDashboard() {
 
   const orders = filterOrdersByTime(allStaffOrders, timeRange);
 
-  const handleStatusChange = async (orderId, newStatus) => {
+  const handleStatusChange = async (orderId, newStatus, version) => {
     setOrderError("");
-    const result = await updateOrderStatus(orderId, newStatus);
+    const result = await updateOrderStatus(orderId, newStatus, version);
     if (result.ok === false) setOrderError(result.error);
   };
 
@@ -718,7 +723,7 @@ export function StaffDashboard() {
         </section>
       </div>
 
-      <OrderContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} onUpdateStatus={handleStatusChange} onViewDetails={setSelectedOrderDetails} />
+      <OrderContextMenu menu={contextMenu} role={session.role} onClose={() => setContextMenu(null)} onUpdateStatus={handleStatusChange} onViewDetails={setSelectedOrderDetails} />
       <OrderDetailsModal order={selectedOrderDetails} onClose={() => setSelectedOrderDetails(null)} />
     </div>
   );
