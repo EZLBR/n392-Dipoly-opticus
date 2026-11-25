@@ -66,6 +66,8 @@ export interface CartItem {
   total: number | string;
   quantity?: number;
   customSpecs: CustomSpecs;
+  /** CART-01: um pedido deste item aguarda a confirmação do pagamento. */
+  paymentPending?: boolean;
 }
 
 export interface Order {

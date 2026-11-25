@@ -38,7 +38,7 @@ export default function DesignsGallery({ setView }: { setView: (view: string) =>
     }
   };
 
-  const handleAddToCart = (design: SavedDesign) => {
+  const handleAddToCart = async (design: SavedDesign) => {
     const config = normalizeConfig(design);
     if (hasUnapprovedCustomization(config)) return;
     const price = calculateBasePrice(config);
@@ -59,8 +59,8 @@ export default function DesignsGallery({ setView }: { setView: (view: string) =>
       }
     };
 
-    addToCart(cartItem);
-    alert(t("cart-item-added"));
+    const result = await addToCart(cartItem);
+    alert(result.ok ? t("cart-item-added") : `${t("cart-add-failed")} ${result.error}`);
   };
 
   if (!session && visibleDesigns.length === 0) {

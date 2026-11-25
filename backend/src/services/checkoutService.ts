@@ -16,6 +16,7 @@
 //   Com token real, nenhuma falha cai no simulador (SEC-06, §22).
 // ============================================================
 
+import type { Prisma } from "@prisma/client";
 import prisma from "../config/prisma.js";
 import { getAbacateToken, isSimulatedPaymentGateway } from "../config/env.js";
 import {
@@ -39,8 +40,13 @@ export class CheckoutService {
     /** Onde o navegador abriu a loja e onde a API responde, para os links. */
     origens: { frontend: string; backend: string };
     traceId?: string;
+    /**
+     * CART-01: roda na transação que cria os pedidos, com os ids deles na
+     * ordem de cartItems. Um erro aqui desfaz os pedidos antes do gateway.
+     */
+    aoCriarPedidos?: (tx: Prisma.TransactionClient, pedidoIds: number[]) => Promise<void>;
   }): Promise<CheckoutResultDTO> {
-    const { cliente, cartItems, origens, traceId } = opcoes;
+    const { cliente, cartItems, origens, traceId, aoCriarPedidos } = opcoes;
 
     // SEC-06: em produção não há simulador. Sem gateway configurado não há
     // onde pagar, então a requisição falha antes de criar qualquer pedido.
@@ -64,6 +70,7 @@ export class CheckoutService {
           precoUnitarioEmCentavos,
         });
       }
+      await aoCriarPedidos?.(tx, criados.map((pedido) => pedido.id));
       return criados;
     });
 

@@ -23,7 +23,7 @@ interface SimulatedCheckout {
 
 export default function Cart({ setView }: { setView: (view: string) => void }) {
   const { session } = useAuth();
-  const { cart, removeFromCart, updateCartQty, clearCart, checkoutCart } = useCart();
+  const { cart, subtotal, status, error, saving, refresh, removeFromCart, updateCartQty, clearCart, checkoutCart } = useCart();
   const { t, language } = useTranslation();
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
@@ -56,15 +56,25 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
     }, 4500);
   };
 
-  const getSubtotal = () => {
-    return cart.reduce((sum, item) => sum + Number(item.total) * (item.quantity || 1), 0);
-  };
+  // CART-01: o subtotal é o do servidor, o mesmo que o checkout cobra.
+  const getSubtotal = () => subtotal;
 
-  const handleQtyChange = (itemId: string, currentQty: number, delta: number) => {
+  const handleQtyChange = async (itemId: string, currentQty: number, delta: number) => {
     const nextQty = currentQty + delta;
     if (nextQty >= 1) {
-      updateCartQty(itemId, nextQty);
+      const result = await updateCartQty(itemId, nextQty);
+      if (result.ok === false) showToast(result.error);
     }
+  };
+
+  const handleRemove = async (itemId: string) => {
+    const result = await removeFromCart(itemId);
+    showToast(result.ok ? t("cart-item-removed") : result.error);
+  };
+
+  const handleClear = async () => {
+    const result = await clearCart();
+    showToast(result.ok ? t("cart-empty") : result.error);
   };
 
   const handleCheckout = async () => {
@@ -81,7 +91,7 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
     const token = localStorage.getItem("opticus_token");
 
     try {
-      const result = await checkoutCart(cart);
+      const result = await checkoutCart();
 
       if (result.ok === false) {
         alert(result.error || t("cart-an-error-occurred-during-checkout-initialization"));
@@ -189,7 +199,18 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
         </h1>
       </div>
 
-      {cart.length === 0 ? (
+      {status === "error" ? (
+        <div className="premium-glass-card" role="alert" style={{ padding: "40px", textAlign: "center", borderRadius: "16px" }}>
+          <AlertCircle size={28} color="#ef4444" />
+          <h2 style={{ fontSize: "20px", fontWeight: "600", margin: "12px 0" }}>{t("cart-load-failed")}</h2>
+          <p style={{ color: "var(--color-hint)", fontSize: "14px", marginBottom: "20px" }}>{error}</p>
+          <button className="btn primary" onClick={() => void refresh()}>{t("cart-retry")}</button>
+        </div>
+      ) : status === "loading" && cart.length === 0 ? (
+        <p role="status" style={{ padding: "40px", textAlign: "center", color: "var(--color-hint)" }}>
+          {t("cart-loading")}
+        </p>
+      ) : cart.length === 0 ? (
         <div className="premium-glass-card" style={{
           padding: "80px 40px",
           textAlign: "center",
@@ -295,6 +316,11 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
                         </span>
                       )}
                     </div>
+                    {item.paymentPending && (
+                      <p role="note" style={{ color: "#f59e0b", fontSize: "12px", margin: "10px 0 0 0" }}>
+                        {t("cart-payment-pending")}
+                      </p>
+                    )}
                   </div>
 
                   {/* Quantity Actions */}
@@ -311,7 +337,7 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
                         aria-label={t("cart-decrease-quantity")}
                         onClick={() => handleQtyChange(item.id, item.quantity || 1, -1)}
                         style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex", padding: "6px" }}
-                        disabled={(item.quantity || 1) <= 1}
+                        disabled={saving || (item.quantity || 1) <= 1}
                       >
                         <Minus size={14} />
                       </button>
@@ -321,6 +347,7 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
                       <button
                         aria-label={t("cart-increase-quantity")}
                         onClick={() => handleQtyChange(item.id, item.quantity || 1, 1)}
+                        disabled={saving}
                         style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex", padding: "6px" }}
                       >
                         <Plus size={14} />
@@ -334,10 +361,8 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
                     <button
                       className="btn"
                       aria-label={t("cart-remove-item")}
-                      onClick={() => {
-                        removeFromCart(item.id);
-                        showToast(t("cart-item-removed"));
-                      }}
+                      disabled={saving}
+                      onClick={() => void handleRemove(item.id)}
                       style={{
                         background: "rgba(239, 68, 68, 0.08)",
                         border: "1px solid rgba(239, 68, 68, 0.15)",
@@ -367,10 +392,8 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
               </button>
               <button
                 className="btn"
-                onClick={() => {
-                  clearCart();
-                  showToast(t("cart-empty"));
-                }}
+                disabled={saving}
+                onClick={() => void handleClear()}
                 style={{ padding: "10px 20px", fontSize: "13px", color: "#ef4444", background: "none", border: "none" }}
               >
                 {t("cart-clear").toUpperCase()}
@@ -433,7 +456,7 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
             <button
               className="btn primary"
               onClick={handleCheckout}
-              disabled={checkoutLoading || containsArtwork}
+              disabled={checkoutLoading || containsArtwork || saving || status !== "ready"}
               style={{
                 width: "100%",
                 padding: "16px",

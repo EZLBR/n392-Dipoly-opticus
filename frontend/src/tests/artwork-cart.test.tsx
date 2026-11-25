@@ -1,6 +1,7 @@
 import React from "react";
 import { afterEach, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fakeCartApi } from "./cart-api";
 import { AuthProvider } from "../contexts/AuthContext";
 import { CartProvider, useCart } from "../contexts/CartContext";
 import { LanguageProvider } from "../contexts/LanguageContext";
@@ -9,7 +10,7 @@ import { normalizeConfig } from "../eyewear/config";
 
 // GPU rendering is an unrelated external dependency for this cart-entry test.
 vi.mock("../components/ThreePreview", () => ({ default: () => null }));
-afterEach(() => localStorage.clear());
+afterEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
 const config = normalizeConfig({ artwork: { version: 1, layers: [{ id: "text-1", text: "Brand", zone: "temple-right" }] } });
 
 it("keeps a saved artwork design editable but unavailable to add from the gallery", () => {
@@ -21,17 +22,23 @@ it("keeps a saved artwork design editable but unavailable to add from the galler
 });
 
 function CartControls() {
-  const { cart, addToCart } = useCart();
-  return <><output aria-label="cart-count">{cart.length}</output>
-    <button onClick={() => addToCart({ id: "normal", productName: "Test frame", total: 100, customSpecs: normalizeConfig() })}>Add normal</button>
-    <button onClick={() => addToCart({ id: "art", productName: "Test frame", total: 100, customSpecs: config })}>Add art</button></>;
+  const { cart, addToCart, status } = useCart();
+  return <><output aria-label="cart-status">{status}</output><output aria-label="cart-count">{cart.length}</output>
+    <button onClick={() => void addToCart({ id: "normal", productName: "Test frame", total: 100, customSpecs: normalizeConfig() })}>Add normal</button>
+    <button onClick={() => void addToCart({ id: "art", productName: "Test frame", total: 100, customSpecs: config })}>Add art</button></>;
 }
-it("rejects artwork at the shared cart entry point while accepting a normal design", () => {
+it("rejects artwork at the shared cart entry point while accepting a normal design", async () => {
+  localStorage.setItem("opticus_token", "token-a");
+  const api = fakeCartApi({ "token-a": { publicId: "user-a", name: "Ana", email: "ana@example.com", role: "client" } });
   render(<AuthProvider><CartProvider><CartControls /></CartProvider></AuthProvider>);
+  await waitFor(() => expect(screen.getByLabelText("cart-status")).toHaveTextContent("ready"));
   fireEvent.click(screen.getByText("Add normal"));
-  expect(screen.getByLabelText("cart-count")).toHaveTextContent("1");
+  await waitFor(() => expect(screen.getByLabelText("cart-count")).toHaveTextContent("1"));
   fireEvent.click(screen.getByText("Add art"));
+  await new Promise(resolve => setTimeout(resolve, 20));
   expect(screen.getByLabelText("cart-count")).toHaveTextContent("1");
+  // A arte nem chega ao servidor.
+  expect(api.serverCart("user-a")).toHaveLength(1);
 });
 
 function PatternCartControls() {

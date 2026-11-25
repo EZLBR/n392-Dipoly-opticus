@@ -40,12 +40,12 @@ function CreatorStudioInner({ setView, onOpenDesigns }: CreatorStudioProps) {
   const { addToCart } = useCart();
   const [showSaveModal, setShowSaveModal] = useState(false);
   const d = dimensions[config.frontModel];
-  function add() {
+  async function add() {
     if (hasUnapprovedCustomization(config)) {
       showToast(t("decoration-preview"));
       return;
     }
-    addToCart({
+    const result = await addToCart({
       id: "custom-" + Date.now(),
       productName:
         label(config.frontModel, language) +
@@ -60,6 +60,11 @@ function CreatorStudioInner({ setView, onOpenDesigns }: CreatorStudioProps) {
         profile: config.frameProfile,
       },
     });
+    // Só vai para a sacola depois de o servidor gravar o item.
+    if (result.ok === false) {
+      showToast(`${t("cart-add-failed")} ${result.error}`);
+      return;
+    }
     showToast(
       t("studio-your-creation-was-added-to-the"),
     );

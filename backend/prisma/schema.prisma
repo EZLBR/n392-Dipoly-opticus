@@ -47,6 +47,7 @@ model Usuario {
   pedidosFabrica Pedido[]      @relation("FactoryPedidos")
   savedDesigns   SavedDesign[]
   studioAssets   StudioAsset[]
+  carrinho       CarrinhoItem[]
 
   @@map("usuarios")
 }
@@ -103,6 +104,7 @@ model Pedido {
   itens      PedidoItem[]
   pagamentos Pagamento[]
   statusHistory OrderStatusHistory[]
+  itensDoCarrinho CarrinhoItem[]
 
   @@index([usuarioId], map: "idx_pedidos_usuario")
   @@index([factoryId], map: "idx_pedidos_factory")
@@ -246,4 +248,34 @@ model StudioDesignAsset {
   @@id([designId, assetId])
   @@index([assetId])
   @@map("studio_design_assets")
+}
+
+/// CART-01 (#115): o carrinho de cada conta. Cada linha é um item com uma
+/// configuração; a mesma configuração soma quantidade na mesma linha (chave).
+/// pedidoId é o pedido que o último checkout criou para a linha: quando o
+/// pagamento dele é confirmado, a linha sai do carrinho.
+model CarrinhoItem {
+  id              Int      @id @default(autoincrement())
+  usuarioId       Int      @map("usuario_id")
+  /// SHA-256 da configuração (produto, fábrica e especificações), em hexadecimal.
+  chave           String   @db.VarChar(64)
+  productName     String   @map("product_name") @db.VarChar(255)
+  factoryPublicId String?  @map("factory_public_id") @db.VarChar(64)
+  factoryName     String   @map("factory_name") @db.VarChar(255)
+  customSpecs     Json     @map("custom_specs") @db.JsonB
+  quantidade      Int
+  /// Sobe a cada mudança feita pelo cliente; o checkout só vincula a versão que leu.
+  versao          Int      @default(0)
+  pedidoId        Int?     @map("pedido_id")
+  criadoEm        DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm    DateTime @default(now()) @map("atualizado_em") @db.Timestamptz(3)
+
+  publicId String @unique @default(dbgenerated("gen_random_uuid()"))
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  pedido  Pedido? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+
+  @@unique([usuarioId, chave], map: "carrinho_itens_usuario_chave_key")
+  @@index([pedidoId], map: "idx_carrinho_itens_pedido")
+  @@map("carrinho_itens")
 }
