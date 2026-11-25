@@ -3849,7 +3849,8 @@ body.page-marketplace .marketplace {
 /* --- Cart Layout Classes --- */
 .cart-layout {
   display: grid;
-  grid-template-columns: 1fr 380px;
+  /* minmax(0, 1fr): sem isso a prévia 3D alarga a coluna e empurra o resumo para fora da tela */
+  grid-template-columns: minmax(0, 1fr) 380px;
   gap: 30px;
   align-items: start;
 }
@@ -3861,6 +3862,12 @@ body.page-marketplace .marketplace {
   border: 1px solid rgba(255,255,255,0.06);
   align-items: center;
   gap: 24px;
+}
+
+.cart-item-preview {
+  flex: 0 0 200px;
+  width: 200px;
+  min-width: 0;
 }
 
 .cart-item-details {
@@ -4051,9 +4058,9 @@ body.page-marketplace .marketplace {
     gap: 16px;
   }
 
-  .cart-item .three-preview {
+  .cart-item-preview {
+    flex-basis: auto;
     width: 100%;
-    height: 120px;
   }
 
   .cart-item-actions {
