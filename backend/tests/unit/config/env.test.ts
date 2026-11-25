@@ -9,6 +9,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   ABACATE_TOKEN_PLACEHOLDER,
+  readFrontendUrl,
   getAbacateToken,
   isPlaceholderAbacateToken,
   isSimulatedPaymentGateway,
@@ -62,5 +63,18 @@ describe("ABACATE_TOKEN (SEC-04)", () => {
     vi.stubEnv("ABACATE_TOKEN", "token-real");
     expect(getAbacateToken()).toBe("token-real");
     expect(isSimulatedPaymentGateway()).toBe(false);
+  });
+});
+
+describe("FRONTEND_URL", () => {
+  it("é obrigatória em produção, porque vai no link do e-mail", () => {
+    expect(() => readFrontendUrl(undefined, "production")).toThrow(/FRONTEND_URL é obrigatória/);
+    expect(() => readFrontendUrl("  ", "production")).toThrow(/FRONTEND_URL é obrigatória/);
+    expect(readFrontendUrl("https://opticus.example", "production")).toBe("https://opticus.example");
+  });
+
+  it("fora de produção cai no Vite local", () => {
+    expect(readFrontendUrl(undefined, "development")).toBe("http://localhost:5173");
+    expect(readFrontendUrl(undefined, "test")).toBe("http://localhost:5173");
   });
 });

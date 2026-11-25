@@ -85,8 +85,16 @@ async function createMailTransport(): Promise<MailTransport> {
   };
 }
 
+/** Mensagens "enviadas" com NODE_ENV=test, em ordem. */
+export const mensagensDeTeste: { to: string; subject: string; html: string }[] = [];
+
 /** Envia o e-mail. Devolve o link de visualização quando o transporte é o Ethereal. */
 export async function sendEmail(to: string, subject: string, html: string): Promise<{ previewUrl?: string }> {
+  // RNF52: a suíte nunca abre conexão SMTP. Qualquer remetente cai aqui.
+  if (process.env.NODE_ENV === "test") {
+    mensagensDeTeste.push({ to, subject, html });
+    return {};
+  }
   transportPromise ??= createMailTransport().catch((error: unknown) => {
     transportPromise = undefined;
     throw error;

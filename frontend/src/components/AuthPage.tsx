@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Lock } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useTranslation } from "../contexts/LanguageContext";
@@ -200,6 +200,7 @@ export default function AuthPage() {
                 onChange={(e) => setLoginPassword(e.target.value)}
                 required
               />
+              <p><Link to="/forgot-password">{t("auth-forgot-title")}</Link></p>
             </div>
 
             {loginError && <p role="alert" style={{ color: "#ef4444", fontSize: "14px", margin: "0 0 16px 0" }}>{loginError}</p>}

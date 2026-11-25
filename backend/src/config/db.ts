@@ -11,6 +11,8 @@ import pg from "pg";
 import type { PoolConfig } from "pg";
 const { Pool } = pg;
 import { env } from "./env.js";
+// TIMESTAMP lido em UTC, como o Prisma (antes de qualquer consulta).
+import "./pgTypes.js";
 
 const poolConfig: PoolConfig = {
   connectionString: env.DATABASE_URL,

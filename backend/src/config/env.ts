@@ -90,6 +90,15 @@ function readRequiredUrl(
 
 const nodeEnv = readNodeEnv(process.env.NODE_ENV);
 
+/**
+ * Endereço do frontend (CORS e link do e-mail de recuperação). Fora de produção
+ * cai no Vite local; em produção é obrigatório, senão o link sairia quebrado.
+ */
+export function readFrontendUrl(value: string | undefined, ambiente: NodeEnv): string {
+  const padrao = ambiente === "production" ? undefined : "http://localhost:5173";
+  return readRequiredUrl("FRONTEND_URL", value?.trim() || padrao, ["http:", "https:"]);
+}
+
 /** Segredo privado cadastrado no webhook; nunca usar o token da API aqui. */
 export function readWebhookSecret(value: string | undefined, ambiente: NodeEnv): string | undefined {
   const secret = value?.trim();
@@ -111,11 +120,7 @@ export const env = Object.freeze({
     process.env.DATABASE_URL,
     ["postgres:", "postgresql:"],
   ),
-  FRONTEND_URL: readRequiredUrl(
-    "FRONTEND_URL",
-    process.env.FRONTEND_URL || "http://localhost:5173",
-    ["http:", "https:"],
-  ),
+  FRONTEND_URL: readFrontendUrl(process.env.FRONTEND_URL, nodeEnv),
   ABACATE_TOKEN: readAbacateToken(process.env.ABACATE_TOKEN, nodeEnv),
   WEBHOOK_SECRET: readWebhookSecret(process.env.WEBHOOK_SECRET, nodeEnv),
   // Falha cedo com SMTP parcial ou inválido; sem nenhuma variável, o modo é resolvido aqui.
