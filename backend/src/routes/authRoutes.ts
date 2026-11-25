@@ -23,7 +23,12 @@ import {
   getUsersQuerySchema,
 } from "../dtos/auth/index.js";
 
+import { applyPasswordReset, forgotPassword } from "../controllers/passwordResetController.js";
+import { forgotPasswordSchema, resetPasswordSchema } from "../dtos/auth/password-reset.dto.js";
+
 const router = express.Router();
+router.post("/forgot-password", validateBody(forgotPasswordSchema), forgotPassword);
+router.post("/reset-password", validateBody(resetPasswordSchema), applyPasswordReset);
 
 // Rotas públicas
 router.post("/register", validateBody(registerSchema), register);
