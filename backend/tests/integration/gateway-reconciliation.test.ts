@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { espiarCheckout } from "../helpers/gateway.js";
 import request from "supertest";
 import type { Pool } from "pg";
 import { pool } from "../setup/db.js";
@@ -42,7 +43,7 @@ function resposta(status: number, success: boolean) {
 
 it("preserva todos os pedidos quando o gateway responde 500 com success false", async () => {
   const { app, dono, cartItems } = await cenario();
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(resposta(500, false));
+  espiarCheckout(async () => resposta(500, false));
   const res = await request(app).post("/api/orders/checkout-cart").set(...comToken(dono.token)).send({ cartItems });
   expect(res.status).toBe(503);
   expect(res.body.detail).toContain("mantido como pendente");
@@ -53,7 +54,7 @@ it("preserva todos os pedidos quando o gateway responde 500 com success false", 
 it.each(["recusa", "sucesso"])("não apaga nem sobrescreve associação concorrente após %s", async tipo => {
   const { app, dono, cartItems } = await cenario();
   let antes: unknown;
-  vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+  espiarCheckout(async () => {
     await pool.query("UPDATE pedidos SET abacate_billing_id = 'bill_concorrente' WHERE id = (SELECT MIN(id) FROM pedidos)");
     antes = (await pool.query("SELECT id, status, abacate_billing_id, pagamento_simulado FROM pedidos ORDER BY id")).rows;
     return resposta(tipo === "recusa" ? 422 : 200, tipo === "sucesso");
@@ -66,7 +67,7 @@ it.each(["recusa", "sucesso"])("não apaga nem sobrescreve associação concorre
 
 it("desfaz somente os pedidos da tentativa quando a recusa é definitiva e não houve concorrência", async () => {
   const { app, dono, cartItems } = await cenario();
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(resposta(422, false));
+  espiarCheckout(async () => resposta(422, false));
   const res = await request(app).post("/api/orders/checkout-cart").set(...comToken(dono.token)).send({ cartItems });
   expect(res.status).toBe(503);
   expect(res.body.detail).toContain("Nenhuma cobrança foi criada");
@@ -75,7 +76,7 @@ it("desfaz somente os pedidos da tentativa quando a recusa é definitiva e não 
 
 it("associa uma resposta válida a todos os itens sem habilitar confirmação simulada", async () => {
   const { app, dono, cartItems } = await cenario();
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(resposta(200, true));
+  espiarCheckout(async () => resposta(200, true));
   const res = await request(app).post("/api/orders/checkout-cart").set(...comToken(dono.token)).send({ cartItems });
   expect(res.status).toBe(200);
   expect(res.body).toMatchObject({ isSimulated: false, billingId: "bill_nova", checkoutUrl: "https://gateway.invalid/pagar" });
@@ -88,7 +89,7 @@ it.each(["carrinho", "pedido"])("resultado incerto também não ativa simulador 
   const fabrica = await criarUsuario("factory");
   const pedido = await criarPedido({ dono, status: "Pending_Payment" });
   vi.stubEnv("ABACATE_TOKEN", "token-de-teste");
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(resposta(500, false));
+  espiarCheckout(async () => resposta(500, false));
   const res = fluxo === "pedido"
     ? await request(appDeTeste).post("/api/payments/create-billing").set(...comToken(dono.token)).send({ orderPublicId: pedido.publicId })
     : await request(appDeTeste).post("/api/orders/checkout-cart").set(...comToken(dono.token)).send({ cartItems: [{

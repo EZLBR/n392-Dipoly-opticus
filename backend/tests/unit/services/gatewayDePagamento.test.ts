@@ -10,6 +10,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   TEMPO_LIMITE_DO_GATEWAY_MS,
   URL_DE_COBRANCA,
+  URL_DE_PRODUTO,
   solicitarCobranca,
   type PedidoDeCobranca,
 } from "../../../src/services/gatewayDePagamento.js";
@@ -25,12 +26,16 @@ const corpo = (status: number, conteudo: unknown) =>
   new Response(JSON.stringify(conteudo), { status, headers: { "Content-Type": "application/json" } });
 const texto = (status: number, conteudo: string) => new Response(conteudo, { status });
 
-function responder(resposta: Response | Error) {
-  return vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
-    if (resposta instanceof Error) throw resposta;
-    return resposta;
+/** O cadastro do produto responde `produto` (sucesso por padrão); o checkout responde `resposta`. */
+function responder(resposta: Response | Error, produto: () => Response | Error = () => corpo(200, { success: true, data: { id: "prod_1" } })) {
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+    const r = url === URL_DE_PRODUTO ? produto() : resposta;
+    if (r instanceof Error) throw r;
+    return r;
   });
 }
+
+const chamadasPara = (spy: ReturnType<typeof responder>, url: string) => spy.mock.calls.filter(([u]) => u === url);
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -40,13 +45,40 @@ describe("solicitarCobranca", () => {
 
     await solicitarCobranca("token-secreto", pedido);
 
-    const [url, init] = chamada.mock.calls[0];
-    expect(url).toBe(URL_DE_COBRANCA);
+    const [produto] = chamadasPara(chamada, URL_DE_PRODUTO);
+    expect(JSON.parse(String(produto[1]?.body))).toEqual({ externalId: "42", name: "Wayfarer", price: 21_000, currency: "BRL" });
+
+    const [[url, init]] = chamadasPara(chamada, URL_DE_COBRANCA);
+    expect(url).toBe("https://api.abacatepay.com/v2/checkouts/create");
     expect(init?.method).toBe("POST");
     expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer token-secreto");
     expect(init?.signal).toBeInstanceOf(AbortSignal);
-    expect(JSON.parse(String(init?.body))).toMatchObject({ frequency: "ONE_TIME", methods: ["PIX"], ...pedido });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      items: [{ id: "42", quantity: 2 }],
+      methods: ["PIX"],
+      returnUrl: pedido.returnUrl,
+      completionUrl: pedido.completionUrl,
+      externalId: "42",
+    });
     expect(TEMPO_LIMITE_DO_GATEWAY_MS).toBe(10_000);
+  });
+
+  it("produto já cadastrado numa tentativa anterior do mesmo pedido: segue para o checkout", async () => {
+    const chamada = responder(
+      corpo(200, { success: true, data: { id: "bill_1", url: "https://pagar.invalid" } }),
+      () => corpo(400, { success: false, error: "Product with externalId already exists" }),
+    );
+    expect(await solicitarCobranca("t", pedido)).toMatchObject({ status: "criada" });
+    expect(chamadasPara(chamada, URL_DE_COBRANCA)).toHaveLength(1);
+  });
+
+  it.each<[string, () => Response | Error]>([
+    ["recusa declarada", () => corpo(401, { success: false, error: "Insufficient permissions" })],
+    ["falha de rede", () => new TypeError("fetch failed")],
+  ])("falha ao cadastrar o produto (%s): recusada, sem criar checkout", async (_caso, produto) => {
+    const chamada = responder(corpo(200, { success: true, data: { id: "bill_1", url: "https://pagar.invalid" } }), produto);
+    expect(await solicitarCobranca("t", pedido)).toMatchObject({ status: "recusada", motivo: expect.stringMatching(/^produto: /) });
+    expect(chamadasPara(chamada, URL_DE_COBRANCA)).toHaveLength(0);
   });
 
   it("2xx com success e id/url: criada", async () => {

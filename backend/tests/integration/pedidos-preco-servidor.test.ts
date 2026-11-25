@@ -8,6 +8,7 @@
 // ============================================================
 
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { espiarCheckout, checkoutsEnviados, produtosEnviados } from "../helpers/gateway.js";
 import request from "supertest";
 import prisma from "../../src/config/prisma.js";
 import { app } from "../setup/app.js";
@@ -175,7 +176,7 @@ describe("POST /api/orders/checkout-cart — total calculado no servidor (SEC-05
     const fabrica = await criarUsuario("factory");
     const cliente = await criarUsuario("client");
     vi.stubEnv("ABACATE_TOKEN", "token-de-teste");
-    const gateway = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    const gateway = espiarCheckout(async () => 
       new Response(JSON.stringify({ success: true, data: { id: "bill_gateway", url: "https://gateway.invalid/pagar" } }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -189,11 +190,11 @@ describe("POST /api/orders/checkout-cart — total calculado no servidor (SEC-05
 
     expect(res.status).toBe(200);
     expect(res.body.isSimulated).toBe(false);
-    expect(gateway).toHaveBeenCalledTimes(1);
-    const cobranca = JSON.parse(String(gateway.mock.calls[0][1]?.body));
-    expect(cobranca.products).toEqual([
-      expect.objectContaining({ quantity: 3, price: 21_000 }),
-    ]);
+    // O produto leva o preço unitário calculado no servidor; o checkout, a quantidade.
+    expect(produtosEnviados(gateway)).toEqual([expect.objectContaining({ price: 21_000 })]);
+    const checkouts = checkoutsEnviados(gateway);
+    expect(checkouts).toHaveLength(1);
+    expect(checkouts[0].items).toEqual([expect.objectContaining({ quantity: 3 })]);
     expect((await pedidosGravados()).map((p) => p.total)).toEqual(["630.00"]);
     const persistido = await pool.query("SELECT pagamento_simulado FROM pedidos WHERE abacate_billing_id = $1", ["bill_gateway"]);
     expect(persistido.rows).toEqual([{ pagamento_simulado: false }]);

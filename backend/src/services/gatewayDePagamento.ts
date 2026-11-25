@@ -13,9 +13,18 @@
 //
 //   O módulo não lê configuração: o token e o pedido vêm de quem
 //   chama, para a classificação ser testável sem banco nem ambiente.
+//
+//   API v2: o checkout só aceita produtos já cadastrados no AbacatePay
+//   (items[].id = externalId). Por isso cada pedido vira um produto
+//   (externalId = publicId do pedido) antes de criar o checkout. O antigo
+//   POST /v2/billing não existe (respondia "Not found"); o corpo com
+//   frequency/products/customer era o da v1, que a chave v2 recusa.
+//   https://docs.abacatepay.com/pages/products/create
+//   https://docs.abacatepay.com/pages/payment/create
 // ============================================================
 
-export const URL_DE_COBRANCA = "https://api.abacatepay.com/v2/billing";
+export const URL_DE_PRODUTO = "https://api.abacatepay.com/v2/products/create";
+export const URL_DE_COBRANCA = "https://api.abacatepay.com/v2/checkouts/create";
 
 /** Tempo máximo de espera pelo gateway. Depois disso, o resultado é incerto. */
 export const TEMPO_LIMITE_DO_GATEWAY_MS = 10_000;
@@ -24,7 +33,8 @@ export interface PedidoDeCobranca {
   products: Array<{ externalId: string; name: string; quantity: number; price: number }>;
   returnUrl: string;
   completionUrl: string;
-  customer: { name?: string; email?: string; taxId: string };
+  /** A v2 não aceita cliente inline: o próprio checkout pede os dados do pagador. */
+  customer?: { name?: string; email?: string; taxId?: string };
 }
 
 export type ResultadoDaCobranca =
@@ -37,14 +47,57 @@ const resumir = (texto: string) => texto.split("\n")[0].slice(0, LIMITE_DO_MOTIV
 const descrever = (erro: unknown) => resumir(erro instanceof Error ? `${erro.name}: ${erro.message}` : String(erro));
 const ehErroDoCliente = (status: number) => status >= 400 && status < 500 && status !== 408 && status !== 429;
 
-export async function solicitarCobranca(token: string, pedido: PedidoDeCobranca): Promise<ResultadoDaCobranca> {
+const postar = (token: string, url: string, corpo: unknown) =>
+  fetch(url, {
+    method: "POST",
+    signal: AbortSignal.timeout(TEMPO_LIMITE_DO_GATEWAY_MS),
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(corpo),
+  });
+
+/**
+ * Cadastra o produto do pedido. Devolve o motivo da falha, ou null se ele
+ * existe (criado agora ou numa tentativa anterior do mesmo pedido).
+ * Nenhuma falha aqui cria cobrança: quem chama pode recusar com segurança.
+ */
+async function cadastrarProduto(token: string, produto: PedidoDeCobranca["products"][number]): Promise<string | null> {
   let resposta: Response;
   try {
-    resposta = await fetch(URL_DE_COBRANCA, {
-      method: "POST",
-      signal: AbortSignal.timeout(TEMPO_LIMITE_DO_GATEWAY_MS),
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ frequency: "ONE_TIME", methods: ["PIX"], ...pedido }),
+    resposta = await postar(token, URL_DE_PRODUTO, {
+      externalId: produto.externalId,
+      name: produto.name,
+      price: produto.price,
+      currency: "BRL",
+    });
+  } catch (erro) {
+    return `produto: ${descrever(erro)}`;
+  }
+  let corpo: { success?: unknown; error?: unknown } | null = null;
+  try {
+    corpo = await resposta.json();
+  } catch {
+    // corpo ilegível: decide pelo status abaixo
+  }
+  if (resposta.ok && corpo?.success === true) return null;
+  const erro = typeof corpo?.error === "string" ? corpo.error : "";
+  if (/already exists/i.test(erro)) return null;
+  return `produto: ${resumir(erro || `HTTP ${resposta.status}`)}`;
+}
+
+export async function solicitarCobranca(token: string, pedido: PedidoDeCobranca): Promise<ResultadoDaCobranca> {
+  for (const produto of pedido.products) {
+    const falha = await cadastrarProduto(token, produto);
+    if (falha) return { status: "recusada", motivo: falha };
+  }
+
+  let resposta: Response;
+  try {
+    resposta = await postar(token, URL_DE_COBRANCA, {
+      items: pedido.products.map(({ externalId, quantity }) => ({ id: externalId, quantity })),
+      methods: ["PIX"],
+      returnUrl: pedido.returnUrl,
+      completionUrl: pedido.completionUrl,
+      ...(pedido.products.length === 1 ? { externalId: pedido.products[0].externalId } : {}),
     });
   } catch (erro) {
     // Timeout ou rede: a requisição pode ter chegado e a cobrança existir.
