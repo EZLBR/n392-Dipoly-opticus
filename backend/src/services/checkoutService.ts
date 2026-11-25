@@ -83,7 +83,6 @@ export class CheckoutService {
         })),
         returnUrl:     `${origens.frontend}/`,
         completionUrl: `${origens.frontend}/`,
-        customer:      { name: cliente.name, email: cliente.email, taxId: "00000000000" },
       });
 
       if (cobranca.status === "criada") {

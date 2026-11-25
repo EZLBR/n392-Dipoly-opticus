@@ -18,6 +18,7 @@
 
 import { createHmac } from "node:crypto";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { espiarCheckout, checkoutsEnviados, produtosEnviados } from "../helpers/gateway.js";
 import request from "supertest";
 import { app } from "../setup/app.js";
 import { criarUsuario, comToken } from "../helpers/auth.js";
@@ -185,7 +186,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
 
       it("pedido alheio é recusado antes de chegar ao gateway real", async () => {
         vi.stubEnv("ABACATE_TOKEN", "token-de-teste");
-        const gateway = vi.spyOn(globalThis, "fetch").mockResolvedValue(aprovacaoDoGateway("bill_alheio"));
+        const gateway = espiarCheckout(async () => aprovacaoDoGateway("bill_alheio"));
         const vitima = await criarUsuario("client");
         const atacante = await criarUsuario("client");
         const pedido = await criarPedido({ dono: vitima, status: "Pending_Payment" });
@@ -204,7 +205,7 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
 
       it("dono cobra pelo gateway real com os dados do próprio pedido", async () => {
         vi.stubEnv("ABACATE_TOKEN", "token-de-teste");
-        const gateway = vi.spyOn(globalThis, "fetch").mockResolvedValue(aprovacaoDoGateway("bill_do_dono"));
+        const gateway = espiarCheckout(async () => aprovacaoDoGateway("bill_do_dono"));
         const cliente = await criarUsuario("client");
         const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
         const lido = await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } });
@@ -216,14 +217,15 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ checkoutUrl: "https://gateway.invalid/pagar/bill_do_dono", isSimulated: false });
-        expect(gateway).toHaveBeenCalledTimes(1);
         // As colunas explícitas da consulta chegam ao gateway e ao registro do pagamento.
-        const cobranca = JSON.parse(String(gateway.mock.calls[0][1]?.body));
-        expect(cobranca.products).toEqual([
-          // ID-02: o gateway recebe o publicId, nunca o id sequencial.
-          { externalId: pedido.publicId, name: lido.productName, quantity: 1, price: 45_000 },
+        // ID-02: o gateway recebe o publicId, nunca o id sequencial.
+        expect(produtosEnviados(gateway)).toEqual([
+          { externalId: `${pedido.publicId}-45000`, name: lido.productName, price: 45_000, currency: "BRL" },
         ]);
-        expect(cobranca.customer).toMatchObject({ name: lido.customerName, email: lido.customerEmail });
+        const checkouts = checkoutsEnviados(gateway);
+        expect(checkouts).toHaveLength(1);
+        expect(checkouts[0].items).toEqual([{ id: `${pedido.publicId}-45000`, quantity: 1 }]);
+        expect(checkouts[0].externalId).toBe(pedido.publicId);
         expect(await cobrancaGravada(pedido.id)).toEqual({ abacateBillingId: "bill_do_dono", pagamentoSimulado: false });
         expect(await lerCobranca({ billingId: "bill_do_dono", pedidoPublicId: pedido.publicId })).toEqual(PENDENTE);
       });

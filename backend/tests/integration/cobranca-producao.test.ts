@@ -21,6 +21,7 @@
 // ============================================================
 
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { espiarCheckout } from "../helpers/gateway.js";
 import request from "supertest";
 import type { Express } from "express";
 import prisma from "../../src/config/prisma.js";
@@ -44,16 +45,15 @@ const recusa = () => json(422, { success: false, error: "cobrança recusada" });
 
 /** Simula o AbacatePay. Sem token, o gateway nem deve ser chamado. */
 function simularGateway(gateway: Gateway) {
-  const chamada = vi.spyOn(globalThis, "fetch");
-  if (gateway === "recusando") chamada.mockResolvedValue(recusa());
-  // 5xx com success:false declarado continua incerto: o servidor do gateway falhou.
-  if (gateway === "falhando") chamada.mockResolvedValue(json(500, { success: false, error: "falha interna" }));
-  if (gateway === "fora do ar") chamada.mockRejectedValue(new TypeError("fetch failed"));
-  if (gateway === "expirando") {
-    chamada.mockRejectedValue(new DOMException("The operation was aborted due to timeout", "TimeoutError"));
-  }
-  if (gateway === "aprovando") chamada.mockResolvedValue(aprovacao());
-  return chamada;
+  // O cenário vale para o checkout; o cadastro do produto (v2) responde sucesso.
+  return espiarCheckout(async () => {
+    if (gateway === "recusando") return recusa();
+    // 5xx com success:false declarado continua incerto: o servidor do gateway falhou.
+    if (gateway === "falhando") return json(500, { success: false, error: "falha interna" });
+    if (gateway === "fora do ar") throw new TypeError("fetch failed");
+    if (gateway === "expirando") throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    return aprovacao();
+  });
 }
 
 type Pool = { end: () => Promise<void> };
@@ -209,7 +209,7 @@ describe("checkout-cart em produção (SEC-06)", () => {
   describe("um create-billing assume um dos pedidos enquanto o gateway responde", () => {
     function intercalarCreateBilling(app: Express, cliente: UsuarioDeTeste, respostaDoCheckout: () => Response) {
       let chamadas = 0;
-      vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      espiarCheckout(async () => {
         chamadas += 1;
         if (chamadas === 2) return aprovacao("bill_concorrente"); // a chamada do create-billing
         const [primeiro] = await pedidosDoCliente(cliente);
@@ -270,7 +270,7 @@ describe("checkout-cart em produção (SEC-06)", () => {
       const fabrica = await criarUsuario("factory");
       const cliente = await criarUsuario("client");
       const antigo = await criarPedido({ dono: cliente, status: "Pending_Payment" });
-      vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      espiarCheckout(async () => {
         const novo = await prisma.pedido.findFirstOrThrow({
           where: { usuarioId: cliente.id, id: { not: antigo.id } },
           select: { abacateBillingId: true },
@@ -395,7 +395,7 @@ describe("create-billing em produção (SEC-06)", () => {
     const cliente = await criarUsuario("client");
     const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
     const { app } = await appEmProducao("aprovando");
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+    espiarCheckout(async () => {
       await prisma.pedido.update({ where: { id: pedido.id }, data: { abacateBillingId: "bill_outro" } });
       return aprovacao("bill_real");
     });
@@ -416,7 +416,7 @@ describe("create-billing em produção (SEC-06)", () => {
     const cliente = await criarUsuario("client");
     const pedido = await criarPedido({ dono: cliente, status: "Pending_Payment" });
     const { app } = await appEmProducao("aprovando");
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+    espiarCheckout(async () => {
       await prisma.pedido.update({ where: { id: pedido.id }, data: { status: "Cancelled" } });
       return aprovacao("bill_real");
     });
