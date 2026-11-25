@@ -62,6 +62,7 @@ describe("carrinho da conta — CRUD e preço do servidor", () => {
       quantity: 2,
       unitPrice: "210.00",
       total: "420.00",
+      available: true,
       paymentPending: false,
     })]);
     expect(res.body.items[0].customSpecs).not.toHaveProperty("quantity");
@@ -89,6 +90,11 @@ describe("carrinho da conta — CRUD e preço do servidor", () => {
     });
     expect(reordenado.status).toBe(200);
     expect(reordenado.body.items.map((i: { quantity: number }) => i.quantity)).toEqual([4, 1]);
+
+    // Os mesmos tratamentos em outra ordem, ou repetidos, também são a mesma configuração.
+    const tratamentos = await adicionar(cliente, item({ lensTreatments: ["uv_protection", "anti_reflective", "uv_protection"] }));
+    expect(tratamentos.status).toBe(200);
+    expect(tratamentos.body.items.map((i: { quantity: number }) => i.quantity)).toEqual([5, 1]);
   });
 
   it("cliques simultâneos na mesma configuração somam numa linha só, sem perder unidade", async () => {
@@ -274,7 +280,8 @@ describe("carrinho da conta — checkout", () => {
   });
 
   it.each<[string, (atual: Array<{ publicId: string; quantity: number }>) => Array<{ publicId: string; quantity: number }>]>([
-    ["com outra quantidade", atual => [{ ...atual[0], quantity: atual[0].quantity + 1 }]],
+    // Mantém os dois itens e muda só a quantidade: o 409 tem de vir da quantidade.
+    ["com outra quantidade", atual => [{ ...atual[0], quantity: atual[0].quantity + 1 }, atual[1]]],
     ["sem um item que está no carrinho", atual => atual.slice(0, 1)],
     ["com um item que não está no carrinho", atual => [...atual, { publicId: UUID_INEXISTENTE, quantity: 1 }]],
     ["com o mesmo item repetido", atual => [atual[0], atual[0], atual[1]]],
@@ -303,7 +310,9 @@ describe("carrinho da conta — checkout", () => {
     });
 
     const lido = await carrinho(cliente);
-    expect(lido.body.items[0]).toMatchObject({ unitPrice: "0.00", total: "0.00" });
+    // Indisponível e sem preço, fora do subtotal: R$ 0,00 pareceria grátis.
+    expect(lido.body.items[0]).toMatchObject({ available: false, unitPrice: null, total: null });
+    expect(lido.body.subtotal).toBe("0.00");
     esperarProblema(await finalizar(cliente, visto(atual)), 409, "conflict");
     expect(await prisma.pedido.count({ where: { usuarioId: cliente.id } })).toBe(0);
   });

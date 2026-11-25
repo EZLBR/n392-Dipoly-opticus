@@ -54,15 +54,18 @@ export interface CartItemResponseDTO {
   factoryName: string;
   customSpecs: Record<string, unknown>;
   quantity: number;
-  /** Preço unitário calculado no servidor (SEC-05), "0.00". */
-  unitPrice: string;
-  /** unitPrice × quantity. */
-  total: string;
+  /** false: a linha não passa mais nas regras de compra; fica sem preço e o checkout a recusa. */
+  available: boolean;
+  /** Preço unitário calculado no servidor (SEC-05), "0.00"; null se indisponível. */
+  unitPrice: string | null;
+  /** unitPrice × quantity; null se indisponível. */
+  total: string | null;
   /** Há um pedido deste item aguardando a confirmação do pagamento. */
   paymentPending: boolean;
 }
 
 export interface CartResponseDTO {
   items: CartItemResponseDTO[];
+  /** Soma dos itens disponíveis. */
   subtotal: string;
 }

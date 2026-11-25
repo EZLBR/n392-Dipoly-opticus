@@ -57,6 +57,10 @@ function canonico(valor: unknown): string {
 /** Identidade da linha: produto, fábrica e especificações. A quantidade fica de fora. */
 export function chaveDoItem(item: Omit<AddCartItemDTO, "quantity">): string {
   const { quantity: _ignorada, ...especificacao } = item.customSpecs as Record<string, unknown>;
+  // A ordem dos tratamentos não muda a configuração (revisão do #147).
+  if (Array.isArray(especificacao.lensTreatments)) {
+    especificacao.lensTreatments = [...new Set(especificacao.lensTreatments.map(String))].sort();
+  }
   return createHash("sha256")
     .update(canonico({
       productName: item.productName,
@@ -95,9 +99,10 @@ function itemDaLinha(linha: Linha) {
 
 function respostaDaLinha(linha: Linha): { item: CartItemResponseDTO; totalEmCentavos: number } {
   const item = itemDaLinha(linha);
-  // Uma linha que não passa mais na validação continua visível, sem preço,
-  // para o cliente poder removê-la; o checkout a recusa.
-  const preco = item ? precoDoItem(item.customSpecs, linha.quantidade) : { unitario: 0, total: 0 };
+  // Uma linha que não passa mais na validação continua visível, para o
+  // cliente poder removê-la, mas indisponível e sem preço: R$ 0,00 pareceria
+  // grátis. O checkout a recusa (revisão do #147).
+  const preco = item ? precoDoItem(item.customSpecs, linha.quantidade) : null;
   return {
     item: {
       publicId: linha.publicId,
@@ -106,11 +111,12 @@ function respostaDaLinha(linha: Linha): { item: CartItemResponseDTO; totalEmCent
       factoryName: linha.factoryName,
       customSpecs: linha.customSpecs as Record<string, unknown>,
       quantity: linha.quantidade,
-      unitPrice: centavosParaDecimal(preco.unitario),
-      total: centavosParaDecimal(preco.total),
+      available: preco !== null,
+      unitPrice: preco ? centavosParaDecimal(preco.unitario) : null,
+      total: preco ? centavosParaDecimal(preco.total) : null,
       paymentPending: linha.pedido?.status === PedidoStatus.Pending_Payment,
     },
-    totalEmCentavos: preco.total,
+    totalEmCentavos: preco?.total ?? 0,
   };
 }
 
@@ -248,9 +254,12 @@ export class CartService {
       traceId,
       aoCriarPedidos: async (tx, pedidoIds) => {
         for (const [indice, linha] of linhas.entries()) {
+          // O vínculo também sobe a versão: um segundo checkout simultâneo do
+          // mesmo carrinho, que leu a mesma versão, não casa mais e é desfeito
+          // com 409, em vez de gerar outra cobrança (revisão do #147).
           const { count } = await tx.carrinhoItem.updateMany({
             where: { id: linha.id, versao: linha.versao },
-            data: { pedidoId: pedidoIds[indice] },
+            data: { pedidoId: pedidoIds[indice], versao: { increment: 1 } },
           });
           // A linha mudou ou saiu depois da leitura: desfaz os pedidos.
           if (count !== 1) throw new ConflictProblem(CARRINHO_MUDOU);

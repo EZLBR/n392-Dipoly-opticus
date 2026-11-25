@@ -56,8 +56,9 @@ interface ServerCartItem {
   factoryName: string;
   customSpecs: CartItem["customSpecs"];
   quantity: number;
-  unitPrice: string;
-  total: string;
+  available: boolean;
+  unitPrice: string | null;
+  total: string | null;
   paymentPending: boolean;
 }
 
@@ -73,10 +74,12 @@ const toCartItem = (item: ServerCartItem): CartItem => ({
   productName: item.productName,
   ...(item.factoryPublicId ? { factoryPublicId: item.factoryPublicId } : {}),
   factoryName: item.factoryName,
-  total: Number(item.unitPrice),
+  // Item indisponível fica sem preço: NaN aparece como "—", nunca como grátis.
+  total: item.unitPrice === null ? Number.NaN : Number(item.unitPrice),
   quantity: item.quantity,
   customSpecs: item.customSpecs,
   paymentPending: item.paymentPending,
+  available: item.available,
 });
 
 /** Mensagem para a falha de uma chamada: o problema do servidor ou a falta de rede. */

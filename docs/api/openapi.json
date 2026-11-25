@@ -2691,6 +2691,7 @@
           "factoryName",
           "customSpecs",
           "quantity",
+          "available",
           "unitPrice",
           "total",
           "paymentPending"
@@ -2720,16 +2721,26 @@
             "minimum": 1,
             "maximum": 100
           },
+          "available": {
+            "type": "boolean",
+            "description": "false quando o item não passa mais nas regras de compra: fica sem preço e o checkout o recusa."
+          },
           "unitPrice": {
-            "type": "string",
-            "description": "Preço unitário em reais, calculado no servidor.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Preço unitário em reais, calculado no servidor; null se indisponível.",
             "examples": [
               "210.00"
             ]
           },
           "total": {
-            "type": "string",
-            "description": "unitPrice × quantity.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "unitPrice × quantity; null se indisponível.",
             "examples": [
               "420.00"
             ]
@@ -2757,7 +2768,8 @@
             "type": "string",
             "examples": [
               "420.00"
-            ]
+            ],
+            "description": "Soma dos itens disponíveis."
           }
         }
       }

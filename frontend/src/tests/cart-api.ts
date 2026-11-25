@@ -19,6 +19,8 @@ interface Line {
   customSpecs: Record<string, unknown>;
   quantity: number;
   paymentPending: boolean;
+  /** A linha não passa mais nas regras de compra: sem preço, fora do subtotal. */
+  unavailable?: boolean;
 }
 
 export const UNIT_PRICE = 210;
@@ -45,13 +47,15 @@ export function fakeCartApi(users: Record<string, FakeUser>) {
   };
   const view = (publicId: string) => {
     const lines = cartOf(publicId);
-    const items = lines.map(({ key: _key, ...line }) => ({
+    const items = lines.map(({ key: _key, unavailable, ...line }) => ({
       ...line,
       factoryPublicId: null,
-      unitPrice: UNIT_PRICE.toFixed(2),
-      total: (UNIT_PRICE * line.quantity).toFixed(2),
+      available: !unavailable,
+      unitPrice: unavailable ? null : UNIT_PRICE.toFixed(2),
+      total: unavailable ? null : (UNIT_PRICE * line.quantity).toFixed(2),
     }));
-    return { items, subtotal: (UNIT_PRICE * lines.reduce((sum, l) => sum + l.quantity, 0)).toFixed(2) };
+    const units = lines.filter(l => !l.unavailable).reduce((sum, l) => sum + l.quantity, 0);
+    return { items, subtotal: (UNIT_PRICE * units).toFixed(2) };
   };
 
   const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init = {}) => {
@@ -134,11 +138,11 @@ export function fakeCartApi(users: Record<string, FakeUser>) {
     checkouts,
     /** Carrinho de uma conta, direto no "servidor" (outra aba ou dispositivo). */
     serverCart: (publicId: string) => cartOf(publicId),
-    addOnServer(publicId: string, productName: string, quantity = 1) {
+    addOnServer(publicId: string, productName: string, quantity = 1, unavailable = false) {
       cartOf(publicId).push({
         publicId: `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`,
         key: productName, productName, factoryName: "Demo Factory",
-        customSpecs: { color: "#000000" }, quantity, paymentPending: false,
+        customSpecs: { color: "#000000" }, quantity, paymentPending: false, unavailable,
       });
     },
     /** Segura a próxima resposta que casar; devolve a função que a libera. */

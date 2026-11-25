@@ -32,6 +32,7 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
   const [checkoutLanguageError, setCheckoutLanguageError] = useState(false);
   const [checkoutLanguageAttempt, setCheckoutLanguageAttempt] = useState(0);
   const containsArtwork = cart.some(item => hasUnapprovedCustomization(normalizeConfig(item.customSpecs)));
+  const containsUnavailable = cart.some(item => item.available === false);
   const checkout = simulatedCheckout?.owner === String(session?.publicId)
     && simulatedCheckout.token === localStorage.getItem("opticus_token") ? simulatedCheckout : null;
 
@@ -78,7 +79,7 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
   };
 
   const handleCheckout = async () => {
-    if (containsArtwork) return;
+    if (containsArtwork || containsUnavailable) return;
     if (!session) {
       alert(
         t("cart-you-need-to-log-in-to")
@@ -123,7 +124,8 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
     setConfirmingPayment(true);
     try {
       await confirmSimulatedPayment(checkout.billingId);
-      // O App escuta `?payment=success` no carregamento e limpa a sacola.
+      // O servidor já tirou do carrinho os itens pagos; o `?payment=success`
+      // só mostra a confirmação e recarrega o carrinho (CART-01).
       window.location.href = "/?payment=success";
     } catch (err) {
       const detail = err instanceof ProblemError ? localizeProblem(err.problem, language) : "";
@@ -316,6 +318,11 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
                         </span>
                       )}
                     </div>
+                    {item.available === false && (
+                      <p role="alert" style={{ color: "#ef4444", fontSize: "12px", margin: "10px 0 0 0" }}>
+                        {t("cart-line-unavailable")}
+                      </p>
+                    )}
                     {item.paymentPending && (
                       <p role="note" style={{ color: "#f59e0b", fontSize: "12px", margin: "10px 0 0 0" }}>
                         {t("cart-payment-pending")}
@@ -456,7 +463,7 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
             <button
               className="btn primary"
               onClick={handleCheckout}
-              disabled={checkoutLoading || containsArtwork || saving || status !== "ready"}
+              disabled={checkoutLoading || containsArtwork || containsUnavailable || saving || status !== "ready"}
               style={{
                 width: "100%",
                 padding: "16px",

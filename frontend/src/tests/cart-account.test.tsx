@@ -239,3 +239,22 @@ it("carrinho mudado em outra aba: o checkout recusa (409), avisa e recarrega o c
   await waitFor(() => expect(alert).toHaveBeenCalledWith("Your cart changed in another tab or device. Review the items before paying."));
   expect(await screen.findByText("Added in another tab")).toBeInTheDocument();
 });
+
+it("item que não pode mais ser comprado aparece sem preço, avisa e trava o pagamento", async () => {
+  const api = fakeCartApi(USERS);
+  api.addOnServer("user-a", "Aviator");
+  api.addOnServer("user-a", "Discontinued frame", 1, true);
+  renderCart();
+  expect(await screen.findByText("Discontinued frame")).toBeInTheDocument();
+
+  expect(screen.getByRole("alert")).toHaveTextContent("This item can no longer be purchased");
+  // Nunca R$ 0,00: o preço da linha aparece como "—", e o subtotal só soma o que pode ser comprado.
+  expect(screen.getByText("—")).toBeInTheDocument();
+  expect(screen.queryAllByText(/^\D*0[.,]00$/)).toHaveLength(0);
+  expect(showsAmount("210.00")).toBe(true);
+  expect(screen.getByRole("button", { name: /PIX/i })).toBeDisabled();
+
+  // Removido o item indisponível, o pagamento volta a ser possível.
+  fireEvent.click(screen.getAllByRole("button", { name: "Remove item" })[1]);
+  await waitFor(() => expect(screen.getByRole("button", { name: /PIX/i })).toBeEnabled());
+});
