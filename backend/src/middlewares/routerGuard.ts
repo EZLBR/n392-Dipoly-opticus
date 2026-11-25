@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import type { NextFunction, Request, Response } from "express";
 import { ForbiddenProblem, UnauthorizedProblem } from "../errors/problem.js";
 import "../config/env.js";
+import { sessionStillValid } from "../services/passwordReset.js";
 
 export type UserRole = "client" | "factory" | "staff" | string;
 
@@ -89,16 +90,26 @@ export function routerGuard(
         return next(new UnauthorizedProblem("Invalid or expired token."));
       }
 
-      req.user = decoded; // Attach payload (publicId, email, name, role)
+      const authorize = () => {
+        req.user = decoded; // Attach payload (publicId, email, name, role)
 
-      if (allowedRoles && allowedRoles.length > 0) {
-        const userRole = req.user.role || "";
-        if (!allowedRoles.includes(userRole)) {
-          return next(new ForbiddenProblem("Access forbidden. Insufficient permissions."));
+        if (allowedRoles && allowedRoles.length > 0) {
+          const userRole = req.user.role || "";
+          if (!allowedRoles.includes(userRole)) {
+            return next(new ForbiddenProblem("Access forbidden. Insufficient permissions."));
+          }
         }
-      }
 
-      next();
+        next();
+      };
+
+      // FEAT-01: tokens emitidos antes de uma troca de senha, ou de uma conta
+      // apagada, não valem mais. A checagem é fixa no guard (fail-closed): não
+      // depende de alguém registrar um validador.
+      return sessionStillValid(decoded.publicId, decoded.iat).then(
+        valid => valid ? authorize() : next(new UnauthorizedProblem("Invalid or expired token.")),
+        (error: unknown) => next(error),
+      );
     } catch (_err) {
       return next(new UnauthorizedProblem("Invalid or expired token."));
     }

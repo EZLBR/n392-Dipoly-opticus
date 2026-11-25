@@ -284,12 +284,25 @@ describe("produtos — contrato da API (DB-03)", () => {
       expect(res.body).toMatchObject({ descricao: null, imagem_url: null, categoriaPublicId: null, categoria_nome: null });
     });
 
-    it("sem o campo ativo, o produto fica ativo", async () => {
+    // Antes, `ativo ?? true` reativava em silêncio um produto desativado a cada edição.
+    it.each([false, true])("sem o campo ativo, o produto mantém o estado atual (ativo: %s)", async (ativo) => {
+      const staff = await criarUsuario("staff");
+      const produto = await criarProduto({ ativo });
+
+      const res = await request(app).put(rota(produto.publicId)).set(...comToken(staff.token))
+        .send({ nome: "Editado", preco: 10 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.ativo).toBe(ativo);
+      expect(await lerProduto(produto.publicId)).toMatchObject({ nome: "Editado", ativo });
+    });
+
+    it("com ativo explícito, o produto é reativado", async () => {
       const staff = await criarUsuario("staff");
       const produto = await criarProduto({ ativo: false });
 
       const res = await request(app).put(rota(produto.publicId)).set(...comToken(staff.token))
-        .send({ nome: "Reativado", preco: 10 });
+        .send({ nome: "Reativado", preco: 10, ativo: true });
 
       expect(res.status).toBe(200);
       expect(res.body.ativo).toBe(true);
@@ -427,5 +440,57 @@ describe("produtos — garantias de escrita (DB-03)", () => {
     esperarProblema(removida, 409, "conflict");
     expect(await lerProduto(produto.publicId)).toMatchObject({ ativo: true, categoriaId: categoria.id });
     expect(await prisma.categoria.count({ where: { publicId: categoria.publicId } })).toBe(1);
+  });
+});
+
+// Pendências da review do #135, corrigidas depois da migração.
+describe("produtos — entradas que antes passavam em silêncio", () => {
+  it.each<[unknown, string]>([
+    [true, "booleano, que virava R$ 1,00"],
+    ["", "texto vazio, que virava 0"],
+    [null, "null"],
+    ["12,50", "vírgula decimal"],
+    ["abc", "texto não numérico"],
+  ])("preço %j (%s) responde 400 e nada é gravado", async (preco) => {
+    const staff = await criarUsuario("staff");
+
+    const res = await request(app).post("/api/products").set(...comToken(staff.token))
+      .send({ nome: "Inválido", preco });
+
+    esperarProblema(res, 400, "bad-request");
+    expect(res.body.invalidParams).toEqual([expect.objectContaining({ name: "preco" })]);
+    expect(await prisma.produto.count()).toBe(0);
+  });
+
+  it("preço em texto numérico continua aceito", async () => {
+    const staff = await criarUsuario("staff");
+
+    const res = await request(app).post("/api/products").set(...comToken(staff.token))
+      .send({ nome: "Texto", preco: " 199.90 " });
+
+    expect(res.status).toBe(201);
+    expect(res.body.preco).toBe("199.90");
+  });
+
+  it("% e _ na busca são literais, não curingas", async () => {
+    await criarProduto({ nome: "Desconto 50%" });
+    await criarProduto({ nome: "Modelo_A" });
+    await criarProduto({ nome: "ModeloXA" });
+
+    const busca = (termo: string) => request(app).get("/api/products").query({ search: termo });
+
+    expect(nomes(await busca("%"))).toEqual(["Desconto 50%"]);
+    expect(nomes(await busca("50%"))).toEqual(["Desconto 50%"]);
+    expect(nomes(await busca("o_A"))).toEqual(["Modelo_A"]);
+    expect(nomes(await busca("\\"))).toEqual([]);
+  });
+
+  // A review do #135 suspeitou que um `skip` enorme virasse 500. Não vira:
+  // o Prisma aceita até o maior inteiro seguro. O teste fixa isso.
+  it("página no maior inteiro seguro responde 200 e lista vazia", async () => {
+    await criarProduto();
+    const res = await request(app).get("/api/products").query({ page: String(Number.MAX_SAFE_INTEGER) });
+    expect(res.status).toBe(200);
+    expect(res.body.produtos).toEqual([]);
   });
 });

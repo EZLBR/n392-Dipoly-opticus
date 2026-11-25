@@ -5,11 +5,20 @@ const publicIdDaCategoria = z.string().trim().min(1, "Categoria inválida.").max
 
 // Limites da coluna DECIMAL(10,2): abaixo de 0,01 o banco gravaria R$ 0,00, e
 // acima do máximo a escrita falharia como erro interno.
-const precoSchema = z.coerce
-  .number({ message: "Preço é obrigatório." })
-  .positive({ message: "Preço deve ser um número positivo.", abort: true })
-  .min(0.01, "O preço mínimo é 0,01.")
-  .max(99_999_999.99, "O preço máximo é 99.999.999,99.");
+//
+// Aceita número ou texto numérico ("199.90"), como antes. Não aceita o que o
+// `z.coerce.number()` convertia em silêncio: `true` virava R$ 1,00, e `""`,
+// `null` e `false` viravam 0.
+const precoSchema = z.preprocess(
+  (valor) => (typeof valor === "string" && /^\s*\d+(\.\d+)?\s*$/.test(valor) ? Number(valor) : valor),
+  z
+    .number({
+      error: (issue) => (issue.input === undefined ? "Preço é obrigatório." : "Preço deve ser um número positivo."),
+    })
+    .positive({ message: "Preço deve ser um número positivo.", abort: true })
+    .min(0.01, "O preço mínimo é 0,01.")
+    .max(99_999_999.99, "O preço máximo é 99.999.999,99."),
+);
 
 export const createProductSchema = z.object({
   nome: z

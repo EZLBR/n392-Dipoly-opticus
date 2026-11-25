@@ -76,6 +76,13 @@ async function travarCategoria(tx: Prisma.TransactionClient, publicId?: string |
   return categoria.id;
 }
 
+/**
+ * O `contains` do Prisma vira `ILIKE '%termo%'` sem escapar o termo: `%` e `_`
+ * funcionavam como curinga (buscar "%" trazia todo o catálogo). Escapados, a
+ * busca é literal. O `\` é o escape padrão do LIKE no PostgreSQL.
+ */
+export const escaparCuringas = (termo: string) => termo.replace(/[\\%_]/g, "\\$&");
+
 export class ProductService {
   /** Produto e estoque (zerado) nascem juntos, ou nenhum dos dois. */
   static async create(dto: CreateProductDTO): Promise<ProductDetailDTO> {
@@ -99,14 +106,15 @@ export class ProductService {
 
   /** Lista os produtos ativos, do mais novo para o mais antigo. */
   static async list({ categoriaPublicId, search, page, limit }: GetProductsQueryDTO): Promise<PaginatedProductsDTO> {
+    const termo = search ? escaparCuringas(search) : undefined;
     const where: Prisma.ProdutoWhereInput = {
       ativo: true,
       ...(categoriaPublicId ? { categoria: { publicId: categoriaPublicId } } : {}),
-      ...(search
+      ...(termo
         ? {
             OR: [
-              { nome: { contains: search, mode: "insensitive" } },
-              { descricao: { contains: search, mode: "insensitive" } },
+              { nome: { contains: termo, mode: "insensitive" } },
+              { descricao: { contains: termo, mode: "insensitive" } },
             ],
           }
         : {}),
@@ -158,7 +166,9 @@ export class ProductService {
           preco: emDecimal(dto.preco),
           categoriaId,
           imagemUrl: dto.imagem_url || null,
-          ativo: dto.ativo ?? true,
+          // Sem o campo, o produto mantém o estado atual. Antes, `?? true`
+          // reativava em silêncio um produto desativado a cada edição.
+          ativo: dto.ativo,
         },
         select: CAMPOS_PRODUTO,
       });

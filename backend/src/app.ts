@@ -5,6 +5,7 @@ import helmet from "helmet";
 import { env } from "./config/env.js";
 import { NotFoundProblem, TooManyRequestsProblem } from "./errors/problem.js";
 import { problemErrorHandler } from "./middlewares/problemErrorHandler.js";
+import { rejectNulBytes } from "./middlewares/rejectNulBytes.js";
 import { requestId } from "./middlewares/requestId.js";
 import authRoutes from "./routes/authRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
@@ -60,6 +61,15 @@ export function createApp(options: AppOptions = {}) {
   app.use(requestId());
 
   if (enableRateLimit) {
+    for (const [path, limit] of [["forgot-password", 5], ["reset-password", 10]] as const) {
+      app.use(`/api/auth/${path}`, rateLimit({
+        windowMs: 15 * 60 * 1000,
+        limit,
+        handler: (_req, _res, next) => {
+          next(new TooManyRequestsProblem("Muitas tentativas. Tente novamente mais tarde."));
+        },
+      }));
+    }
     app.use(
       ["/api/auth/login", "/api/auth/google"],
       rateLimit({
@@ -103,6 +113,8 @@ export function createApp(options: AppOptions = {}) {
     }),
   );
   app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+  // O PostgreSQL não aceita U+0000: sem esta guarda, `%00` virava 500.
+  app.use(rejectNulBytes());
 
   if (requestLogging) {
     app.use((req, _res, next) => {

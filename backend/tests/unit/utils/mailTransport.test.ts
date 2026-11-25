@@ -10,6 +10,7 @@ import nodemailer from "nodemailer";
 import {
   escapeEmailHtml,
   readSmtpConfig,
+  mensagensDeTeste,
   resetMailTransport,
   sendEmail,
 } from "../../../src/utils/mailTransport.js";
@@ -68,6 +69,7 @@ describe("sendEmail", () => {
   }
 
   function stubSmtp(porta: string) {
+    vi.stubEnv("NODE_ENV", "development");
     for (const [nome, valor] of Object.entries({ ...completo, SMTP_PORT: porta })) vi.stubEnv(nome, valor);
   }
 
@@ -114,6 +116,25 @@ describe("sendEmail", () => {
     const resultado = await sendEmail("a@exemplo.invalid", "s", "h");
 
     expect(resultado.previewUrl).toBe("https://ethereal.email/message/x");
+  });
+});
+
+describe("sendEmail em NODE_ENV=test", () => {
+  afterEach(() => {
+    mensagensDeTeste.length = 0;
+    resetMailTransport();
+    vi.restoreAllMocks();
+  });
+
+  it("guarda a mensagem na caixa de teste sem abrir transporte", async () => {
+    const criarConta = vi.spyOn(nodemailer, "createTestAccount");
+    const criarTransporte = vi.spyOn(nodemailer, "createTransport");
+
+    await sendEmail("a@exemplo.invalid", "Assunto", "<p>corpo</p>");
+
+    expect(mensagensDeTeste).toEqual([{ to: "a@exemplo.invalid", subject: "Assunto", html: "<p>corpo</p>" }]);
+    expect(criarConta).not.toHaveBeenCalled();
+    expect(criarTransporte).not.toHaveBeenCalled();
   });
 });
 
