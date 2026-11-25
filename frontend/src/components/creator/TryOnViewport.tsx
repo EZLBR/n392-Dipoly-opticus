@@ -5,8 +5,9 @@ import { useTranslation } from "../../contexts/LanguageContext";
 import { lensShape, proportions } from "../../eyewear/geometry";
 import { frameAppearance, lensAppearance } from "../../eyewear/materials";
 import { isMetal, type EyewearConfig } from "../../eyewear/config";
+import { createTryOnScene, poseFromFace, smoothPose, type TryOnPose } from "../../eyewear/tryon-scene";
 
-/** Same millimetre contours/proportions as the 3D builder. AR remains a frontal approximation. */
+/** Contorno 2D de reserva, usado só quando o navegador não tem WebGL. */
 export function drawEyewearOverlay(
   ctx: CanvasRenderingContext2D,
   c: EyewearConfig,
@@ -99,11 +100,24 @@ export default function TryOnViewport() {
     let smooth:
       | { x: number; y: number; scale: number; angle: number }
       | undefined;
+    let pose: TryOnPose | undefined;
+    // Modelo 3D real do Studio sobre o vídeo; sem WebGL, cai no contorno 2D
+    let scene3d: ReturnType<typeof createTryOnScene> | undefined;
+    let sceneKey = "";
+    try {
+      scene3d = createTryOnScene();
+    } catch (error) {
+      // Sem WebGL (ou o contexto falhou): segue com o contorno 2D, mas avisa.
+      console.warn("[tryon] modelo 3D indisponível, usando o contorno 2D", error);
+      scene3d = undefined;
+    }
     const stop = () => {
       cancelAnimationFrame(frame);
       stream?.getTracks().forEach((t) => t.stop());
       tracker?.close();
       tracker = undefined;
+      scene3d?.dispose();
+      scene3d = undefined;
       if (video.current) video.current.srcObject = null;
     };
     async function start() {
@@ -140,6 +154,7 @@ export default function TryOnViewport() {
           },
           runningMode: "VIDEO",
           numFaces: 1,
+          outputFacialTransformationMatrixes: true,
         });
         if (cancelled || !video.current) {
           stop();
@@ -177,9 +192,22 @@ export default function TryOnViewport() {
               ctx.scale(-1, 1);
               ctx.drawImage(v, 0, 0);
               ctx.restore();
-              const face = tracker!.detectForVideo(v, performance.now())
-                .faceLandmarks[0];
-              if (face) {
+              const result = tracker!.detectForVideo(v, performance.now());
+              const face = result.faceLandmarks[0];
+              if (face && scene3d) {
+                const { config: c, environment: env } = live.current;
+                const key = JSON.stringify(c) + env;
+                if (key !== sceneKey) {
+                  scene3d.update(c, env);
+                  sceneKey = key;
+                }
+                pose = smoothPose(
+                  pose,
+                  poseFromFace(face, result.facialTransformationMatrixes?.[0]?.data, target.width, target.height, c),
+                );
+                ctx.drawImage(scene3d.render(pose, target.width, target.height), 0, 0);
+                setState("tracking");
+              } else if (face) {
                 const eyes = [33, 263]
                   .map((i) => ({
                     x: (1 - face[i].x) * target.width,
@@ -212,6 +240,7 @@ export default function TryOnViewport() {
                 setState("tracking");
               } else {
                 smooth = undefined;
+                pose = undefined;
                 setState("searching");
               }
             }
