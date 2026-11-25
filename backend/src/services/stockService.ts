@@ -151,6 +151,8 @@ export class StockService {
           quantidade: novaQuantidade,
           estoqueMinimo: estoque_minimo,
           version: { increment: 1 },
+          // Antes ficava para sempre com a data de criação do registro.
+          atualizadoEm: new Date(),
         },
         select: CAMPOS_ITEM,
       });
