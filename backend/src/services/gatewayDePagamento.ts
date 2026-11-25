@@ -16,11 +16,18 @@
 //
 //   API v2: o checkout só aceita produtos já cadastrados no AbacatePay
 //   (items[].id = externalId). Por isso cada pedido vira um produto
-//   (externalId = publicId do pedido) antes de criar o checkout. O antigo
+//   antes de criar o checkout. O antigo
 //   POST /v2/billing não existe (respondia "Not found"); o corpo com
 //   frequency/products/customer era o da v1, que a chave v2 recusa.
 //   https://docs.abacatepay.com/pages/products/create
 //   https://docs.abacatepay.com/pages/payment/create
+//
+//   O AbacatePay guarda o preço do primeiro cadastro de um externalId e
+//   não deixa alterá-lo. Por isso o externalId do produto leva o preço
+//   (idDoProduto): o carrinho cadastra o preço unitário e o "pagar pedido"
+//   cadastra o total, e os dois nunca reaproveitam o produto um do outro
+//   (revisão do #146). Mesmo assim o valor do checkout é conferido com o
+//   total calculado aqui: se divergir, o link não vai para o cliente.
 // ============================================================
 
 export const URL_DE_PRODUTO = "https://api.abacatepay.com/v2/products/create";
@@ -29,12 +36,16 @@ export const URL_DE_COBRANCA = "https://api.abacatepay.com/v2/checkouts/create";
 /** Tempo máximo de espera pelo gateway. Depois disso, o resultado é incerto. */
 export const TEMPO_LIMITE_DO_GATEWAY_MS = 10_000;
 
+/** Produto no AbacatePay: o mesmo pedido com outro preço é outro produto. */
+export const idDoProduto = (produto: { externalId: string; price: number }) =>
+  `${produto.externalId}-${produto.price}`;
+
 export interface PedidoDeCobranca {
+  /** externalId é o publicId do pedido; price é o preço unitário em centavos. */
   products: Array<{ externalId: string; name: string; quantity: number; price: number }>;
   returnUrl: string;
+  /** A v2 não recebe o pagador: o próprio checkout pede os dados dele. */
   completionUrl: string;
-  /** A v2 não aceita cliente inline: o próprio checkout pede os dados do pagador. */
-  customer?: { name?: string; email?: string; taxId?: string };
 }
 
 export type ResultadoDaCobranca =
@@ -64,7 +75,7 @@ async function cadastrarProduto(token: string, produto: PedidoDeCobranca["produc
   let resposta: Response;
   try {
     resposta = await postar(token, URL_DE_PRODUTO, {
-      externalId: produto.externalId,
+      externalId: idDoProduto(produto),
       name: produto.name,
       price: produto.price,
       currency: "BRL",
@@ -93,7 +104,7 @@ export async function solicitarCobranca(token: string, pedido: PedidoDeCobranca)
   let resposta: Response;
   try {
     resposta = await postar(token, URL_DE_COBRANCA, {
-      items: pedido.products.map(({ externalId, quantity }) => ({ id: externalId, quantity })),
+      items: pedido.products.map((produto) => ({ id: idDoProduto(produto), quantity: produto.quantity })),
       methods: ["PIX"],
       returnUrl: pedido.returnUrl,
       completionUrl: pedido.completionUrl,
@@ -104,7 +115,7 @@ export async function solicitarCobranca(token: string, pedido: PedidoDeCobranca)
     return { status: "incerta", motivo: descrever(erro) };
   }
 
-  let corpo: { success?: unknown; error?: unknown; data?: { id?: unknown; url?: unknown } } | null;
+  let corpo: { success?: unknown; error?: unknown; data?: { id?: unknown; url?: unknown; amount?: unknown } } | null;
   try {
     corpo = await resposta.json();
   } catch {
@@ -118,6 +129,17 @@ export async function solicitarCobranca(token: string, pedido: PedidoDeCobranca)
     const billingId = corpo.data?.id;
     const url = corpo.data?.url;
     if (typeof billingId === "string" && billingId && typeof url === "string" && url) {
+      // O servidor é a autoridade no preço: um checkout com outro valor
+      // (produto editado no painel, cadastro antigo) não é entregue ao
+      // cliente. A cobrança existe no gateway, então é incerta, não recusada.
+      const esperado = pedido.products.reduce((soma, p) => soma + p.price * p.quantity, 0);
+      const cobrado = corpo.data?.amount;
+      if (cobrado !== esperado) {
+        return {
+          status: "incerta",
+          motivo: `checkout ${billingId} com valor ${String(cobrado)}, esperado ${esperado} centavos`,
+        };
+      }
       return { status: "criada", billingId, url };
     }
     // Declarou sucesso sem identificar a cobrança: não dá para seguir nem para desfazer.

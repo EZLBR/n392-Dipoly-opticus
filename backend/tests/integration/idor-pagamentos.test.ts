@@ -220,11 +220,12 @@ describe("pagamentos — autorização de objeto (TEST-02)", () => {
         // As colunas explícitas da consulta chegam ao gateway e ao registro do pagamento.
         // ID-02: o gateway recebe o publicId, nunca o id sequencial.
         expect(produtosEnviados(gateway)).toEqual([
-          { externalId: pedido.publicId, name: lido.productName, price: 45_000, currency: "BRL" },
+          { externalId: `${pedido.publicId}-45000`, name: lido.productName, price: 45_000, currency: "BRL" },
         ]);
         const checkouts = checkoutsEnviados(gateway);
         expect(checkouts).toHaveLength(1);
-        expect(checkouts[0].items).toEqual([{ id: pedido.publicId, quantity: 1 }]);
+        expect(checkouts[0].items).toEqual([{ id: `${pedido.publicId}-45000`, quantity: 1 }]);
+        expect(checkouts[0].externalId).toBe(pedido.publicId);
         expect(await cobrancaGravada(pedido.id)).toEqual({ abacateBillingId: "bill_do_dono", pagamentoSimulado: false });
         expect(await lerCobranca({ billingId: "bill_do_dono", pedidoPublicId: pedido.publicId })).toEqual(PENDENTE);
       });

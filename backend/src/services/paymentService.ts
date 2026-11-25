@@ -39,8 +39,6 @@ const CAMPOS_COBRAVEIS = {
   publicId: true,
   total: true,
   productName: true,
-  customerName: true,
-  customerEmail: true,
   abacateBillingId: true,
   status: true,
 } satisfies Prisma.PedidoSelect;
@@ -211,7 +209,6 @@ export class PaymentService {
       products:      [{ externalId: pedido.publicId, name: pedido.productName, quantity: 1, price: emCentavos(pedido.total) }],
       returnUrl:     `${origens.frontend}/`,
       completionUrl: `${origens.frontend}/`,
-      customer:      { name: pedido.customerName, email: pedido.customerEmail, taxId: "00000000000" },
     });
 
     if (cobranca.status === "criada") {
