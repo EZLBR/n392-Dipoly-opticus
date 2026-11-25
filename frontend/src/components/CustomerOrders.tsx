@@ -203,7 +203,7 @@ export default function CustomerOrders() {
   return (
     <section className="customer-orders" aria-labelledby="customer-orders-heading">
       {publicId && <Link className="customer-orders-back" to="/orders">{t("orders-back")}</Link>}
-      <h1 id="customer-orders-heading">{t(publicId ? "orders-detail" : "nav-orders")}</h1>
+      <h1 id="customer-orders-heading">{t(publicId ? "orders-detail" : "orders-title")}</h1>
       {sessionLoading ? <p role="status">{t("orders-loading")}</p>
         : !session || !token ? <p><Link to="/login">{t("orders-sign-in")}</Link></p>
         : session.role !== "client" ? <p>{t("orders-forbidden")}</p>

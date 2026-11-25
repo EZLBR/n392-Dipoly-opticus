@@ -59,6 +59,8 @@ describe("Customer orders", () => {
     vi.stubGlobal("fetch", fetch);
     render(view());
     expect(screen.getByRole("status")).toHaveTextContent("Carregando pedidos");
+    // O título usa a própria chave: o menu fica em caixa alta, a página não.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Meus pedidos$/);
     fireEvent.click(await screen.findByRole("link", { name: order.productName }));
     expect(await screen.findByRole("heading", { name: order.productName })).toBeInTheDocument();
     expect(screen.getByText("Redondo")).toBeInTheDocument();
