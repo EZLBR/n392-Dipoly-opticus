@@ -1,3 +1,4 @@
+import { formatMoney } from "../utils/money";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowDown,
@@ -44,11 +45,7 @@ export default function Marketplace({
   );
   const [storageError, setStorageError] = useState(false);
   const catalogHeading = useRef<HTMLHeadingElement>(null);
-  const money = (value: number) =>
-    new Intl.NumberFormat(pt ? "pt-BR" : "en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(value);
+  const money = (value: number) => formatMoney(value, pt ? "pt" : "en");
   const products = filterModels(query, shapes, materials, sort, favorites);
   const hasFilters = !!(query || shapes.length || materials.length);
   useEffect(() => {
@@ -397,7 +394,7 @@ export default function Marketplace({
               </div>
             )}
             <p className="market-price-note">
-              {t("market-prices-in-us-dollars-usd-your")}
+              {t("market-prices-note")}
             </p>
           </>
         ) : (

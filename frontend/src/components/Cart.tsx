@@ -6,6 +6,7 @@ import { localizeProblem, useTranslation, type Language } from "../contexts/Lang
 import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, Info, AlertCircle } from "lucide-react";
 
 import ThreePreview from "./ThreePreview";
+import { formatMoney } from "../utils/money";
 import { fetchSimulatedCheckoutHtml, confirmSimulatedPayment } from "../utils/simulated-checkout";
 import { ProblemError } from "../api/client";
 import { hasUnapprovedCustomization } from "../eyewear/artwork";
@@ -243,7 +244,7 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
                       {item.productName}
                     </h3>
                     <p style={{ color: "var(--color-hint)", fontSize: "12px", margin: "0 0 12px 0", textTransform: "uppercase", letterSpacing: "1px" }}>
-                      {t("journey-03-title")} &bull; {item.factoryName || t("cart-partner")}
+                      {t("cart-custom-design")} &bull; {item.factoryName || t("cart-partner")}
                     </p>
 
                     <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -327,7 +328,7 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
                     </div>
 
                     <div style={{ fontSize: "16px", fontWeight: "700", minWidth: "80px", textAlign: "right" }}>
-                      R$ {(Number(item.total) * (item.quantity || 1)).toFixed(2)}
+                      {formatMoney(Number(item.total) * (item.quantity || 1), language)}
                     </div>
 
                     <button
@@ -404,7 +405,7 @@ export default function Cart({ setView }: { setView: (view: string) => void }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <span style={{ fontSize: "16px", fontWeight: "600" }}>{t("cart-subtotal")}</span>
                 <span style={{ fontSize: "24px", fontWeight: "700", color: "#22c55e" }}>
-                  R$ {getSubtotal().toFixed(2)}
+                  {formatMoney(getSubtotal(), language)}
                 </span>
               </div>
             </div>

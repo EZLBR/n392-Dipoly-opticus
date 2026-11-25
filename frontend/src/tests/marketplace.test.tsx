@@ -181,7 +181,7 @@ describe("Store catalog states", () => {
     expect(
       await screen.findByRole("heading", { name: "Armação da loja" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("US$ 230,50")).toBeInTheDocument();
+    expect(screen.getByText("R$ 230,50")).toBeInTheDocument();
   });
   it("keeps the server search in pagination and aborts requests when leaving the store", async () => {
     const fetch = vi
