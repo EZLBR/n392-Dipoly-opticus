@@ -12,6 +12,7 @@
     "prisma:generate": "prisma generate",
     "migrate": "prisma migrate deploy",
     "seed:dev": "node --import tsx prisma/seed.dev.ts",
+    "conciliar:pedido-itens": "node --import tsx src/scripts/conciliar-pedido-itens.ts",
     "test": "dotenv -e .env.test -- vitest run",
     "test:watch": "dotenv -e .env.test -- vitest",
     "test:coverage": "dotenv -e .env.test -- vitest run --coverage",

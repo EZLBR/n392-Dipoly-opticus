@@ -116,6 +116,19 @@ export const checkoutCartSchema = z.object({
 
 export type CheckoutCartDTO = z.infer<typeof checkoutCartSchema>;
 
+/** Um item do pedido (FEAT-04), com o preço gravado na compra. */
+export interface OrderItemResponseDTO {
+  publicId: string;
+  productName: string;
+  /** A especificação do item, sem a quantidade. */
+  customSpecs: Record<string, unknown>;
+  quantity: number;
+  /** DECIMAL como texto de duas casas, sem passar por float. */
+  unitPrice: string;
+  /** unitPrice × quantity, também exato. */
+  total: string;
+}
+
 /** O que a API devolve de um pedido. Nunca o id interno (ID-02). */
 export interface OrderResponseDTO {
   publicId: string;
@@ -133,6 +146,8 @@ export interface OrderResponseDTO {
   /** Só o dia, à meia-noite. */
   createdAt: Date | null;
   updatedAt: Date | null;
+  /** Os itens do pedido, na ordem em que foram escolhidos. A soma é o total. */
+  items: OrderItemResponseDTO[];
 }
 
 export interface PaginatedOrdersDTO {

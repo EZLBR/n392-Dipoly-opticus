@@ -244,6 +244,7 @@ describe("API-04 / Épico 3 - Contrato de Erros RFC 9457 e Remoção de Envelope
           abacateBillingId: null,
           createdAt: new Date("2026-10-14T00:00:00Z"),
           updatedAt: new Date("2026-10-14T00:00:00Z"),
+          items: [],
         }],
         pagination: { page: 1, limit: 10, totalItems: 1, totalPages: 1 },
       });

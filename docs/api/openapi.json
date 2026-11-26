@@ -2646,6 +2646,56 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "description": "FEAT-04: os itens do pedido, na ordem em que foram escolhidos. A soma dos totais é o total do pedido.",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            }
+          }
+        }
+      },
+      "OrderItem": {
+        "type": "object",
+        "required": [
+          "publicId",
+          "productName",
+          "customSpecs",
+          "quantity",
+          "unitPrice",
+          "total"
+        ],
+        "properties": {
+          "publicId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productName": {
+            "type": "string",
+            "description": "O nome no momento da compra."
+          },
+          "customSpecs": {
+            "type": "object",
+            "description": "A especificação do item, sem a quantidade."
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "unitPrice": {
+            "type": "string",
+            "description": "Preço unitário gravado na compra, calculado no servidor.",
+            "examples": [
+              "210.00"
+            ]
+          },
+          "total": {
+            "type": "string",
+            "description": "unitPrice × quantity.",
+            "examples": [
+              "420.00"
+            ]
           }
         }
       },

@@ -58,17 +58,16 @@ export class CheckoutService {
 
     const createdOrders = await prisma.$transaction(async (tx) => {
       const criados = [];
-      for (const item of cartItems) {
-        const { pedido, precoUnitarioEmCentavos } = await inserirPedido(tx, cliente, item, consolidatedBillingId);
+      // FEAT-04, parte 1 (ADR-0004): ainda um pedido por item do carrinho, com o
+      // item gravado em pedido_itens. O agrupamento por fábrica vem com as
+      // telas que mostram os itens.
+      for (const { factoryPublicId, factoryName, ...item } of cartItems) {
+        const { pedido, itens } = await inserirPedido(
+          tx, cliente, { factoryPublicId, factoryName, itens: [item] }, consolidatedBillingId,
+        );
         // O id interno só circula no servidor (guarda da tentativa); o gateway
-        // recebe o publicId.
-        criados.push({
-          id: pedido.id,
-          publicId: pedido.publicId,
-          productName: item.productName,
-          quantity: item.quantity,
-          precoUnitarioEmCentavos,
-        });
+        // recebe os publicIds dos itens.
+        criados.push({ id: pedido.id, itens });
       }
       await aoCriarPedidos?.(tx, criados.map((pedido) => pedido.id));
       return criados;
@@ -80,13 +79,14 @@ export class CheckoutService {
     const tentativa = { pedidoIds, usuarioPublicId: cliente.publicId, billingIdProvisorio: consolidatedBillingId };
 
     if (!isSimulatedPaymentGateway()) {
-      // O gateway cobra o preço unitário calculado no servidor, em centavos.
+      // Cada item gravado vira um produto do checkout, com o preço unitário
+      // do servidor em centavos.
       const cobranca = await solicitarCobranca(getAbacateToken()!, {
-        products: createdOrders.map((pedido) => ({
-          externalId: pedido.publicId,
-          name:       pedido.productName,
-          quantity:   pedido.quantity,
-          price:      pedido.precoUnitarioEmCentavos,
+        products: createdOrders.flatMap((pedido) => pedido.itens).map((item) => ({
+          externalId: item.publicId,
+          name:       item.productName,
+          quantity:   item.quantity,
+          price:      item.precoUnitarioEmCentavos,
         })),
         returnUrl:     `${origens.frontend}/`,
         completionUrl: `${origens.frontend}/`,
