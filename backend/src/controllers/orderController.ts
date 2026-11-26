@@ -67,7 +67,7 @@ export async function updateOrderStatus(req: Request, res: Response) {
 
   // A identidade vem exclusivamente do token validado pelo middleware.
   // A autorização de objeto acontece dentro da mutação, no service.
-  const pedido = await OrderService.updateStatus({
+  const { pedido, resumoDosItens } = await OrderService.updateStatus({
     publicId,
     status,
     version,
@@ -79,7 +79,8 @@ export async function updateOrderStatus(req: Request, res: Response) {
       id:             pedido.publicId,
       customer_name:  pedido.customerName,
       customer_email: pedido.customerEmail,
-      product_name:   pedido.productName,
+      // FEAT-04: o e-mail cita todos os itens do pedido, não só o primeiro.
+      product_name:   resumoDosItens,
       factory_name:   pedido.factoryName ?? undefined,
     },
     status

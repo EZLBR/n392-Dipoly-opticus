@@ -5,6 +5,8 @@ import { apiClient, ProblemError } from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
 import { useTranslation } from "../contexts/LanguageContext";
 import { label } from "../eyewear/config";
+import type { OrderItem } from "../types/domain";
+import { resumoDosItens } from "../utils/orderItems";
 import "./customer-orders.css";
 
 interface OrderSummary {
@@ -13,6 +15,8 @@ interface OrderSummary {
   total: string;
   status: string | null;
   createdAt: string | null;
+  /** FEAT-04: os itens do pedido, com o preço gravado na compra. */
+  items?: OrderItem[];
 }
 
 interface OrderDetail extends OrderSummary {
@@ -63,7 +67,12 @@ const specFields = [
   ["quantity", "quantity", "order-spec-quantity"],
 ] as const;
 
-function Specifications({ specs }: { specs: Record<string, unknown> }) {
+function Specifications({ specs, headingId = "order-specs-heading", level = 2 }: {
+  specs: Record<string, unknown>;
+  /** Cada item tem a sua lista, então cada título precisa de um id próprio. */
+  headingId?: string;
+  level?: 2 | 4;
+}) {
   const { t, language } = useTranslation();
   const formatValue = (value: unknown): string | undefined => {
     if (typeof value === "string" && value) return label(value, language);
@@ -81,9 +90,10 @@ function Specifications({ specs }: { specs: Record<string, unknown> }) {
       : formatValue(raw);
     return value === undefined ? [] : [{ labelKey, value }];
   });
+  const Heading = level === 2 ? "h2" : "h4";
   return (
-    <section className="customer-orders-section" aria-labelledby="order-specs-heading">
-      <h2 id="order-specs-heading">{t("orders-specs")}</h2>
+    <section className="customer-orders-section" aria-labelledby={headingId}>
+      <Heading id={headingId}>{t("orders-specs")}</Heading>
       {entries.length ? (
         <dl className="customer-order-fields">
           {entries.map(({ labelKey, value }) => <div key={labelKey}><dt>{t(labelKey)}</dt><dd>{value}</dd></div>)}
@@ -140,14 +150,29 @@ function OrderView({ token, publicId, page }: { token: string; publicId?: string
     return (
       <article>
         <header className="customer-orders-section">
-          <h2>{order.productName}</h2>
+          <h2>{resumoDosItens(order)}</h2>
           <dl className="customer-order-fields">
             <div><dt>{t("orders-status")}</dt><dd>{status(order.status)}</dd></div>
             <div><dt>{t("orders-total")}</dt><dd>{money.format(Number(order.total))}</dd></div>
             <div><dt>{t("orders-date")}</dt><dd>{date(order.createdAt)}</dd></div>
           </dl>
         </header>
-        <Specifications specs={order.customSpecs} />
+        {order.items?.length ? (
+          <section className="customer-orders-section" aria-labelledby="order-items-heading">
+            <h2 id="order-items-heading">{t("orders-items")}</h2>
+            {order.items.map((item, index) => (
+              <article key={item.publicId} aria-labelledby={`order-item-${index}`}>
+                <h3 id={`order-item-${index}`}>{item.productName}</h3>
+                <dl className="customer-order-fields">
+                  <div><dt>{t("orders-quantity")}</dt><dd>{item.quantity}</dd></div>
+                  <div><dt>{t("orders-unit-price")}</dt><dd>{money.format(Number(item.unitPrice))}</dd></div>
+                  <div><dt>{t("orders-item-total")}</dt><dd>{money.format(Number(item.total))}</dd></div>
+                </dl>
+                <Specifications specs={item.customSpecs as Record<string, unknown>} headingId={`order-item-${index}-specs`} level={4} />
+              </article>
+            ))}
+          </section>
+        ) : <Specifications specs={order.customSpecs} />}
         <section className="customer-orders-section" aria-labelledby="order-history-heading">
           <h2 id="order-history-heading">{t("orders-history")}</h2>
           {order.history.length ? (
@@ -173,7 +198,7 @@ function OrderView({ token, publicId, page }: { token: string; publicId?: string
         <ul className="customer-order-list">
           {orders.map(order => (
             <li key={order.publicId} className="customer-orders-section">
-              <Link to={`/orders/${encodeURIComponent(order.publicId)}`}>{order.productName}</Link>
+              <Link to={`/orders/${encodeURIComponent(order.publicId)}`}>{resumoDosItens(order)}</Link>
               <span>{status(order.status)}</span>
               <span>{money.format(Number(order.total))}</span>
               {date(order.createdAt)}

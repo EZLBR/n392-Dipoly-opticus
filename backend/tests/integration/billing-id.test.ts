@@ -79,8 +79,9 @@ describe("geração do billingId", () => {
     expect(gravado.abacateBillingId).toBe(billingId);
   });
 
-  it("checkoutCart devolve e persiste o formato novo em todos os itens", async () => {
+  it("checkoutCart devolve e persiste o formato novo em todos os pedidos", async () => {
     const fabrica = await criarUsuario("factory");
+    const outraFabrica = await criarUsuario("factory");
     const cliente = await criarUsuario("client");
 
     const res = await request(app)
@@ -89,7 +90,8 @@ describe("geração do billingId", () => {
       .send({
         cartItems: [
           { productName: "A", factoryPublicId: fabrica.publicId, factoryName: "F", customSpecs: especificacaoDoStudio(), quantity: 1 },
-          { productName: "B", factoryPublicId: fabrica.publicId, factoryName: "F", customSpecs: especificacaoDoStudio(), quantity: 1 },
+          // FEAT-04: outra fábrica, outro pedido, na mesma cobrança.
+          { productName: "B", factoryPublicId: outraFabrica.publicId, factoryName: "F", customSpecs: especificacaoDoStudio(), quantity: 1 },
         ],
       });
 

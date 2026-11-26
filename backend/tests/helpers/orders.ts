@@ -23,9 +23,11 @@ export async function criarPedido(opcoes: {
   dono: UsuarioDeTeste;
   fabrica?: UsuarioDeTeste | null;
   status?: "Pending_Payment" | "Queued" | "In_production" | "Delivered" | "Cancelled";
+  /** Total do pedido, que é também o preço do único item. */
+  total?: string;
 }): Promise<PedidoDeTeste> {
   const n = ++contador;
-  const { dono, fabrica = null, status = "Queued" } = opcoes;
+  const { dono, fabrica = null, status = "Queued", total = "450.00" } = opcoes;
 
   const pedido = await prisma.pedido.create({
     data: {
@@ -36,9 +38,9 @@ export async function criarPedido(opcoes: {
       factoryId: fabrica?.id ?? null,
       factoryName: fabrica ? `Fabrica ${fabrica.id}` : null,
       status,
-      total: "450.00",
+      total,
       // FEAT-04: todo pedido tem item, e a soma dos itens é o total.
-      itens: { create: [{ productName: `Armacao Teste ${n}`, customSpecs: {}, quantidade: 1, precoUnitario: "450.00" }] },
+      itens: { create: [{ productName: `Armacao Teste ${n}`, customSpecs: {}, quantidade: 1, precoUnitario: total }] },
     },
     select: { id: true, publicId: true, status: true, factoryId: true, version: true },
   });

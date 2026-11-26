@@ -228,8 +228,14 @@ describe("carrinho da conta — checkout", () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ isSimulated: true, billingId: expect.any(String) });
 
-    const pedidos = await prisma.pedido.findMany({ where: { usuarioId: cliente.id }, orderBy: { id: "asc" } });
-    expect(pedidos.map(p => [p.total.toFixed(2), JSON.parse(p.customSpecs!).quantity])).toEqual([["420.00", 2], ["250.00", 1]]);
+    // FEAT-04: as duas linhas são da mesma fábrica, então viram um pedido com dois itens.
+    const pedidos = await prisma.pedido.findMany({
+      where: { usuarioId: cliente.id },
+      orderBy: { id: "asc" },
+      select: { total: true, itens: { orderBy: { id: "asc" }, select: { quantidade: true, precoUnitario: true } } },
+    });
+    expect(pedidos.map(p => p.total.toFixed(2))).toEqual(["670.00"]);
+    expect(pedidos[0].itens.map(i => [i.precoUnitario.toFixed(2), i.quantidade])).toEqual([["210.00", 2], ["250.00", 1]]);
 
     // O pagamento ainda não foi confirmado: o carrinho continua, marcado.
     const depois = await carrinho(cliente);

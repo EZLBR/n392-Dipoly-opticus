@@ -179,7 +179,7 @@ export async function getSimulatedCheckoutPage(req: Request, res: Response) {
       <h4 style="margin:0 0 10px;font-size:13px;text-transform:uppercase;color:#22c55e">${copy.items}:</h4>
       ${checkout.itens.map(item => `
         <div class="detail-row">
-          <span>${escapeHTML(item.productName)}:</span>
+          <span>${item.quantity ? `${item.quantity} × ` : ""}${escapeHTML(item.productName)}:</span>
           <strong>${formatar(item.total)}</strong>
         </div>
       `).join("")}

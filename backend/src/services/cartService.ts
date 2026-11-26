@@ -252,14 +252,14 @@ export class CartService {
       cartItems: cartItems as NonNullable<(typeof cartItems)[number]>[],
       origens,
       traceId,
-      aoCriarPedidos: async (tx, pedidoIds) => {
+      aoCriarPedidos: async (tx, pedidoDeCadaLinha) => {
         for (const [indice, linha] of linhas.entries()) {
           // O vínculo também sobe a versão: um segundo checkout simultâneo do
           // mesmo carrinho, que leu a mesma versão, não casa mais e é desfeito
           // com 409, em vez de gerar outra cobrança (revisão do #147).
           const { count } = await tx.carrinhoItem.updateMany({
             where: { id: linha.id, versao: linha.versao },
-            data: { pedidoId: pedidoIds[indice], versao: { increment: 1 } },
+            data: { pedidoId: pedidoDeCadaLinha[indice], versao: { increment: 1 } },
           });
           // A linha mudou ou saiu depois da leitura: desfaz os pedidos.
           if (count !== 1) throw new ConflictProblem(CARRINHO_MUDOU);

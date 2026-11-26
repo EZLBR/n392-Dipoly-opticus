@@ -81,10 +81,10 @@ const appEmProducao = (gateway: Gateway) => carregarApp({ producao: true, gatewa
 
 // Válida antes e depois do SEC-05: `total` é ignorado quando o servidor
 // calcula o preço, e as opções de preço satisfazem a validação dele.
-function carrinho(fabrica: UsuarioDeTeste, itens = 1) {
+// FEAT-04: com várias fábricas, um item em cada, e portanto um pedido por item.
+function carrinho(fabricas: UsuarioDeTeste | UsuarioDeTeste[]) {
   const item = {
     productName: "Wayfarer",
-    factoryPublicId: fabrica.publicId,
     factoryName: "Fabrica",
     total: 210,
     quantity: 1,
@@ -96,7 +96,7 @@ function carrinho(fabrica: UsuarioDeTeste, itens = 1) {
       lensTreatments: ["anti_reflective", "uv_protection"],
     },
   };
-  return { cartItems: Array.from({ length: itens }, () => ({ ...item })) };
+  return { cartItems: [fabricas].flat().map(fabrica => ({ ...item, factoryPublicId: fabrica.publicId })) };
 }
 
 const lerPedidoPorId = (id: number) =>
@@ -170,7 +170,7 @@ describe("checkout-cart em produção (SEC-06)", () => {
     const res = await request(app)
       .post("/api/orders/checkout-cart")
       .set(...comToken(cliente.token))
-      .send(carrinho(fabrica, 2));
+      .send(carrinho([fabrica, await criarUsuario("factory")]));
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ isSimulated: false, checkoutUrl: "https://gateway.invalid/pagar/bill_real" });
@@ -231,7 +231,7 @@ describe("checkout-cart em produção (SEC-06)", () => {
       const res = await request(app)
         .post("/api/orders/checkout-cart")
         .set(...comToken(cliente.token))
-        .send(carrinho(fabrica, 2));
+        .send(carrinho([fabrica, await criarUsuario("factory")]));
 
       esperarProblema(res, 503, "service-unavailable");
       const pedidos = await pedidosDoCliente(cliente);
@@ -250,7 +250,7 @@ describe("checkout-cart em produção (SEC-06)", () => {
       const res = await request(app)
         .post("/api/orders/checkout-cart")
         .set(...comToken(cliente.token))
-        .send(carrinho(fabrica, 2));
+        .send(carrinho([fabrica, await criarUsuario("factory")]));
 
       esperarProblema(res, 409, "conflict");
       expect(res.body.checkoutUrl).toBeUndefined();

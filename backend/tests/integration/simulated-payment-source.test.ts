@@ -45,12 +45,13 @@ it("apresenta a mesma cobrança simulada em português ou inglês", async () => 
 
 it.each(["pedido", "carrinho"])("confirma cobrança emitida pelo fluxo simulado de %s", async fluxo => {
   const dono = await criarUsuario();
-  const fabrica = await criarUsuario("factory");
+  // FEAT-04: uma fábrica por item, para a cobrança do carrinho ter dois pedidos.
+  const fabricas = [await criarUsuario("factory"), await criarUsuario("factory")];
   const pedido = await criarPedido({ dono, status: "Pending_Payment" });
   const criada = fluxo === "pedido"
     ? await request(app).post("/api/payments/create-billing").set(...comToken(dono.token)).send({ orderPublicId: pedido.publicId })
     : await request(app).post("/api/orders/checkout-cart").set(...comToken(dono.token)).send({ cartItems: [1, 2].map(n => ({
-        productName: `Armação ${n}`, factoryPublicId: fabrica.publicId, factoryName: "Fábrica", quantity: 1,
+        productName: `Armação ${n}`, factoryPublicId: fabricas[n - 1].publicId, factoryName: "Fábrica", quantity: 1,
         customSpecs: especificacaoDoStudio(),
       })) });
   expect(criada.status).toBe(200);

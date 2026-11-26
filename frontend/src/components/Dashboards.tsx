@@ -5,6 +5,7 @@ import { useOrder } from "../contexts/OrderContext";
 import { roleKey, useTranslation } from "../contexts/LanguageContext";
 import { label } from "../eyewear/config";
 import { nextStatuses } from "../utils/orderStatus";
+import { resumoDosItens } from "../utils/orderItems";
 import { ShoppingBag, Users, Building, ShieldCheck, DollarSign, Clock, Info, ChevronRight, Settings } from "lucide-react";
 import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
@@ -121,39 +122,54 @@ const OrderContextMenu = ({ menu, role, onClose, onUpdateStatus, onViewDetails }
   );
 };
 
-const OrderDetailsModal = ({ order, onClose }: { order: Order | null; onClose: () => void }) => {
+const SpecList = ({ specs }: { specs: object }) => {
   const { t, language } = useTranslation();
+  return (
+    <ul style={{ listStyle: "none", padding: 0, margin: 0, color: "var(--text-color)" }}>
+      {Object.entries(specs as Record<string, unknown>).map(([k, v]) => {
+        const key = `dash-spec-${k.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())}`;
+        const translated = t(key);
+        const name = translated === key ? k.replace(/_/g, " ") : translated;
+        let value = String(v);
+        if (typeof v === "boolean") value = t(v ? "dash-yes" : "dash-no");
+        if (typeof v === "string" && translated !== key) value = label(v, language);
+        if (Array.isArray(v) && v.every(item => typeof item === "string")) {
+          value = v.map(item => label(item, language)).join(", ") || t("dash-no-treatments");
+        } else if (v && typeof v === "object") value = JSON.stringify(v);
+        return (
+          <li key={k} style={{ padding: "10px", backgroundColor: "rgba(255,255,255,0.03)", marginBottom: "8px", borderRadius: "8px", display: "flex", gap: "8px", justifyContent: "space-between", overflowWrap: "anywhere" }}>
+            <span style={{ color: "var(--color-hint)" }}>{name}:</span>
+            <strong>{value}</strong>
+          </li>
+        );
+      })}
+      {Object.keys(specs).length === 0 && <li style={{ color: "var(--color-hint)" }}>{t("dash-no-specs")}</li>}
+    </ul>
+  );
+};
+
+const OrderDetailsModal = ({ order, onClose }: { order: Order | null; onClose: () => void }) => {
+  const { t } = useTranslation();
   if (!order) return null;
-  const specs = order.customSpecs || {};
+  // FEAT-04: um pedido tem vários itens, cada um com a sua especificação. Um
+  // pedido guardado no cache antes disso mostra a especificação do pedido.
+  const itens = order.items ?? [];
   return (
     <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.8)", backdropFilter: "blur(4px)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
       <div className="premium-glass-card" onClick={e => e.stopPropagation()} style={{ width: "90%", maxWidth: "500px", borderRadius: "16px", overflow: "hidden", position: "relative" }}>
         <div style={{ padding: "24px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
           <h3 style={{ margin: 0, fontSize: "20px" }}>{t("dash-order-details")}{orderNumber(order)}</h3>
-          <p style={{ margin: "5px 0 0", color: "var(--color-hint)", fontSize: "14px" }}>{order.productName} {t("dash-customer-prefix")} {order.customerName}</p>
+          <p style={{ margin: "5px 0 0", color: "var(--color-hint)", fontSize: "14px" }}>{resumoDosItens(order)} {t("dash-customer-prefix")} {order.customerName}</p>
         </div>
         <div style={{ padding: "24px", maxHeight: "60vh", overflowY: "auto" }}>
           <h4 style={{ color: "var(--primary-accent)", marginTop: 0 }}>{t("dash-specs")}</h4>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, color: "var(--text-color)" }}>
-            {Object.entries(specs).map(([k, v]) => {
-              const key = `dash-spec-${k.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())}`;
-              const translated = t(key);
-              const name = translated === key ? k.replace(/_/g, " ") : translated;
-              let value = String(v);
-              if (typeof v === "boolean") value = t(v ? "dash-yes" : "dash-no");
-              if (typeof v === "string" && translated !== key) value = label(v, language);
-              if (Array.isArray(v) && v.every(item => typeof item === "string")) {
-                value = v.map(item => label(item, language)).join(", ") || t("dash-no-treatments");
-              } else if (v && typeof v === "object") value = JSON.stringify(v);
-              return (
-                <li key={k} style={{ padding: "10px", backgroundColor: "rgba(255,255,255,0.03)", marginBottom: "8px", borderRadius: "8px", display: "flex", gap: "8px", justifyContent: "space-between", overflowWrap: "anywhere" }}>
-                  <span style={{ color: "var(--color-hint)" }}>{name}:</span>
-                  <strong>{value}</strong>
-                </li>
-              );
-            })}
-            {Object.keys(specs).length === 0 && <li style={{ color: "var(--color-hint)" }}>{t("dash-no-specs")}</li>}
-          </ul>
+          {itens.length === 0 ? <SpecList specs={order.customSpecs || {}} /> : itens.map(item => (
+            <section key={item.publicId} aria-label={item.productName} style={{ marginBottom: "16px" }}>
+              <h5 style={{ margin: "0 0 8px", fontSize: "15px" }}>{item.productName}</h5>
+              <p style={{ margin: "0 0 8px", color: "var(--color-hint)", fontSize: "13px" }}>{t("dash-item-quantity")}: {item.quantity}</p>
+              <SpecList specs={item.customSpecs} />
+            </section>
+          ))}
         </div>
         <div style={{ padding: "20px", borderTop: "1px solid rgba(255,255,255,0.05)", textAlign: "right" }}>
           <button className="premium-button" onClick={onClose}>{t("dash-close")}</button>
@@ -352,7 +368,7 @@ export function FactoryDashboard() {
                 <tr key={order.publicId} onContextMenu={(e) => handleContextMenu(e, order)} style={{ cursor: "context-menu" }} className="hoverable-row">
                   <td style={{ fontWeight: "600" }}>{orderNumber(order)}</td>
                   <td>{order.customerName}</td>
-                  <td>{order.productName}</td>
+                  <td>{resumoDosItens(order)}</td>
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                       <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: delivery.color }}></span>
@@ -651,7 +667,7 @@ export function StaffDashboard() {
                   <tr key={order.publicId} onContextMenu={(e) => handleContextMenu(e, order)} style={{ cursor: "context-menu" }} className="hoverable-row">
                     <td style={{ fontWeight: "600" }}>{orderNumber(order)}</td>
                     <td>{order.customerName}</td>
-                    <td>{order.productName}</td>
+                    <td>{resumoDosItens(order)}</td>
                     <td>{order.factoryName}</td>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>

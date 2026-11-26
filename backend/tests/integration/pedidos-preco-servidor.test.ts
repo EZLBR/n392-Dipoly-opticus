@@ -143,10 +143,12 @@ describe("POST /api/orders/checkout-cart — total calculado no servidor (SEC-05
       });
 
     expect(res.status).toBe(200);
+    // 2 × 210,00 e 180 + 20 (bold) + 30 (policarbonato) + 2 × 15 = 260,00.
+    // FEAT-04: a mesma fábrica, então um pedido com os dois itens.
     const pedidos = await pedidosGravados();
-    // 2 × 210,00 e 180 + 20 (bold) + 30 (policarbonato) + 2 × 15 = 260,00
-    expect(pedidos.map((p) => p.total)).toEqual(["420.00", "260.00"]);
-    expect(pedidos.map((p) => p.customSpecs.quantity)).toEqual([2, 1]);
+    expect(pedidos.map((p) => p.total)).toEqual(["680.00"]);
+    const itens = await prisma.pedidoItem.findMany({ orderBy: { id: "asc" }, select: { quantidade: true, precoUnitario: true } });
+    expect(itens.map((i) => [i.precoUnitario.toFixed(2), i.quantidade])).toEqual([["210.00", 2], ["260.00", 1]]);
   });
 
   it("o que é gravado na especificação é o que foi precificado", async () => {

@@ -162,7 +162,7 @@ describe("pedidos — contrato da API (DB-03)", () => {
   });
 
   describe("POST /api/orders/checkout-cart (simulador)", () => {
-    it("cria um pedido por item, todos na mesma cobrança simulada, cada um com a sua fábrica", async () => {
+    it("cria um pedido por fábrica, todos na mesma cobrança simulada, com os itens de cada uma", async () => {
       const cliente = await criarUsuario("client");
       const fabricaA = await criarUsuario("factory");
       const fabricaB = await criarUsuario("factory");
@@ -184,10 +184,19 @@ describe("pedidos — contrato da API (DB-03)", () => {
       const { rows } = await pool.query(
         `SELECT p.product_name, f."publicId" AS fabrica, p.total::text, p.status, p.pagamento_simulado, p.abacate_billing_id
            FROM pedidos p LEFT JOIN usuarios f ON f.id = p.factory_id ORDER BY p.id`);
+      // FEAT-04: o item sem fábrica vai para a padrão (a mais antiga, A) e
+      // entra no pedido dela; a ordem é a da primeira aparição de cada fábrica.
       expect(rows).toEqual([
-        { product_name: "Item A", fabrica: fabricaA.publicId, total: PRECO_DA_ESPECIFICACAO_PADRAO, status: "Pending Payment", pagamento_simulado: true, abacate_billing_id: res.body.billingId },
+        { product_name: "Item A (+1)", fabrica: fabricaA.publicId, total: (Number(PRECO_DA_ESPECIFICACAO_PADRAO) * 2).toFixed(2), status: "Pending Payment", pagamento_simulado: true, abacate_billing_id: res.body.billingId },
         { product_name: "Item B", fabrica: fabricaB.publicId, total: (Number(PRECO_DA_ESPECIFICACAO_PADRAO) * 3).toFixed(2), status: "Pending Payment", pagamento_simulado: true, abacate_billing_id: res.body.billingId },
-        { product_name: "Item padrão", fabrica: fabricaA.publicId, total: PRECO_DA_ESPECIFICACAO_PADRAO, status: "Pending Payment", pagamento_simulado: true, abacate_billing_id: res.body.billingId },
+      ]);
+      const { rows: itens } = await pool.query(
+        `SELECT p.product_name AS pedido, i.product_name AS item, i.quantidade
+           FROM pedido_itens i JOIN pedidos p ON p.id = i.pedido_id ORDER BY p.id, i.id`);
+      expect(itens).toEqual([
+        { pedido: "Item A (+1)", item: "Item A", quantidade: 1 },
+        { pedido: "Item A (+1)", item: "Item padrão", quantidade: 1 },
+        { pedido: "Item B", item: "Item B", quantidade: 3 },
       ]);
     });
 

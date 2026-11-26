@@ -38,7 +38,8 @@ export interface PaginatedPaymentsDTO {
 
 /** O que a página do simulador mostra. Valores em texto decimal, sem float. */
 export interface SimulatedCheckoutDTO {
-  itens: { productName: string; total: string }[];
+  /** FEAT-04: um por item do pedido; quantity é null num pedido sem itens. */
+  itens: { productName: string; quantity: number | null; total: string }[];
   total: string;
   cliente: { nome: string; email: string };
 }
