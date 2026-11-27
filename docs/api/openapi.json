@@ -36,6 +36,9 @@
       "name": "Studio"
     },
     {
+      "name": "Carrinho"
+    },
+    {
       "name": "Pedidos"
     },
     {
@@ -1272,6 +1275,265 @@
         ]
       }
     },
+    "/api/cart": {
+      "get": {
+        "tags": [
+          "Carrinho"
+        ],
+        "summary": "Carrinho da conta",
+        "description": "CART-01: o carrinho é da conta do token (cliente ou staff), não do navegador.",
+        "responses": {
+          "200": {
+            "description": "Carrinho da conta, com preços calculados no servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cart"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Carrinho"
+        ],
+        "summary": "Esvaziar o carrinho",
+        "responses": {
+          "204": {
+            "description": "Carrinho vazio."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          }
+        }
+      }
+    },
+    "/api/cart/items": {
+      "post": {
+        "tags": [
+          "Carrinho"
+        ],
+        "summary": "Adicionar item ao carrinho",
+        "description": "Validado como um item do checkout (opções do catálogo, trava de arte e estampa, fábrica existente). A mesma configuração soma quantidade na linha existente; outra configuração vira outra linha. Até 20 linhas e 100 unidades por linha.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderItemInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Linha nova criada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cart"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Quantidade somada a uma linha existente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cart"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          }
+        }
+      }
+    },
+    "/api/cart/items/{publicId}": {
+      "patch": {
+        "tags": [
+          "Carrinho"
+        ],
+        "summary": "Alterar a quantidade de um item",
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "quantity"
+                ],
+                "properties": {
+                  "quantity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Carrinho da conta, com preços calculados no servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cart"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Carrinho"
+        ],
+        "summary": "Remover um item",
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Carrinho da conta, com preços calculados no servidor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cart"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        }
+      }
+    },
+    "/api/cart/checkout": {
+      "post": {
+        "tags": [
+          "Carrinho"
+        ],
+        "summary": "Checkout do carrinho da conta",
+        "description": "Os pedidos saem do carrinho gravado, com o preço do servidor. O corpo é o carrinho que o cliente está vendo: se ele não for exatamente o atual (outra aba ou dispositivo mudou), responde 409. Os itens só saem do carrinho quando o pagamento é confirmado.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "items"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "publicId",
+                        "quantity"
+                      ],
+                      "properties": {
+                        "publicId": {
+                          "type": "string"
+                        },
+                        "quantity": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pedidos criados, com a cobrança Pix."
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
     "/api/studio/assets": {
       "get": {
         "tags": [
@@ -2417,6 +2679,97 @@
         "properties": {
           "message": {
             "type": "string"
+          }
+        }
+      },
+      "CartItem": {
+        "type": "object",
+        "required": [
+          "publicId",
+          "productName",
+          "factoryPublicId",
+          "factoryName",
+          "customSpecs",
+          "quantity",
+          "available",
+          "unitPrice",
+          "total",
+          "paymentPending"
+        ],
+        "properties": {
+          "publicId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productName": {
+            "type": "string"
+          },
+          "factoryPublicId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "factoryName": {
+            "type": "string"
+          },
+          "customSpecs": {
+            "$ref": "#/components/schemas/CustomSpecs"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "available": {
+            "type": "boolean",
+            "description": "false quando o item não passa mais nas regras de compra: fica sem preço e o checkout o recusa."
+          },
+          "unitPrice": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Preço unitário em reais, calculado no servidor; null se indisponível.",
+            "examples": [
+              "210.00"
+            ]
+          },
+          "total": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "unitPrice × quantity; null se indisponível.",
+            "examples": [
+              "420.00"
+            ]
+          },
+          "paymentPending": {
+            "type": "boolean",
+            "description": "Um pedido deste item aguarda a confirmação do pagamento."
+          }
+        }
+      },
+      "Cart": {
+        "type": "object",
+        "required": [
+          "items",
+          "subtotal"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartItem"
+            }
+          },
+          "subtotal": {
+            "type": "string",
+            "examples": [
+              "420.00"
+            ],
+            "description": "Soma dos itens disponíveis."
           }
         }
       }

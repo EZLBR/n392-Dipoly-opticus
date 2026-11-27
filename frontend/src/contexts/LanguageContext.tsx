@@ -389,6 +389,19 @@ const translations: Record<"en" | "pt", Record<string, string>> = {
     "cart-qty": "Qty",
     "cart-item-added": "Design added to cart!",
     "cart-item-removed": "Item removed from cart.",
+    "cart-loading": "Loading your cart...",
+    "cart-load-failed": "We couldn't load your cart.",
+    "cart-retry": "Try again",
+    "cart-offline": "You are offline. Check your connection and try again.",
+    "cart-server-unavailable": "The server did not respond. Nothing was changed; try again.",
+    "cart-session-changed": "Your session changed. The cart now shows the current account.",
+    "cart-invalid-quantity": "Choose a quantity of at least 1.",
+    "cart-changed": "Your cart changed in another tab or device. Review the items before paying.",
+    "cart-item-unavailable": "An item in your cart can no longer be purchased. Remove it and try again.",
+    "cart-payment-pending": "Payment in progress for this item. It leaves the cart once the payment is confirmed.",
+    "cart-saving": "Saving...",
+    "cart-add-failed": "The design was not added to the cart.",
+    "cart-line-unavailable": "This item can no longer be purchased. Remove it to pay for the rest.",
     "checkout-success": "Payment confirmed successfully!",
     "checkout-success-desc": "Your customized design is now queued for production at our partner factory!",
     "btn-add-to-cart": "ADD TO CART",
@@ -781,6 +794,19 @@ const translations: Record<"en" | "pt", Record<string, string>> = {
     "cart-qty": "Qtd",
     "cart-item-added": "Design adicionado ao carrinho!",
     "cart-item-removed": "Item removido do carrinho.",
+    "cart-loading": "Carregando seu carrinho...",
+    "cart-load-failed": "Não foi possível carregar seu carrinho.",
+    "cart-retry": "Tentar de novo",
+    "cart-offline": "Você está sem conexão. Verifique a internet e tente de novo.",
+    "cart-server-unavailable": "O servidor não respondeu. Nada foi alterado; tente de novo.",
+    "cart-session-changed": "Sua sessão mudou. O carrinho agora mostra a conta atual.",
+    "cart-invalid-quantity": "Escolha uma quantidade de pelo menos 1.",
+    "cart-changed": "Seu carrinho mudou em outra aba ou dispositivo. Revise os itens antes de pagar.",
+    "cart-item-unavailable": "Um item do carrinho não pode mais ser comprado. Remova-o e tente de novo.",
+    "cart-payment-pending": "Pagamento em andamento para este item. Ele sai do carrinho quando o pagamento for confirmado.",
+    "cart-saving": "Salvando...",
+    "cart-add-failed": "O design não foi adicionado ao carrinho.",
+    "cart-line-unavailable": "Este item não pode mais ser comprado. Remova-o para pagar o restante.",
     "checkout-success": "Pagamento confirmado com sucesso!",
     "checkout-success-desc": "Seu design personalizado agora está na fila de produção em nossa fábrica parceira!",
     "btn-add-to-cart": "ADICIONAR AO CARRINHO",
@@ -830,6 +856,12 @@ export function localizeProblem(problem: ProblemDetails, language: Language = ge
     detail === "Os pedidos mudaram enquanto a cobrança era criada. Atualize seus pedidos antes de pagar."
     || detail === "O pedido mudou enquanto a cobrança era criada. Atualize seus pedidos antes de pagar."
   )) return translate("api-payment-conflict", language);
+  if (problem.status === 409 && detail === "Seu carrinho mudou em outra aba ou dispositivo. Revise os itens antes de pagar.") {
+    return translate("cart-changed", language);
+  }
+  if (problem.status === 409 && detail === "Um item do carrinho não pode mais ser comprado. Remova-o e tente de novo.") {
+    return translate("cart-item-unavailable", language);
+  }
   if (detail.startsWith("Não foi possível confirmar a cobrança com o gateway de pagamento.")) {
     return translate("api-payment-pending", language);
   }

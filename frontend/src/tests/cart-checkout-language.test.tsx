@@ -7,7 +7,7 @@ import { LanguageProvider, useTranslation } from "../contexts/LanguageContext";
 const checkoutCart = vi.hoisted(() => vi.fn());
 vi.mock("../contexts/AuthContext", () => ({ useAuth: () => ({ session: { id: "customer" } }) }));
 vi.mock("../contexts/CartContext", () => ({
-  useCart: () => ({ checkoutCart, cart: [{ id: "frame", quantity: 1, total: 159, customSpecs: {} }] }),
+  useCart: () => ({ checkoutCart, cart: [{ id: "frame", quantity: 1, total: 159, customSpecs: {} }], subtotal: 159, status: "ready", saving: false }),
 }));
 vi.mock("../components/ThreePreview", () => ({ default: () => null }));
 

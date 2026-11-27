@@ -3,9 +3,10 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import AuthPage from "../components/AuthPage";
 import Cart from "../components/Cart";
-import { AuthProvider, useAuth } from "../contexts/AuthContext";
+import { AuthProvider } from "../contexts/AuthContext";
 import { CartProvider, useCart } from "../contexts/CartContext";
 import { LanguageProvider } from "../contexts/LanguageContext";
+import { fakeCartApi } from "./cart-api";
 
 vi.mock("../components/ThreePreview", () => ({ default: () => null })); // jsdom has no WebGL.
 
@@ -46,14 +47,16 @@ it("validates the login form and shows an RFC 9457 credential rejection without 
 });
 
 function AddFrame() {
-  const { addToCart } = useCart();
-  const { sessionLoading } = useAuth();
-  return <button disabled={sessionLoading} onClick={() => addToCart({ id: "frame", productName: "Round frame", total: 159, customSpecs: {} })}>
+  const { addToCart, status } = useCart();
+  return <button disabled={status !== "ready"} onClick={() => void addToCart({ id: "frame", productName: "Round frame", total: 159, customSpecs: {} })}>
     Add frame
   </button>;
 }
 
 it("reflects adding, updating and removing an item with the real cart provider", async () => {
+  // CART-01: o provider fala com a API do carrinho da conta.
+  localStorage.setItem("opticus_token", "token-a");
+  const api = fakeCartApi({ "token-a": { publicId: "user-a", name: "Ana", email: "ana@example.com", role: "client" } });
   render(
     <AuthProvider><CartProvider><LanguageProvider>
       <AddFrame />
@@ -61,18 +64,18 @@ it("reflects adding, updating and removing an item with the real cart provider",
     </LanguageProvider></CartProvider></AuthProvider>,
   );
 
-  expect(screen.getByText("Your shopping cart is empty.")).toBeInTheDocument();
+  expect(await screen.findByText("Your shopping cart is empty.")).toBeInTheDocument();
   const add = screen.getByRole("button", { name: "Add frame" });
   await waitFor(() => expect(add).toBeEnabled());
   fireEvent.click(add);
-  expect(screen.getByText("Round frame")).toBeInTheDocument();
+  expect(await screen.findByText("Round frame")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Decrease quantity" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Increase quantity" }));
-  expect(JSON.parse(localStorage.getItem("opticus_cart") ?? "[]")).toEqual([
-    expect.objectContaining({ id: "frame", quantity: 2 }),
-  ]);
+  await waitFor(() => expect(api.serverCart("user-a")).toEqual([expect.objectContaining({ quantity: 2 })]));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Decrease quantity" })).toBeEnabled());
   fireEvent.click(screen.getByRole("button", { name: "Decrease quantity" }));
-  expect(screen.getByRole("button", { name: "Decrease quantity" })).toBeDisabled();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Decrease quantity" })).toBeDisabled());
   fireEvent.click(screen.getByRole("button", { name: "Remove item" }));
-  expect(screen.getByText("Your shopping cart is empty.")).toBeInTheDocument();
+  expect(await screen.findByText("Your shopping cart is empty.")).toBeInTheDocument();
+  expect(localStorage.getItem("opticus_cart")).toBeNull();
 });

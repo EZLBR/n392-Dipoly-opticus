@@ -23,7 +23,7 @@ const CustomerOrders = lazy(() => import("./components/CustomerOrders"));
 export function AppContent() {
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const { session, authWarning, clearAuthWarning } = useAuth();
-  const { clearCart } = useCart();
+  const { refresh: refreshCart } = useCart();
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
@@ -38,7 +38,9 @@ export function AppContent() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("payment") === "success") {
       setShowPaymentSuccess(true);
-      clearCart();
+      // CART-01: o carrinho não é esvaziado pela URL. O servidor tira os
+      // itens quando confirma o pagamento; aqui só se recarrega o carrinho.
+      void refreshCart();
       // Use window.history to replace URL without triggering React Router re-renders
       window.history.replaceState({}, document.title, window.location.pathname);
     }

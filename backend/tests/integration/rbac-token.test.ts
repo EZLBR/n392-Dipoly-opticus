@@ -20,7 +20,7 @@ import prisma from "../../src/config/prisma.js";
 import { criarUsuario, comToken, type Papel, type UsuarioDeTeste } from "../helpers/auth.js";
 import { esperarProblema } from "../helpers/problem.js";
 
-type Metodo = "get" | "post" | "put" | "delete";
+type Metodo = "get" | "post" | "put" | "patch" | "delete";
 
 interface Rota {
   metodo: Metodo;
@@ -54,6 +54,12 @@ const ROTAS_COM_PAPEL: RotaComPapel[] = [
   { metodo: "get",    caminho: "/api/payments",                                permitidos: ["staff"] },
   { metodo: "get",    caminho: "/api/orders/mine",                             permitidos: ["client"] },
   { metodo: "get",    caminho: `/api/orders/mine/${UUID_INEXISTENTE}`,         permitidos: ["client"] },
+  { metodo: "get",    caminho: "/api/cart",                                    permitidos: ["client", "staff"] },
+  { metodo: "delete", caminho: "/api/cart",                                    permitidos: ["client", "staff"] },
+  { metodo: "post",   caminho: "/api/cart/items",                              permitidos: ["client", "staff"], corpo: {} },
+  { metodo: "patch",  caminho: `/api/cart/items/${UUID_INEXISTENTE}`,          permitidos: ["client", "staff"], corpo: {} },
+  { metodo: "delete", caminho: `/api/cart/items/${UUID_INEXISTENTE}`,          permitidos: ["client", "staff"] },
+  { metodo: "post",   caminho: "/api/cart/checkout",                           permitidos: ["client", "staff"], corpo: {} },
 ];
 
 // Rotas que exigem apenas autenticação, sem restringir papel.

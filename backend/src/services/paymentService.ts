@@ -62,6 +62,11 @@ interface PedidoPago {
  */
 async function aprovarPagamentos(tx: Prisma.TransactionClient, billingId: string, pedidos: PedidoPago[]) {
   if (pedidos.length === 0) return;
+
+  // CART-01: o item do carrinho que virou um destes pedidos sai do carrinho
+  // agora, com o pagamento confirmado, e nunca por um parâmetro da URL. Um
+  // item alterado depois do checkout perdeu o vínculo e fica.
+  await tx.carrinhoItem.deleteMany({ where: { pedidoId: { in: pedidos.map(pedido => pedido.id) } } });
   const doPedido = { referenciaExterna: billingId, pedidoId: { in: pedidos.map(pedido => pedido.id) } };
 
   await tx.pagamento.updateMany({ where: doPedido, data: { status: StatusPagamento.aprovado } });

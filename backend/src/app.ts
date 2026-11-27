@@ -8,6 +8,7 @@ import { problemErrorHandler } from "./middlewares/problemErrorHandler.js";
 import { rejectNulBytes } from "./middlewares/rejectNulBytes.js";
 import { requestId } from "./middlewares/requestId.js";
 import authRoutes from "./routes/authRoutes.js";
+import cartRoutes from "./routes/cartRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import designRoutes from "./routes/designRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
@@ -127,6 +128,7 @@ export function createApp(options: AppOptions = {}) {
   app.use("/api/orders", orderRoutes);
   app.use("/api/payments", paymentRoutes);
   app.use("/api/designs", designRoutes);
+  app.use("/api/cart", cartRoutes);
   app.use("/api/products", productRoutes);
   app.use("/api/categories", categoryRoutes);
   app.use("/api/stock", stockRoutes);
