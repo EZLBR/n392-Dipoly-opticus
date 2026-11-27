@@ -97,6 +97,10 @@ async function main() {
       productName: prodAurora.nome,
       status: "Delivered",
       total: 450,
+      // FEAT-04: o item do catálogo, com o preço da compra.
+      itens: {
+        create: [{ produtoId: prodAurora.id, productName: prodAurora.nome, customSpecs: {}, quantidade: 1, precoUnitario: 450 }],
+      },
     },
   });
 

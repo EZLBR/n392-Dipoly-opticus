@@ -133,17 +133,25 @@ model OrderStatusHistory {
   @@map("order_status_history")
 }
 
-/// Reservada para a FEAT-04 (#48), que a remodela: veja docs/decisions/ADR-0004.
-/// Até lá, nenhum código lê nem grava esta tabela.
+/// FEAT-04 (#48), ADR-0004: cada item comprado num pedido, com o nome, a
+/// especificação e o preço unitário do momento da compra, calculado no
+/// servidor. A soma dos itens é pedidos.total. O item não tem status nem
+/// fábrica próprios: os dois são do pedido.
 model PedidoItem {
   id            Int     @id @default(autoincrement())
   pedidoId      Int     @map("pedido_id")
-  produtoId     Int     @map("produto_id")
-  quantidade    Int     @default(1)
+  /// Só para item do catálogo; item do Studio não tem produto.
+  produtoId     Int?    @map("produto_id")
+  productName   String  @map("product_name") @db.VarChar(255)
+  /// A especificação validada, sem a quantidade (que é a coluna quantidade).
+  customSpecs   Json    @map("custom_specs") @db.JsonB
+  quantidade    Int
   precoUnitario Decimal @map("preco_unitario") @db.Decimal(10, 2)
 
-  pedido  Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
-  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  publicId String @unique @default(dbgenerated("gen_random_uuid()"))
+
+  pedido  Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  produto Produto? @relation(fields: [produtoId], references: [id], onDelete: SetNull)
 
   @@index([pedidoId], map: "idx_itens_pedido")
   @@index([produtoId], map: "idx_itens_produto")

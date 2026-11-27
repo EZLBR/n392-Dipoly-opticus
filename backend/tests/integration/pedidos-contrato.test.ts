@@ -19,7 +19,7 @@ import { esperarProblema } from "../helpers/problem.js";
 
 const CAMPOS_PEDIDO = [
   "abacateBillingId", "createdAt", "customSpecs", "customerEmail", "customerName", "factoryName",
-  "factoryPublicId", "productName", "publicId", "status", "total", "updatedAt", "version",
+  "factoryPublicId", "items", "productName", "publicId", "status", "total", "updatedAt", "version",
 ];
 
 const item = (extra: Record<string, unknown> = {}) => ({
@@ -49,6 +49,12 @@ describe("pedidos — contrato da API (DB-03)", () => {
       });
       expect(res.body.createdAt).toBe(meiaNoite(new Date()));
       expect(res.body.updatedAt).toBe(res.body.createdAt);
+      // FEAT-04: o item gravado, com o preço unitário do servidor e sem a
+      // quantidade dentro da especificação.
+      expect(res.body.items).toEqual([{
+        publicId: expect.any(String), productName: "Armação", customSpecs: especificacaoDoStudio(), quantity: 2,
+        unitPrice: PRECO_DA_ESPECIFICACAO_PADRAO, total: (Number(PRECO_DA_ESPECIFICACAO_PADRAO) * 2).toFixed(2),
+      }]);
     });
 
     it("sem fábrica no corpo, o pedido vai para a fábrica mais antiga", async () => {

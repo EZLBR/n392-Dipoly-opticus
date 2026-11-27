@@ -37,6 +37,8 @@ export async function criarPedido(opcoes: {
       factoryName: fabrica ? `Fabrica ${fabrica.id}` : null,
       status,
       total: "450.00",
+      // FEAT-04: todo pedido tem item, e a soma dos itens é o total.
+      itens: { create: [{ productName: `Armacao Teste ${n}`, customSpecs: {}, quantidade: 1, precoUnitario: "450.00" }] },
     },
     select: { id: true, publicId: true, status: true, factoryId: true, version: true },
   });

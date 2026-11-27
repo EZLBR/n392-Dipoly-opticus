@@ -15,7 +15,7 @@
 //   chama, para a classificação ser testável sem banco nem ambiente.
 //
 //   API v2: o checkout só aceita produtos já cadastrados no AbacatePay
-//   (items[].id = externalId). Por isso cada pedido vira um produto
+//   (items[].id = externalId). Por isso cada item do pedido vira um produto
 //   antes de criar o checkout. O antigo
 //   POST /v2/billing não existe (respondia "Not found"); o corpo com
 //   frequency/products/customer era o da v1, que a chave v2 recusa.
@@ -41,7 +41,10 @@ export const idDoProduto = (produto: { externalId: string; price: number }) =>
   `${produto.externalId}-${produto.price}`;
 
 export interface PedidoDeCobranca {
-  /** externalId é o publicId do pedido; price é o preço unitário em centavos. */
+  /**
+   * externalId é o publicId do item (no checkout do carrinho) ou do pedido
+   * (no "pagar pedido"); price é o preço unitário em centavos.
+   */
   products: Array<{ externalId: string; name: string; quantity: number; price: number }>;
   returnUrl: string;
   /** A v2 não recebe o pagador: o próprio checkout pede os dados dele. */
