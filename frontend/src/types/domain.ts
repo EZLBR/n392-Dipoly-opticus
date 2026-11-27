@@ -72,6 +72,16 @@ export interface CartItem {
   available?: boolean;
 }
 
+/** FEAT-04: um item do pedido, com o preço gravado na compra pelo servidor. */
+export interface OrderItem {
+  publicId: string;
+  productName: string;
+  customSpecs: CustomSpecs;
+  quantity: number;
+  unitPrice: string;
+  total: string;
+}
+
 export interface Order {
   publicId: string;
   customerName: string;
@@ -84,6 +94,8 @@ export interface Order {
   createdAt?: string | null;
   /** CONC-02: versão lida, enviada de volta na troca de status. */
   version?: number;
+  /** FEAT-04: os itens do pedido. Ausente num pedido guardado antes no cache. */
+  items?: OrderItem[];
 }
 
 export interface Billing {

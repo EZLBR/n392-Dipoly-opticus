@@ -230,7 +230,8 @@ describe("FEAT-04 — lista de conciliação", () => {
         ],
       }, null));
 
-    expect(await prisma.pedido.count()).toBe(3);
+    // O checkout junta os dois itens sem fábrica num pedido (FEAT-04, parte 2).
+    expect(await prisma.pedido.count()).toBe(2);
     expect(await pedidosAConciliar(prisma)).toEqual([]);
   });
 });

@@ -83,3 +83,18 @@ Detalhes decididos na parte 1:
   - quantidade não aproveitada;
   - especificação ilegível.
 - **Deploy:** entre a migration e a troca do container, a versão anterior da API ainda pode gravar um pedido sem item. A conciliação o lista como `sem_itens`. Como a migration de conversão é idempotente, rodá-la de novo com `psql -f` resolve.
+
+Detalhes decididos na parte 2:
+
+- **O agrupamento usa a fábrica já resolvida.** Um item sem fábrica vai para a padrão (a mais antiga) e entra no mesmo pedido dos itens que a indicaram pelo `publicId`.
+  - Os pedidos saem na ordem em que cada fábrica aparece no carrinho, e os itens na ordem do carrinho.
+  - A regra é uma função pura, `domain/pedidosPorFabrica.ts`.
+- **O nome da fábrica gravado no pedido é o do primeiro item do grupo,** como já era no pedido de um item.
+- **Cada linha do carrinho fica ligada ao pedido da sua fábrica.** Linhas da mesma fábrica apontam para o mesmo pedido, e a confirmação do pagamento continua tirando do carrinho só as linhas dos pedidos pagos.
+- **As telas mostram os itens:**
+  - os painéis da fábrica e do staff resumem os itens na tabela ("2× Wayfarer, Redondo"), e os detalhes mostram cada item com a sua especificação;
+  - o "Meus pedidos" mostra cada item com quantidade, preço unitário, total e especificação;
+  - a página do simulador lista cada item com a quantidade;
+  - o e-mail de status cita todos os itens.
+- **Pedido sem item** (de antes da conversão, ou guardado no cache do navegador antes dela): todas as telas mostram o nome e a especificação do próprio pedido.
+- **O "pagar pedido" continua cobrando o pedido numa linha só,** com o total e o nome do pedido (o resumo, se houver vários itens).

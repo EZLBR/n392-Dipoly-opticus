@@ -28,9 +28,10 @@ async function producao() {
 
 async function cenario() {
   const dono = await criarUsuario();
-  const fabrica = await criarUsuario("factory");
+  // FEAT-04: uma fábrica por item, para a tentativa ter dois pedidos.
+  const fabricas = [await criarUsuario("factory"), await criarUsuario("factory")];
   const app = await producao();
-  const cartItems = [1, 2].map(n => ({ productName: `Armação ${n}`, factoryPublicId: fabrica.publicId,
+  const cartItems = [1, 2].map(n => ({ productName: `Armação ${n}`, factoryPublicId: fabricas[n - 1].publicId,
     factoryName: "Fábrica", quantity: 1, customSpecs: especificacaoDoStudio() }));
   return { app, dono, cartItems };
 }

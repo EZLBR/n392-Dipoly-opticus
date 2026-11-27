@@ -303,7 +303,10 @@ export class PaymentService {
     const pedidos = await prisma.pedido.findMany({
       where: { abacateBillingId: billingId, usuario: { publicId: usuarioPublicId }, pagamentoSimulado: true },
       orderBy: { id: "asc" },
-      select: { productName: true, total: true, customerName: true, customerEmail: true },
+      select: {
+        productName: true, total: true, customerName: true, customerEmail: true,
+        itens: { select: { productName: true, quantidade: true, precoUnitario: true }, orderBy: { id: "asc" } },
+      },
     });
 
     if (pedidos.length === 0) {
@@ -313,7 +316,15 @@ export class PaymentService {
     const total = pedidos.reduce((soma, pedido) => soma.add(pedido.total), new Prisma.Decimal(0));
 
     return {
-      itens: pedidos.map(pedido => ({ productName: pedido.productName, total: pedido.total.toFixed(2) })),
+      // FEAT-04: a página lista os itens. Um pedido sem itens, gravado antes
+      // da conversão, aparece como uma linha só, com o próprio total.
+      itens: pedidos.flatMap((pedido): SimulatedCheckoutDTO["itens"] => pedido.itens.length === 0
+        ? [{ productName: pedido.productName, quantity: null, total: pedido.total.toFixed(2) }]
+        : pedido.itens.map(item => ({
+            productName: item.productName,
+            quantity: item.quantidade,
+            total: item.precoUnitario.mul(item.quantidade).toFixed(2),
+          }))),
       total: total.toFixed(2),
       cliente: { nome: pedidos[0].customerName, email: pedidos[0].customerEmail },
     };

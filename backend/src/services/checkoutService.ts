@@ -2,7 +2,8 @@
 //   CHECKOUT SERVICE — do carrinho à cobrança
 //   Não conhece Request nem Response.
 //
-//   1. Os pedidos do carrinho nascem juntos numa transação, com o
+//   1. Os pedidos do carrinho nascem juntos numa transação, um por
+//      fábrica com os itens dela (FEAT-04), com o
 //      preço do servidor (SEC-05) e um billingId provisório.
 //   2. A chamada ao gateway acontece fora de qualquer transação.
 //   3. O resultado do gateway decide o destino dos pedidos
@@ -25,13 +26,14 @@ import {
   gatewayDePagamentoConfigurado,
   simuladorDePagamentoAtivo,
 } from "../config/pagamento.js";
+import { agruparPorFabrica } from "../domain/pedidosPorFabrica.js";
 import type { CheckoutCartDTO, CheckoutResultDTO } from "../dtos/order/order.dto.js";
 import { ConflictProblem, ServiceUnavailableProblem } from "../errors/problem.js";
 import { gerarBillingId } from "../utils/billingId.js";
 import logger from "../utils/logger.js";
 import { concluirTentativaDeCheckout } from "./checkoutAttempt.js";
 import { solicitarCobranca } from "./gatewayDePagamento.js";
-import { inserirPedido, type Cliente } from "./orderService.js";
+import { fabricaDoPedido, inserirPedido, type Cliente } from "./orderService.js";
 
 export class CheckoutService {
   static async finalizarCarrinho(opcoes: {
@@ -41,10 +43,11 @@ export class CheckoutService {
     origens: { frontend: string; backend: string };
     traceId?: string;
     /**
-     * CART-01: roda na transação que cria os pedidos, com os ids deles na
-     * ordem de cartItems. Um erro aqui desfaz os pedidos antes do gateway.
+     * CART-01: roda na transação que cria os pedidos, com o id do pedido de
+     * cada item, na ordem de cartItems (itens da mesma fábrica repetem o
+     * id). Um erro aqui desfaz os pedidos antes do gateway.
      */
-    aoCriarPedidos?: (tx: Prisma.TransactionClient, pedidoIds: number[]) => Promise<void>;
+    aoCriarPedidos?: (tx: Prisma.TransactionClient, pedidoDeCadaItem: number[]) => Promise<void>;
   }): Promise<CheckoutResultDTO> {
     const { cliente, cartItems, origens, traceId, aoCriarPedidos } = opcoes;
 
@@ -57,19 +60,36 @@ export class CheckoutService {
     const consolidatedBillingId = gerarBillingId("sim");
 
     const createdOrders = await prisma.$transaction(async (tx) => {
+      // FEAT-04 (ADR-0004): um pedido por fábrica, com os itens dela. A
+      // fábrica de cada item é resolvida antes de agrupar: um item sem fábrica
+      // vai para a padrão e se junta aos que a indicaram pelo publicId.
+      const resolvidas = new Map<string | undefined, Awaited<ReturnType<typeof fabricaDoPedido>>>();
+      const fabricas = [];
+      for (const item of cartItems) {
+        if (!resolvidas.has(item.factoryPublicId)) {
+          resolvidas.set(item.factoryPublicId, await fabricaDoPedido(tx, item.factoryPublicId));
+        }
+        fabricas.push(resolvidas.get(item.factoryPublicId) ?? null);
+      }
+
       const criados = [];
-      // FEAT-04, parte 1 (ADR-0004): ainda um pedido por item do carrinho, com o
-      // item gravado em pedido_itens. O agrupamento por fábrica vem com as
-      // telas que mostram os itens.
-      for (const { factoryPublicId, factoryName, ...item } of cartItems) {
-        const { pedido, itens } = await inserirPedido(
-          tx, cliente, { factoryPublicId, factoryName, itens: [item] }, consolidatedBillingId,
-        );
+      const pedidoDeCadaItem: number[] = [];
+      for (const indices of agruparPorFabrica(fabricas.map(fabrica => fabrica?.id ?? null))) {
+        const [primeiro] = indices.map(indice => cartItems[indice]);
+        const { pedido, itens } = await inserirPedido(tx, cliente, {
+          factoryPublicId: fabricas[indices[0]]?.publicId,
+          factoryName: primeiro.factoryName,
+          itens: indices.map(indice => {
+            const { productName, customSpecs, quantity } = cartItems[indice];
+            return { productName, customSpecs, quantity };
+          }),
+        }, consolidatedBillingId);
+        for (const indice of indices) pedidoDeCadaItem[indice] = pedido.id;
         // O id interno só circula no servidor (guarda da tentativa); o gateway
         // recebe os publicIds dos itens.
         criados.push({ id: pedido.id, itens });
       }
-      await aoCriarPedidos?.(tx, criados.map((pedido) => pedido.id));
+      await aoCriarPedidos?.(tx, pedidoDeCadaItem);
       return criados;
     });
 

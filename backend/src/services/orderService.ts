@@ -141,17 +141,19 @@ function toOrderResponse(pedido: PedidoLido): OrderResponseDTO {
  * antiga, quando nenhuma é enviada. Sem fábrica cadastrada, o pedido nasce
  * sem fábrica.
  */
-async function fabricaDoPedido(tx: Prisma.TransactionClient, factoryPublicId?: string): Promise<number | null> {
+export async function fabricaDoPedido(
+  tx: Prisma.TransactionClient,
+  factoryPublicId?: string,
+): Promise<{ id: number; publicId: string } | null> {
   if (factoryPublicId) {
     const fabrica = await tx.usuario.findFirst({
       where: { publicId: factoryPublicId, role: "factory" },
-      select: { id: true },
+      select: { id: true, publicId: true },
     });
     if (!fabrica) throw new BadRequestProblem("Fábrica não encontrada.");
-    return fabrica.id;
+    return fabrica;
   }
-  const padrao = await tx.usuario.findFirst({ where: { role: "factory" }, orderBy: { id: "asc" }, select: { id: true } });
-  return padrao?.id ?? null;
+  return tx.usuario.findFirst({ where: { role: "factory" }, orderBy: { id: "asc" }, select: { id: true, publicId: true } });
 }
 
 /** O dono do pedido, pelo publicId do token. Um token de conta apagada não cria pedido. */
@@ -223,7 +225,7 @@ export async function inserirPedido(
 
   const precos = novo.itens.map(item => precoDoItem(item.customSpecs, item.quantity));
   const totalEmCentavos = precos.reduce((soma, preco) => soma + preco.total, 0);
-  const factoryId = await fabricaDoPedido(tx, novo.factoryPublicId);
+  const factoryId = (await fabricaDoPedido(tx, novo.factoryPublicId))?.id ?? null;
   const usuarioId = await donoDoPedido(tx, cliente.publicId);
 
   const pedido = await tx.pedido.create({
@@ -378,7 +380,7 @@ export class OrderService {
     }
 
     // A leitura também é escopada, para não reabrir pela porta dos fundos.
-    const pedido = await prisma.pedido.findFirst({
+    const lido = await prisma.pedido.findFirst({
       where: escopo,
       select: {
         publicId: true,
@@ -390,13 +392,28 @@ export class OrderService {
         total: true,
         version: true,
         atualizadoEm: true,
+        itens: { select: { productName: true, quantidade: true }, orderBy: { id: "asc" } },
       },
     });
 
-    if (!pedido) {
+    if (!lido) {
       throw new NotFoundProblem("Pedido não encontrado.");
     }
 
-    return pedido;
+    // A resposta da rota continua a mesma; os itens só vão para o e-mail.
+    const { itens, ...pedido } = lido;
+    return { pedido, resumoDosItens: resumoDosItens(itens, pedido.productName) };
   }
+}
+
+/**
+ * Os itens de um pedido numa linha, para o e-mail ("2× Wayfarer, Redondo").
+ * Sem itens, um pedido gravado antes da FEAT-04 que a conversão ainda não
+ * alcançou, vale o nome do próprio pedido.
+ */
+export function resumoDosItens(itens: { productName: string; quantidade: number }[], nomeDoPedido: string): string {
+  if (itens.length === 0) return nomeDoPedido;
+  return itens
+    .map(item => (item.quantidade > 1 ? `${item.quantidade}× ${item.productName}` : item.productName))
+    .join(", ");
 }

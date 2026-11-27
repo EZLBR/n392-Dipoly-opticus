@@ -1,5 +1,5 @@
 import React from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CustomerOrders from "../components/CustomerOrders";
@@ -103,5 +103,34 @@ describe("Customer orders", () => {
     await act(async () => resolveOld(json({ orders: [order], pagination })));
     expect(await screen.findByText("Você ainda não tem pedidos.")).toBeInTheDocument();
     expect(screen.queryByText(order.productName)).toBeNull();
+  });
+  it("FEAT-04: a lista resume os itens, e o detalhe mostra cada item com quantidade, preços e especificação", async () => {
+    const items = [
+      { publicId: "item-1", productName: "Wayfarer", quantity: 2, unitPrice: "210.00", total: "420.00", customSpecs: { color: "#101010" } },
+      { publicId: "item-2", productName: "Redondo", quantity: 1, unitPrice: "270.00", total: "270.00", customSpecs: { color: "#ababab" } },
+    ];
+    const agrupado = { ...order, productName: "Wayfarer (+1)", total: "690.00", items };
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(json({ orders: [agrupado], pagination }))
+      .mockResolvedValueOnce(json({ order: { ...agrupado, customSpecs: {}, history: [] } })));
+    render(view());
+
+    fireEvent.click(await screen.findByRole("link", { name: "2× Wayfarer, Redondo" }));
+
+    // O formato de moeda usa espaço não separável: compara o texto de cada campo.
+    const reais = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+    // A primeira lista do item: quantidade, preço unitário e total (a segunda é a especificação).
+    const valores = (artigo: HTMLElement) => [...artigo.querySelector("dl")!.querySelectorAll("dd")].map(dd => dd.textContent);
+    const itens = await screen.findByRole("region", { name: "Itens" });
+    const wayfarer = within(itens).getByRole("article", { name: "Wayfarer" });
+    expect(valores(wayfarer)).toEqual(["2", reais.format(210), reais.format(420)]);
+    expect(within(wayfarer).getByText("#101010")).toBeInTheDocument();
+    expect(within(wayfarer).queryByText("#ababab")).toBeNull();
+    const redondo = within(itens).getByRole("article", { name: "Redondo" });
+    expect(valores(redondo)).toEqual(["1", reais.format(270), reais.format(270)]);
+    expect(within(redondo).getByText("#ababab")).toBeInTheDocument();
+    // Cada lista de especificações tem um título com id próprio.
+    const ids = [...document.querySelectorAll("[id]")].map(elemento => elemento.id);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });

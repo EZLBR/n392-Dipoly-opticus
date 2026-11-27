@@ -33,10 +33,10 @@ async function cobrancaComPedidos(opcoes: {
   const billingId = opcoes.billingId ?? `bill-contrato-${randomUUID()}`;
   const pedidos: PedidoDeTeste[] = [];
   for (const total of opcoes.totais) {
-    const pedido = await criarPedido({ dono: opcoes.dono, status: "Pending_Payment" });
+    const pedido = await criarPedido({ dono: opcoes.dono, status: "Pending_Payment", total });
     await prisma.pedido.update({
       where: { id: pedido.id },
-      data: { abacateBillingId: billingId, pagamentoSimulado: opcoes.simulada, total },
+      data: { abacateBillingId: billingId, pagamentoSimulado: opcoes.simulada },
     });
     pedidos.push(pedido);
   }
@@ -217,7 +217,8 @@ describe("pagamentos — contrato da API (DB-03)", () => {
     it("mostra os itens da cobrança, o total somado e os dados do cliente, escapados", async () => {
       const dono = await criarUsuario("client");
       const { billingId, pedidos } = await cobrancaComPedidos({ dono, totais: ["450.00", "1999.90"], simulada: true });
-      await prisma.pedido.update({ where: { id: pedidos[1].id }, data: { productName: "<img src=x onerror=alert(1)>" } });
+      // FEAT-04: a página mostra os itens; o nome vem do item.
+      await prisma.pedidoItem.updateMany({ where: { pedidoId: pedidos[1].id }, data: { productName: "<img src=x onerror=alert(1)>" } });
       const reais = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
       const res = await pagina(dono, billingId);
